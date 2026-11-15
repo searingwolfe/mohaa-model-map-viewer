@@ -389,13 +389,28 @@ the map's own entities).
 
 # Updating
 
-**Help → Check for updates** (in either launcher) compares your version with the latest
-one in this repository and, if you choose, downloads the new version, installs it over the
-program folder, and restarts. Both viewers update together, since they share the folder.
-Your settings and built pages in `output/` and the packages in `bin/libs*` are left alone.
+As soon as either launcher starts, it compares every program file in its folder
+with the same file in this repository (by the fingerprint GitHub lists for it, not just the
+version number), so new files on GitHub and changed ones are both found. If anything
+differs, an update window opens with the list in a scrolling box: each file marked **new**,
+**changed** or **removed**, ticked (click one to untick it and keep your copy). **Download**
+installs the ticked files, **Cancel** leaves everything as it is. When nothing differs, the
+Output pane just says so; offline, nothing is shown at all. **Help → Check for updates...**
+runs the same check at any time (with **Close** when up to date), and **Help → Check for
+updates at startup** turns the startup check off for both programs. The two viewers are
+updated as one program, since they share the folder: whichever one finds the update
+installs every new or changed file, the other viewer's included. Your settings and built pages in `output/` and the packages in
+`bin/libs*` are left alone.
 
-The update is checked before anything changes: the download must be undamaged and must
-really be the version offered. Every file it replaces is copied first to
+After an install, the Output pane lists the full path of every file added, updated or
+removed, and the folder holding the previous copies; **Restart now** loads them (a file in
+use when it was written finishes installing on a restart, which happens by itself). A file
+you changed yourself after an update is told apart from one changed on GitHub
+(`output/update_manifest.json` keeps each file's fingerprint as installed) and is kept.
+
+The update is checked before anything changes: the download (a zip of exactly the commit
+that was checked) must be undamaged, and every file must match GitHub's fingerprint for it.
+Every file it replaces is copied first to
 `output/previous-versions/<n>/` (one numbered folder per update, listed in
 `output/previous-versions/changelog.txt`), and if any file can't be written, the files
 already replaced are put back and the update reports what failed. Files the new version
@@ -414,7 +429,8 @@ copy a numbered folder's contents over the program folder.
 | Program logs | `output/logs/mohaa_launcher.log` and `mohaa_view.log` (page builds) | `output/logs/mohaa_map_launcher.log` and `mohaa_map_view.log` (page builds) |
 | Settings backups | `mohaa_viewer_config.json.bak` beside the settings | `mohaa_map_viewer_config.json.bak` beside the settings |
 | Unsaved Modify work | | `output/modify_recovery/<map>_<hash>.json`, offered back when the map opens again; cleared by a save or Discard changes |
-| Previous versions | `output/previous-versions/<n>/` (written by Help → Check for updates, shared) | (same) |
+| Previous versions | `output/previous-versions/<n>/` (written by an update, shared) | (same) |
+| Update record | `output/update_manifest.json` (each program file's GitHub fingerprint as installed, and the check-at-startup choice; shared) | (same) |
 | Python packages | `bin/libs` (Windows), `bin/libs-linux` (Linux), `bin/libs-mac` (macOS), shared | (same) |
 
 `output/` is the folder next to `bin/` (in a flat / portable install, the scripts' own
@@ -440,11 +456,12 @@ as `<name>_decompiled.map` instead).
 # Privacy & Security
 
 **Neither program collects or sends anything.** No telemetry, no analytics, no crash
-reporting, and nothing is ever checked or sent automatically. Everything happens on your
-machine.
+reporting. Everything happens on your machine.
 
-They use the network only when you ask: **Help → Check for updates** reads a small version
-file from this repository and, if you choose, downloads the newer files from GitHub. (The
+They use the network only for updates: at startup (unless you turn it off under **Help →
+Check for updates at startup**) and from **Help → Check for updates...**, they read this
+repository's file list and version file from GitHub, sending nothing but the program's
+name and version, and download newer files only when you click Download. (The
 RUN files also install missing Python packages from pypi.org into `bin/libs*`, and on
 Windows the Python installer they offer downloads Python from python.org if you say yes.) Full
 notice: [`PRIVACY.md`](docs/PRIVACY.md), or **Help → Privacy & Legal** inside either

@@ -119,21 +119,22 @@ FONT_MONO=("Consolas",10); FONT_SMALL=("Consolas",9); FONT_TITLE=("Consolas",13,
 # Shown in Help --> Privacy & Legal and summarised in About. Kept in the program so
 # users who never visit the repo can read it; keep in sync with docs/PRIVACY.md.
 PRIVACY_SUMMARY=("This program collects nothing and sends nothing, and has no\n"
-                 "telemetry. It uses the network only when you check for updates.")
+                 "telemetry. It uses the network only to check GitHub for updates.")
 
 PRIVACY_TEXT = """PRIVACY NOTICE  --  MOHAA Model Viewer
-Last updated: 12 November 2026
+Last updated: 14 November 2026
 
 1. THE SHORT VERSION
    This program does not collect, transmit, sell, share or profile anything.
    It contains no telemetry, no analytics, no crash reporting, no advertising
-   and no tracking identifiers, and it never checks for updates on its own. The
-   program uses the network only when YOU open Help --> Check for updates, and
-   the startup scripts only to install missing Python packages (see 3);
-   everything else happens entirely on your computer.
+   and no tracking identifiers. The program uses the network only to check
+   this project's GitHub page for updates (at startup, which you can turn off,
+   and when you open Help --> Check for updates), and the startup scripts only
+   to install missing Python packages (see 3); everything else happens entirely
+   on your computer.
 
 2. WHAT IS STORED, AND WHERE
-   The program stores six things, all on your own machine, all readable and
+   The program stores seven things, all on your own machine, all readable and
    deletable by you at any time:
 
      a) Settings file  --  mohaa_viewer_config.json
@@ -174,9 +175,16 @@ Last updated: 12 November 2026
         files.
 
      f) Previous versions  --  the "previous-versions" folder beside (a).
-        When Help --> Check for updates installs a new version, the files it
-        replaces are copied here first, one numbered folder per update, with a
-        changelog.txt listing them. Delete them whenever you like.
+        When an update installs new files, the files it replaces are copied
+        here first, one numbered folder per update, with a changelog.txt
+        listing them. Delete them whenever you like.
+
+     g) Update record  --  update_manifest.json, in the same folder as (a).
+        The fingerprint (SHA-1) GitHub lists for each program file, as last
+        installed or seen matching, so a file you changed yourself is not
+        offered as an update, and whether to check for updates at startup.
+        Both programs share it, as they share one update. It holds no
+        personal data.
 
    None of this is transmitted anywhere. If you want it gone, delete the folders
    above; the program will simply start fresh.
@@ -187,14 +195,17 @@ Last updated: 12 November 2026
    Content-Security-Policy that blocks outbound connections even if a malformed
    game file were to inject script into it.
 
-   The program reaches the network in only two places, both of which you start
-   yourself and neither of which runs in the background:
+   The program reaches the network in only two places:
 
-     - Help --> Check for updates reads a small version file from this project's
-       GitHub repository, and, if you choose to install an update, downloads the
-       new files from GitHub. This reveals your IP address to GitHub under its
-       privacy policy, not this one. It happens only when you open that window and
-       click to install; nothing is ever checked automatically.
+     - The update check reads this project's file list and version file from
+       GitHub (api.github.com, raw.githubusercontent.com) and compares it with the
+       files in the program folder. It runs as soon as the program starts,
+       unless you untick Help --> Check for updates at startup, and when
+       you open Help --> Check for updates. Only if you click Download are the
+       new files downloaded (codeload.github.com). Nothing about your computer
+       or your files is sent: the requests carry only the program's name and
+       version. They reveal your IP address to GitHub under its privacy policy,
+       not this one. Offline, the check fails quietly and nothing is shown.
 
      - The startup script (MOH Model-Map Viewer (Windows x86-x64).bat, or the .sh
        file on Linux and macOS) installs any missing Python packages from
@@ -500,25 +511,46 @@ def init_runtime(app_name="mohaa_launcher"):
 # ============================================================================
 VERSION="1.0.003"
 VERSION_LABEL="version "+VERSION
-# GitHub coordinates for the update check. If GitHub can't be reached, the check
-# reports it and changes nothing on disk.
+# GitHub coordinates for the update check. The check compares every program file here
+# with the same file on GitHub's main branch, by its Git fingerprint (the blob SHA-1 the
+# tree API lists), so a file that is new on GitHub or changed there is found even when
+# docs/version.txt didn't change. If GitHub can't be reached, nothing on disk changes.
 GITHUB_OWNER="searingwolfe"
 GITHUB_REPO="mohaa-model-viewer"
 GITHUB_BRANCH="main"
 UPDATE_UA="MOHAA-Model-Viewer/"+VERSION
-# Version marker, release-tag zip, branch zip (codeload is where github.com/.../archive
-# redirects), and the project page linked from the update window. The tag zip installs
-# exactly the version the check reported; the branch zip is the fallback when that version
-# was never tagged.
-UPDATE_VERSION_URL=f"https://raw.githubusercontent.com/{GITHUB_OWNER}/{GITHUB_REPO}/{GITHUB_BRANCH}/docs/version.txt"
-UPDATE_TAG_FMT="v{version}"
-UPDATE_TAG_ZIP_URL=f"https://codeload.github.com/{GITHUB_OWNER}/{GITHUB_REPO}/zip/refs/tags/{{tag}}"
-UPDATE_ZIP_URL=f"https://codeload.github.com/{GITHUB_OWNER}/{GITHUB_REPO}/zip/refs/heads/{GITHUB_BRANCH}"
+# The branch's newest commit, that commit's full file list (path, blob SHA-1, size), its
+# version file, the zip of exactly that commit (codeload is where github.com/.../archive
+# redirects), and the project page linked from the update window. Pinning the list, the
+# version and the zip to one commit means a push made during an update can't mix files.
+UPDATE_API=f"https://api.github.com/repos/{GITHUB_OWNER}/{GITHUB_REPO}"
+UPDATE_REF_URL=UPDATE_API+"/git/ref/heads/"+GITHUB_BRANCH
+UPDATE_TREE_FMT=UPDATE_API+"/git/trees/{sha}?recursive=1"
+UPDATE_RAW_FMT=f"https://raw.githubusercontent.com/{GITHUB_OWNER}/{GITHUB_REPO}/{{sha}}/{{path}}"
+UPDATE_ZIP_FMT=f"https://codeload.github.com/{GITHUB_OWNER}/{GITHUB_REPO}/zip/{{sha}}"
 UPDATE_PAGE_URL=f"https://github.com/{GITHUB_OWNER}/{GITHUB_REPO}"
-# Largest update zip accepted, and top-level folders an update never writes into (the
-# user's data and the vendored packages).
+# Largest update zip accepted, and the largest file list (the tree API's JSON).
 UPDATE_MAX_BYTES=200*1024*1024
-UPDATE_SKIP_DIRS={"output","libs","libs-linux","libs-mac",".git","__pycache__"}
+UPDATE_TREE_MAX_BYTES=8*1024*1024
+# Never written by an update: the user's data (the top-level "output" folder), the
+# developer's own notes folders (never part of a release, even if one is pushed by
+# mistake), and any
+# folder of these names at any depth (the vendored packages in bin/libs*, Git's own
+# folder, Python's caches).
+UPDATE_SKIP_TOP={"output","claude outputs",".claude"}       # compared ignoring case
+UPDATE_SKIP_DIRS={"libs","libs-linux","libs-mac",".git","__pycache__"}
+# The startup check starts this long after the window opens (just enough for it to be
+# drawn), in the background; it opens the update window as soon as GitHub has answered,
+# and only when GitHub has new or changed files. Offline, rate-limited or any other
+# failure: one line in the log file, nothing on screen.
+UPDATE_STARTUP_DELAY_MS=300
+# The last fingerprint installed or seen matching for each file, in DATADIR. A file that
+# differs from GitHub while GitHub's copy still has the recorded fingerprint was changed
+# here, not on GitHub, so it isn't offered as an update. It also holds the "check at
+# startup" choice: both programs live in one folder and update as one, so they share both.
+UPDATE_MANIFEST_NAME="update_manifest.json"
+# The name the update window shows: one update covers both programs.
+UPDATE_PROGRAM_NAME="MOHAA Model / Map Viewer"
 # Files earlier versions shipped that the current one replaces: an update backs them up
 # with the files it replaces (output/previous-versions/<n>/) and then removes them, once
 # everything else is in place. The four RUN launchers became one per system,
@@ -565,6 +597,148 @@ def _install_root():
     """Folder the updater refreshes: the parent of bin/ (where the RUN .bat lives) in the
     shipped layout, else HERE for a flat install."""
     return os.path.dirname(HERE) if os.path.basename(HERE).lower()=="bin" else HERE
+
+def _git_blob_sha(data):
+    """A file's Git fingerprint: SHA-1 of "blob <size>\\0" + its bytes, as the tree API lists."""
+    return hashlib.sha1(b"blob %d\0"%len(data)+data).hexdigest()
+
+def _blob_matches(data, sha):
+    """True if `data` is the blob `sha`, as is or with CRLF line ends turned to LF (a Git
+    checkout with core.autocrlf on Windows writes text files with CRLF)."""
+    if _git_blob_sha(data)==sha: return True
+    return b"\r\n" in data and _git_blob_sha(data.replace(b"\r\n",b"\n"))==sha
+
+def _update_path_ok(rp):
+    """A path from GitHub's file list that an update may write: relative, "/"-separated,
+    no "." / ".." parts, nothing a Windows path would read differently, and outside the
+    folders an update never touches (UPDATE_SKIP_TOP, UPDATE_SKIP_DIRS)."""
+    if not isinstance(rp,str) or not rp or len(rp)>260 or "\\" in rp or ":" in rp or "\0" in rp:
+        return False
+    parts=rp.split("/")
+    if any(p in ("",".","..") or p!=p.strip() for p in parts): return False
+    if parts[0].lower() in UPDATE_SKIP_TOP: return False
+    return not any(p in UPDATE_SKIP_DIRS for p in parts[:-1])
+
+def _update_manifest_path():
+    return os.path.join(DATADIR,UPDATE_MANIFEST_NAME)
+
+def _update_manifest_load():
+    """{"commit": sha, "files": {path: blob sha}, "startup": bool} from the last check or
+    install (shared by both programs), or the defaults."""
+    try:
+        with open(_update_manifest_path(),encoding="utf-8") as f: m=json.load(f)
+        if isinstance(m,dict) and isinstance(m.get("files"),dict):
+            return {"commit":str(m.get("commit") or ""),
+                    "files":{str(k):str(v) for k,v in m["files"].items()},
+                    "startup":bool(m.get("startup",True))}
+    except FileNotFoundError: pass
+    except (OSError,ValueError): LOG.warning("update manifest unreadable; starting a new one",exc_info=True)
+    return {"commit":"","files":{},"startup":True}
+
+def _update_manifest_save(commit=None, files=None, startup=None):
+    """Save the manifest, changing only what is given (re-read first, since the other
+    program may have written it meanwhile)."""
+    m=_update_manifest_load()
+    if commit is not None: m["commit"]=commit
+    if files is not None: m["files"]=files
+    if startup is not None: m["startup"]=bool(startup)
+    try:
+        MC.ensure_dir(DATADIR)
+        MC.atomic_write_text(_update_manifest_path(),json.dumps(m,indent=1,sort_keys=True))
+    except OSError: LOG.warning("could not save the update manifest",exc_info=True)
+
+def update_check_at_startup():
+    """Both programs' "Check for updates at startup" choice (on unless turned off)."""
+    return _update_manifest_load()["startup"]
+
+def _update_offline(e):
+    """True for a failure that just means GitHub couldn't be reached (no connection, DNS,
+    timeout, refused), as opposed to an answer GitHub gave."""
+    import socket, urllib.error
+    if isinstance(e,urllib.error.HTTPError): return False
+    if isinstance(e,urllib.error.URLError): return True
+    return isinstance(e,(socket.timeout,TimeoutError,ConnectionError,OSError)) and not isinstance(e,FileNotFoundError)
+
+def update_check():
+    """Compare the program folder with GitHub's main branch, file by file. No Tk calls.
+
+    Reads the branch's newest commit, its full file list (path, blob SHA-1, size) and its
+    docs/version.txt. Every listed file an update may write (_update_path_ok) is then:
+      "new"      missing here;
+      "changed"  here with different bytes (CRLF/LF-only differences don't count), unless
+                 the manifest shows GitHub's copy is the one last installed, so the change
+                 was made here (listed in "kept" instead, never overwritten unasked);
+      same       nothing to do (its fingerprint goes into the manifest).
+    Plus UPDATE_RETIRED files still here that GitHub no longer has ("removed").
+    Returns {"ok", "commit", "version", "files": [{"path","sha","size","status"}], "kept",
+    "git"} or {"ok": False, "error", "offline"}."""
+    import urllib.error
+    root=_install_root()
+    try:
+        ref=json.loads(MC.http_get(UPDATE_REF_URL,UPDATE_UA,timeout=(8,20),max_bytes=1<<16,attempts=2))
+        commit=str((ref.get("object") or {}).get("sha") or "")
+        if not re.fullmatch(r"[0-9a-f]{40}",commit):
+            return {"ok":False,"error":"GitHub's answer named no commit","offline":False}
+        # the version file is fetched beside the file list, so the window opens sooner
+        ver={"v":"?"}
+        def get_version():
+            try:
+                raw=MC.http_get(UPDATE_RAW_FMT.format(sha=commit,path="docs/version.txt"),UPDATE_UA,
+                                timeout=(8,15),max_bytes=4096,attempts=2).decode("utf-8","replace")
+                ver["v"]=next((ln.strip() for ln in raw.splitlines() if ln.strip()),"?")[:32]
+            except Exception: MC.swallowed("version file not read")
+        vt=threading.Thread(target=get_version,daemon=True); vt.start()
+        tree=json.loads(MC.http_get(UPDATE_TREE_FMT.format(sha=commit),UPDATE_UA,timeout=(8,30),
+                                    max_bytes=UPDATE_TREE_MAX_BYTES,attempts=2))
+        if tree.get("truncated"):
+            return {"ok":False,"error":"GitHub's file list was cut short (too many files)","offline":False}
+        remote={}
+        for t in tree.get("tree") or []:
+            rp=t.get("path"); sha=str(t.get("sha") or "")
+            if t.get("type")!="blob" or t.get("mode")=="120000": continue   # folders, submodules, symlinks
+            if not re.fullmatch(r"[0-9a-f]{40}",sha) or not _update_path_ok(rp): continue
+            remote[rp]=(sha,int(t.get("size") or 0))
+        if "bin/mohaa_launcher.py" not in remote:
+            return {"ok":False,"error":"GitHub's files don't look like this program (no bin/mohaa_launcher.py)","offline":False}
+        vt.join(20)
+        version=ver["v"] if "docs/version.txt" in remote else "?"
+    except urllib.error.HTTPError as e:
+        limited=e.code in (403,429)
+        msg=("GitHub's limit on update checks from this address was reached; try again in an hour"
+             if limited else "GitHub answered %d %s"%(e.code,e.reason))
+        LOG.warning("update check: %s",msg)
+        return {"ok":False,"error":msg,"offline":False}
+    except Exception as e:
+        off=_update_offline(e)
+        LOG.warning("update check failed%s: %s",(" (offline)" if off else ""),e)
+        return {"ok":False,"error":"%s: %s"%(type(e).__name__,e),"offline":off}
+    man=_update_manifest_load(); mf=dict(man["files"])
+    files=[]; kept=[]
+    for rp,(sha,size) in sorted(remote.items(),key=lambda kv:kv[0].lower()):
+        p=os.path.join(root,*rp.split("/"))
+        if os.path.isfile(p):
+            try:
+                with open(p,"rb") as f: data=f.read()
+            except OSError:
+                LOG.warning("update check: can't read %s",p,exc_info=True); data=None
+            if data is not None and _blob_matches(data,sha):
+                mf[rp]=sha; continue
+            if data is not None and mf.get(rp)==sha:
+                kept.append(rp); continue                   # changed here; GitHub's copy is the one installed last
+            files.append({"path":rp,"sha":sha,"size":size,"status":"changed"})
+        elif os.path.exists(p):
+            LOG.warning("update check: %s is a folder here, not a file; left alone",p)
+        else:
+            files.append({"path":rp,"sha":sha,"size":size,"status":"new"})
+    for rp in UPDATE_RETIRED:
+        if rp not in remote and os.path.isfile(os.path.join(root,rp)):
+            files.append({"path":rp,"sha":"","size":0,"status":"removed"})
+    if mf!=man["files"] or (not files and man["commit"]!=commit):
+        _update_manifest_save(commit if not files else man["commit"],mf)
+    LOG.info("update check: commit %s, version %s, %d new/changed/removed, %d changed here and kept",
+             commit[:7],version,len(files),len(kept))
+    return {"ok":True,"commit":commit,"version":version,"files":files,"kept":kept,
+            "git":os.path.isdir(os.path.join(root,".git"))}
 
 def find_python():
     """Interpreter for child mohaa_view.py builds: sys.executable first.
@@ -669,6 +843,9 @@ def apply_theme(root, name):
 # tk.Menu. False (default): custom themed windows that follow dark/light mode, including
 # the border that native Windows menus always draw white.
 OLD_POPUPS=False
+# Draw the old popups' check / radio marks as images on every system, not only Windows
+# (see App._fill_native); for testing the Windows path elsewhere.
+NATIVE_MARKS_ALWAYS=False
 
 def _add_popup_shadow(win):
     """Soft drop shadow behind a borderless popup: a 30% black Toplevel offset +3+3 that
@@ -1793,7 +1970,8 @@ class App(tk.Tk):
         self.configure(bg=BG)
         self._log_q=queue.Queue(); self._drop_paths=[]
         self._status_base="Ready"; self._pak_suffix=""    # status-bar left cell = "<state>  --  N pak(s)"
-        self._upd_state=None; self._upd_dl_btn=None        # Check-for-updates window state
+        self._upd_win=None; self._upd_busy=False          # the update window, a check running
+        self._upd_startup=tk.BooleanVar(value=update_check_at_startup())   # shared by both programs
         # Mirror every Output-pane line to output_console.log in DATADIR (the previous
         # session's copy is kept as output_console.prev.log), line-buffered so a crash still
         # leaves it. The full, timestamped record is output/logs/mohaa_launcher.log.
@@ -1889,6 +2067,7 @@ class App(tk.Tk):
         saved=[p for p in (saved or []) if os.path.exists(p)]
         if saved and self._remember.get(): self.after(200,lambda:self._add_pk3s(saved))
         self._paks_watch()
+        self._update_startup()           # quiet unless GitHub has new or changed files
         if initial_file: self.after(350,lambda:self._load(initial_file))
 
     # ------------------------------------------------------------- config ---
@@ -2105,9 +2284,13 @@ class App(tk.Tk):
                      "command":lambda:self._set_renderer("2d")}]}]
 
     def _menu_items_help(self):
+        try: self._upd_startup.set(update_check_at_startup())   # the other program may have changed it
+        except Exception: MC.swallowed()
         return [_mi("Keyboard shortcuts",self._show_hotkeys,"F1"),
                 _MSEP,
                 _mi("Check for updates...",self._check_for_updates),
+                {"type":"check","label":"Check for updates at startup","variable":self._upd_startup,
+                 "command":self._toggle_update_startup},
                 _MSEP,
                 _mi("Privacy & Legal",self._show_privacy),
                 _mi("About",self._show_about)]
@@ -2146,18 +2329,72 @@ class App(tk.Tk):
         pm.post(x,y)
 
     def _fill_native(self,m,items):
+        """Fill a native tk.Menu ("Use old popup windows").
+
+        On Windows, Tk's own tick for a check / radio entry can land on the label's first
+        letters: on a scaled display (125% and up, common on laptops) Tk reserves no room
+        for it. There the entries draw their own mark instead (_native_marks: a tick or a
+        dot image shown when on, a blank one when off, with Tk's indicator off), and every
+        other entry of the menu gets the blank image too, so all the labels line up."""
+        items=[it for it in items]
+        marks=self._native_marks(m) if (sys.platform.startswith("win") or NATIVE_MARKS_ALWAYS) and \
+            any(it.get("type") in ("check","radio") for it in items) else None
+        pad={"image":marks["blank"],"compound":"left"} if marks else {}
         for it in items:
             t=it.get("type","command")
             if t=="separator": m.add_separator()
-            elif t=="check": m.add_checkbutton(label=it["label"],variable=it["variable"],command=it.get("command"))
-            elif t=="radio": m.add_radiobutton(label=it["label"],variable=it["variable"],value=it.get("value"),command=it.get("command"))
+            elif t=="check":
+                kw=dict(label=it["label"],variable=it["variable"],command=it.get("command"))
+                if marks: kw.update(pad,selectimage=marks["check"],indicatoron=False)
+                m.add_checkbutton(**kw)
+            elif t=="radio":
+                kw=dict(label=it["label"],variable=it["variable"],value=it.get("value"),command=it.get("command"))
+                if marks: kw.update(pad,selectimage=marks["dot"],indicatoron=False)
+                m.add_radiobutton(**kw)
             elif t=="cascade":
                 sub=tk.Menu(m,tearoff=0)
                 sit=it.get("items"); sit=sit() if callable(sit) else sit
                 self._fill_native(sub,sit)
-                m.add_cascade(label=it["label"],menu=sub)
+                m.add_cascade(label=it["label"],menu=sub,**pad)
             else: m.add_command(label=it["label"],command=it.get("command"),
-                                accelerator=it.get("accel"),state=it.get("state","normal"))
+                                accelerator=it.get("accel"),state=it.get("state","normal"),**pad)
+
+    def _native_marks(self,m):
+        """Tick, dot and blank images for a native menu's check / radio entries, sized to
+        the menu's font and drawn in its text colour (cached per size and colour)."""
+        try:
+            import tkinter.font as tkfont
+            f=m.cget("font")
+            h=int(tkfont.Font(root=self,font=f).metrics("linespace") if f else tkfont.nametofont("TkMenuFont").metrics("linespace"))
+        except Exception:
+            MC.swallowed(); h=16
+        h=max(12,min(48,h))
+        try: r,g,b=(v//257 for v in self.winfo_rgb(m.cget("foreground")))
+        except Exception: MC.swallowed(); r,g,b=0,0,0
+        col="#%02x%02x%02x"%(r,g,b)
+        key=(h,col)
+        cache=self.__dict__.setdefault("_native_mark_cache",{})
+        if key in cache: return cache[key]
+        w=h+h//2                                     # the mark, then a gap before the label
+        blank=tk.PhotoImage(master=self,width=w,height=h)
+        check=tk.PhotoImage(master=self,width=w,height=h)
+        dot=tk.PhotoImage(master=self,width=w,height=h)
+        s=h/16.0; th=max(1,int(round(1.6*s)))
+        def line(img,x0,y0,x1,y1):
+            n=int(max(abs(x1-x0),abs(y1-y0))*2)+1
+            for i in range(n+1):
+                x=x0+(x1-x0)*i/n; y=y0+(y1-y0)*i/n
+                for dx in range(th):
+                    for dy in range(th):
+                        xi=int(x)+dx; yi=int(y)+dy
+                        if 0<=xi<w and 0<=yi<h: img.put(col,(xi,yi))
+        line(check,3*s,8.5*s,6.5*s,12*s); line(check,6.5*s,12*s,13*s,4*s)
+        cx=cy=(h-1)/2.0; rad=3.2*s
+        for yi in range(h):
+            for xi in range(h):
+                if (xi-cx)**2+(yi-cy)**2<=rad*rad: dot.put(col,(xi,yi))
+        cache[key]={"blank":blank,"check":check,"dot":dot}
+        return cache[key]
 
     def _popup_dismiss_check(self,e):
         pm=self._open_popup
@@ -3667,204 +3904,324 @@ class App(tk.Tk):
             import webbrowser; webbrowser.open(url)
         except Exception: MC.swallowed()
 
+    # ------------------------------------------------------------- updates ---
+    # The check (update_check) and the install (_update_download_and_apply) run on worker
+    # threads; their results come back to the Tk thread through _upd_bg's poll. One update
+    # window at a time (self._upd_win).
+    def _upd_bg(self, fn, done):
+        """Run fn() on a worker thread, then done(result) on the Tk thread."""
+        box={}
+        def work():
+            try: box["r"]=fn()
+            except Exception as e:
+                LOG.error("update worker failed",exc_info=True)
+                box["r"]={"ok":False,"error":"%s: %s"%(type(e).__name__,e),"offline":False}
+        threading.Thread(target=work,daemon=True).start()
+        def poll():
+            if "r" not in box: self.after(200,poll); return
+            try: done(box["r"])
+            except Exception: LOG.error("update result not shown",exc_info=True)
+        self.after(200,poll)
+
+    def _update_startup(self):
+        """At startup (Help --> Check for updates at startup): check in the background a few
+        seconds after the window opens, and open the update window only if GitHub has new
+        or changed files. Up to date: one dim line in the Output pane. Offline or any other
+        failure: the log file only, so starting without a connection stays quiet."""
+        if not update_check_at_startup(): return
+        def run():
+            if self._upd_busy or self._upd_win is not None: return
+            self._upd_busy=True
+            def done(res):
+                self._upd_busy=False
+                if not res.get("ok"): return
+                if res["files"]:
+                    self._log_line("Update check: %d file(s) on GitHub are new or changed (version %s)."
+                                   %(len(res["files"]),res["version"]),"note")
+                    self._update_window(res)
+                else:
+                    self._log_line("Update check: up to date with GitHub (version %s, commit %s)."
+                                   %(res["version"],res["commit"][:7]),"dim")
+            self._upd_bg(update_check,done)
+        self.after(UPDATE_STARTUP_DELAY_MS,run)
+
+    def _toggle_update_startup(self):
+        _update_manifest_save(startup=self._upd_startup.get())     # both programs follow it
+
     def _check_for_updates(self):
-        """Help --> Check for updates: shows the current version and repo link, checks
-        docs/version.txt on the main branch in the background, then reports "up to date" or
-        offers to install the newer files. The network is only used when this window is opened
-        (see PRIVACY_TEXT, section 3)."""
+        """Help --> Check for updates...: the update window, checking now."""
+        self._update_window(None)
+
+    def _upd_label(self, parent, text, dim=False, accent=False, **kw):
+        if OLD_POPUPS: return tk.Label(parent,text=text,justify="left",font=(FONT_SMALL if dim else "TkDefaultFont"),**kw)
+        lb=ttk.Label(parent,text=text,justify="left",style=("PanelDim.TLabel" if dim else "Panel.TLabel"),**kw)
+        if accent: lb.configure(foreground=ACCENT)
+        return lb
+
+    def _upd_button(self, row, text, cmd):
+        b=(ttk.Button(row,text=text,command=cmd,cursor="hand2") if not OLD_POPUPS
+           else tk.Button(row,text=text,command=cmd))
+        b.pack(side="right",padx=(8,0)); return b
+
+    def _update_window(self, res):
+        """The update window: this program's name and version, the project link, then
+        - checking: "Checking GitHub..." and Cancel;
+        - up to date, or the check failed: what happened, and Close;
+        - updates: GitHub's version and a scrolling list of every file that is new,
+          changed or removed (click a row to leave that file out), with Download and
+          Cancel. Download installs the ticked files and lists each one in the Output
+          pane; then Restart now (or an automatic restart when a file was in use).
+        `res` is a finished update_check() result (the startup check), or None to check now."""
+        if self._upd_win is not None:
+            try:
+                if self._upd_win.winfo_exists(): self._upd_win.lift(); return
+            except Exception: MC.swallowed()
         old=OLD_POPUPS
-        self._upd_state=None
-        w=tk.Toplevel(self); w.title("Check for updates")
-        w.transient(self); w.resizable(False,False)
+        w=tk.Toplevel(self); self._upd_win=w
+        w.title("Check for updates"); w.transient(self); w.resizable(True,True)
         if not old: w.configure(bg=BG)
         frm=(ttk.Frame(w,style="Panel.TFrame") if not old else tk.Frame(w))
-        frm.pack(fill="both",expand=True,padx=16,pady=14)
-        if old:
-            tk.Label(frm,text="MOHAA Model Viewer",font="TkDefaultFont").pack(anchor="w",pady=(2,2))
-            tk.Label(frm,text="Current version:  "+VERSION,font="TkDefaultFont").pack(anchor="w",pady=(0,6))
-        else:
-            ttk.Label(frm,text="MOHAA Model Viewer",style="Panel.TLabel",
-                      foreground=ACCENT).pack(anchor="w",pady=(2,2))
-            ttk.Label(frm,text="Current version:  "+VERSION,
-                      style="PanelDim.TLabel").pack(anchor="w",pady=(0,6))
-        link=tk.Label(frm,text=UPDATE_PAGE_URL,cursor="hand2",font=FONT_SMALL,
+        frm.pack(fill="both",expand=True)
+        inner=(ttk.Frame(frm,style="Panel.TFrame") if not old else tk.Frame(frm))
+        inner.pack(fill="both",expand=True,padx=16,pady=14)
+        self._upd_label(inner,UPDATE_PROGRAM_NAME,accent=True).pack(anchor="w",pady=(2,2))
+        ver_lbl=self._upd_label(inner,"Installed version:  "+VERSION,dim=True)
+        ver_lbl.pack(anchor="w",pady=(0,4))
+        link=tk.Label(inner,text=UPDATE_PAGE_URL,cursor="hand2",font=FONT_SMALL,
                       fg=(ACCENT if not old else "blue"),bg=(PANEL if not old else None))
         link.pack(anchor="w",pady=(0,10))
         link.bind("<Button-1>",lambda e:self._open_url(UPDATE_PAGE_URL))
-        status_lbl=(ttk.Label(frm,text="Checking for updates\u2026",style="Panel.TLabel",
-                              justify="left") if not old
-                    else tk.Label(frm,text="Checking for updates\u2026",justify="left",font="TkDefaultFont"))
-        status_lbl.pack(anchor="w",pady=(0,12))
-        btnrow=(ttk.Frame(frm,style="Panel.TFrame") if not old else tk.Frame(frm))
-        btnrow.pack(fill="x")
-        closeb=(ttk.Button(btnrow,text="Close",command=w.destroy,cursor="hand2") if not old
-                else tk.Button(btnrow,text="Close",command=w.destroy))
-        closeb.pack(side="right")
-        w.bind("<Escape>",lambda e:w.destroy())
-        try:
-            w.update_idletasks()
-            x=self.winfo_rootx()+(self.winfo_width()-w.winfo_width())//2
-            y=self.winfo_rooty()+(self.winfo_height()-w.winfo_height())//2
-            x0,y0,_x1,_y1=_virtual_screen(w)
-            w.geometry(f"+{max(x0,x)}+{max(y0,y)}")
-        except Exception: MC.swallowed()
-        if not old: self._apply_titlebar(w)
-        w.grab_set()
-        def worker():
+        status=self._upd_label(inner,"Checking GitHub for new and changed files…",wraplength=560)
+        status.pack(anchor="w",pady=(0,8))
+        body=(ttk.Frame(inner,style="Panel.TFrame") if not old else tk.Frame(inner))
+        body.pack(fill="both",expand=True)
+        btnrow=(ttk.Frame(inner,style="Panel.TFrame") if not old else tk.Frame(inner))
+        btnrow.pack(fill="x",pady=(10,0))
+        st={"closed":False,"busy":False,"buttons":[]}
+        def close():
+            if st["busy"]: return                      # mid-install: wait for the result
+            st["closed"]=True; self._upd_win=None
+            try: w.destroy()
+            except Exception: MC.swallowed()
+        def buttons(*specs):
+            for b in st["buttons"]:
+                try: b.destroy()
+                except Exception: MC.swallowed()
+            st["buttons"]=[self._upd_button(btnrow,t,c) for t,c in reversed(specs)]
+            if st["buttons"]:
+                try: st["buttons"][-1].focus_set()
+                except Exception: MC.swallowed()
+        def clear_body():
+            for c in body.winfo_children(): c.destroy()
+        def place():
             try:
-                raw=MC.http_get(UPDATE_VERSION_URL,UPDATE_UA,timeout=(10,15),max_bytes=4096).decode("utf-8","replace")
-                latest=""
-                for ln in raw.splitlines():
-                    if ln.strip(): latest=ln.strip(); break
-                res={"ok":True,"latest":latest} if latest else {"ok":False,"error":"empty version file"}
-            except Exception as e:
-                MC.swallowed()
-                res={"ok":False,"error":str(e)}
-            self._upd_state=("checked",res)
-        threading.Thread(target=worker,daemon=True).start()
-        self.after(200,lambda:self._update_poll(w,status_lbl,btnrow))
-
-    def _upd_add_button(self,row,text,cmd):
-        b=(ttk.Button(row,text=text,command=cmd,cursor="hand2") if not OLD_POPUPS
-           else tk.Button(row,text=text,command=cmd))
-        b.pack(side="right",padx=(0,8)); return b
-
-    def _update_poll(self,w,status_lbl,btnrow):
-        try:
-            if not w.winfo_exists(): return
-        except Exception: MC.swallowed(); return
-        st=self._upd_state
-        if st is None or st[0]!="checked":
-            self.after(200,lambda:self._update_poll(w,status_lbl,btnrow)); return
-        res=st[1]; self._upd_state=None
-        if not res.get("ok"):
-            status_lbl.configure(text="Couldn't reach GitHub - no update information found.\n"
-                                      "Check your internet connection and try again later.\n"
-                                      "("+str(res.get("error",""))[:160]+")")
-            return
-        latest=res["latest"]
-        if self._version_tuple(latest)<=self._version_tuple(VERSION):
-            status_lbl.configure(text="\u2713  You're up to date.")
-        else:
-            status_lbl.configure(text="Update available:    "+VERSION+"    \u2192    "+latest)
-            self._upd_dl_btn=self._upd_add_button(btnrow,"Download and install",
-                                 lambda:self._update_install(w,status_lbl,btnrow,latest))
-
-    def _update_install(self,w,status_lbl,btnrow,latest):
-        self._upd_latest=latest
-        try: self._upd_dl_btn.destroy()
+                w.update_idletasks()
+                x=self.winfo_rootx()+(self.winfo_width()-w.winfo_width())//2
+                y=self.winfo_rooty()+(self.winfo_height()-w.winfo_height())//2
+                x0,y0,_x1,_y1=_virtual_screen(w)
+                w.geometry(f"+{max(x0,x)}+{max(y0,y)}")
+            except Exception: MC.swallowed()
+        def show_list(r):
+            files=r["files"]; ticked={f["path"] for f in files}     # all ticked: just click Download
+            ver_lbl.configure(text="Installed version:  %s      On GitHub:  %s  (commit %s)"%(VERSION,r["version"],r["commit"][:7]))
+            counts={k:sum(1 for f in files if f["status"]==k) for k in ("new","changed","removed")}
+            parts=[("%d new"%counts["new"]) if counts["new"] else "",("%d changed"%counts["changed"]) if counts["changed"] else "",
+                   ("%d to remove"%counts["removed"]) if counts["removed"] else ""]
+            status.configure(text="An update is available: %s file(s) on GitHub differ from this folder (%s)."
+                                  %(len(files),", ".join(p for p in parts if p)))
+            wrap=(ttk.Frame(body,style="Panel.TFrame") if not old else tk.Frame(body))
+            wrap.pack(fill="both",expand=True)
+            tv=ttk.Treeview(wrap,columns=("path","size"),show="tree",selectmode="browse",height=min(12,max(4,len(files))))
+            tv.column("#0",width=118,stretch=False); tv.column("path",width=430,stretch=True)
+            tv.column("size",width=80,stretch=False,anchor="e")
+            sb=ttk.Scrollbar(wrap,command=tv.yview); tv.configure(yscrollcommand=sb.set)
+            sb.pack(side="right",fill="y"); tv.pack(side="left",fill="both",expand=True)
+            def label(f): return ("☑ " if f["path"] in ticked else "☐ ")+f["status"]
+            def size(f):
+                n=f.get("size") or 0
+                return "" if f["status"]=="removed" else ("%d B"%n if n<1024 else "%.1f KB"%(n/1024) if n<1<<20 else "%.1f MB"%(n/(1<<20)))
+            for i,f in enumerate(files): tv.insert("","end",iid=str(i),text=label(f),values=(f["path"],size(f)))
+            def toggle(i):
+                f=files[int(i)]
+                if f["path"] in ticked: ticked.discard(f["path"])
+                else: ticked.add(f["path"])
+                tv.item(i,text=label(f))
+                try: st["dl"].configure(state=("normal" if ticked else "disabled"))
+                except Exception: MC.swallowed()
+            def click(e):
+                i=tv.identify_row(e.y)
+                if i: toggle(i)
+            tv.bind("<Button-1>",click,add="+")
+            tv.bind("<space>",lambda e:(toggle(tv.focus()) if tv.focus() else None,"break")[1])
+            notes=["One update for both programs (they share this folder). Click a file to untick it "
+                   "and keep your own copy. The files replaced are saved first to output/previous-versions/."]
+            if r.get("kept"):
+                notes.append("%d file(s) you changed here since the last update are kept as they are."%len(r["kept"]))
+            if r.get("git"):
+                notes.append("This folder is a Git checkout: a changed file may be your own edit that "
+                             "isn't pushed yet, so untick it to keep it.")
+            self._upd_label(body," ".join(notes),dim=True,wraplength=600).pack(anchor="w",pady=(8,0))
+            def download():
+                sel={f["path"] for f in files if f["path"] in ticked}
+                if not sel: return
+                st["busy"]=True
+                for b in st["buttons"]: b.configure(state="disabled")
+                tv.unbind("<Button-1>")
+                status.configure(text="Downloading and installing %d file(s)…"%len(sel))
+                self._log_line("Update: installing %d file(s) from GitHub (version %s, commit %s)…"
+                               %(len(sel),r["version"],r["commit"][:7]),"dim")
+                self._upd_bg(lambda:self._update_download_and_apply(r,sel),installed)
+            buttons(("Download",download),("Cancel",close))
+            st["dl"]=st["buttons"][-1]       # buttons() packs right to left: Download is the last
+            if not ticked: st["dl"].configure(state="disabled")
+            place()
+        def installed(res2):
+            st["busy"]=False
+            self._update_report(res2)
+            if st["closed"]: return
+            if not res2.get("ok"):
+                status.configure(text="The update failed:\n"+str(res2.get("error",""))[:300])
+                buttons(("Check again",lambda:(clear_body(),start())),("Close",close)); return
+            staged=res2.get("staged") or []
+            clear_body()
+            if staged:
+                status.configure(text="Update downloaded. %d file(s) were in use, so the program will now "
+                                      "close and reopen to finish installing…"%len(staged))
+                buttons(("Close",close))
+                self.after(1500,lambda:self._restart_program(staged))
+            else:
+                status.configure(text="✓  Update installed: %d file(s) written%s. The Output pane lists them.\n"
+                                      "Restart the program for the changes to take effect."
+                                      %(len(res2.get("installed") or []),
+                                        (", %d removed"%len(res2["removed"])) if res2.get("removed") else ""))
+                buttons(("Restart now",lambda:self._restart_program()),("Close",close))
+            try: w.geometry(""); place()           # shrink to the message, still centred
+            except Exception: MC.swallowed()
+        def checked(r):
+            self._upd_busy=False
+            if st["closed"]: return
+            if not r.get("ok"):
+                status.configure(text=("Couldn't reach GitHub. Check your internet connection and try again later."
+                                       if r.get("offline") else "The update check failed.")
+                                      +"\n("+str(r.get("error",""))[:200]+")")
+                buttons(("Close",close)); return
+            if not r["files"]:
+                ver_lbl.configure(text="Installed version:  %s      On GitHub:  %s  (commit %s)"%(VERSION,r["version"],r["commit"][:7]))
+                status.configure(text="✓  You're up to date: every program file matches GitHub."
+                                 +(("\n%d file(s) you changed here are kept as they are."%len(r["kept"])) if r.get("kept") else ""))
+                buttons(("Close",close)); return
+            show_list(r)
+        def start():
+            status.configure(text="Checking GitHub for new and changed files…")
+            buttons(("Cancel",close))
+            self._upd_busy=True
+            self._upd_bg(update_check,checked)
+        w.protocol("WM_DELETE_WINDOW",close)
+        w.bind("<Escape>",lambda e:close())
+        if res is None: start()
+        else: show_list(res)
+        place()
+        if not old: self._apply_titlebar(w)
+        try: w.grab_set()
         except Exception: MC.swallowed()
-        status_lbl.configure(text="Downloading "+latest+" \u2026")
-        self._upd_state=None
-        def worker():
-            res=self._update_download_and_apply(latest)
-            self._upd_state=("installed",res)
-        threading.Thread(target=worker,daemon=True).start()
-        self.after(200,lambda:self._update_poll_install(w,status_lbl,btnrow))
 
-    def _update_poll_install(self,w,status_lbl,btnrow):
-        try:
-            if not w.winfo_exists(): return
-        except Exception: MC.swallowed(); return
-        st=self._upd_state
-        if st is None or st[0]!="installed":
-            self.after(200,lambda:self._update_poll_install(w,status_lbl,btnrow)); return
-        res=st[1]; self._upd_state=None
+    def _update_report(self, res):
+        """The install's result in the Output pane: each file written (with its full path),
+        staged or removed, the backup folder, and what to do next."""
         if not res.get("ok"):
-            status_lbl.configure(text="Update failed:\n"+str(res.get("error",""))[:220])
-            self._upd_dl_btn=self._upd_add_button(btnrow,"Try again",
-                                 lambda:self._update_install(w,status_lbl,btnrow,getattr(self,"_upd_latest","")))
+            self._log_line("Update failed: "+str(res.get("error","")),"err")
+            if res.get("backup"): self._log_line("Update: the files from before are in "+res["backup"],"dim")
             return
-        staged=res.get("staged") or []
+        staged=set(res.get("staged") or [])
+        verb={"new":"added  ","changed":"updated"}
+        self._log_line("Update: version %s (GitHub commit %s) installed:"%(res.get("version","?"),res.get("commit","")[:7]),"ok")
+        for rp,status,d in res.get("installed") or []:
+            self._log_line("  %s  %s%s"%(verb.get(status,"updated"),d,"   (in use: finishes on restart)" if d in staged else ""))
+        for rp in res.get("removed") or []:
+            self._log_line("  removed  "+os.path.join(_install_root(),rp))
         if res.get("backup"):
-            self._log_line("Update: the previous version's files were saved to "+res["backup"],"dim")
-        if staged:
-            status_lbl.configure(text="Update downloaded. The program will now close and\n"
-                                      "reopen to finish installing\u2026")
-            self.after(1000,lambda:self._restart_program(staged))
-        else:
-            status_lbl.configure(text="\u2713  Update installed.\n"
-                                      "Restart the program for the changes to take effect.")
-            self._upd_add_button(btnrow,"Restart now",lambda:self._restart_program())
+            self._log_line("Update: the replaced files were saved to "+res["backup"],"dim")
+        self._log_line("Update: this updates the Model Viewer and the Map Viewer together; restart "
+                       "the other one too if it is open.","dim")
+        self._log_line("Update: %d file(s) written%s. %s"%(len(res.get("installed") or []),
+                       (", %d removed"%len(res["removed"])) if res.get("removed") else "",
+                       "Restarting to finish." if staged else "Restart the program to use them."),"ok")
 
-    def _update_download_and_apply(self, version=None):
-        """Background worker: install release `version` over the program folder.
+    def _update_download_and_apply(self, check, paths=None):
+        """Background worker: install the files `update_check()` found (all, or only those
+        in `paths`) from the zip of exactly the commit it checked. No Tk calls.
 
         Steps, each checked before the next:
-          1. download the release-tag zip (3 tries, backoff); if that tag doesn't exist,
-             the main-branch zip, accepted only if its docs/version.txt says `version`;
-          2. test every zip member's CRC, extract to a temp folder;
-          3. back up every file about to be replaced into
+          1. download that commit's zip (3 tries, backoff), test every member's CRC and
+             extract it to a temp folder;
+          2. check every file to install against its fingerprint in GitHub's file list
+             (so a damaged or different download installs nothing);
+          3. back up every file about to be replaced or removed into
              output/previous-versions/<n>/ and note it in previous-versions/changelog.txt;
-          4. write each new file as <file>.new beside its target, verify it (SHA-256)
-             against the download, then os.replace it into place. A target Windows keeps
-             locked stays staged as <file>.new for the restart helper;
+          4. write each new file as <file>.new beside its target and os.replace it into
+             place. A target Windows keeps locked stays staged as <file>.new for the
+             restart helper;
           5. if any file fails for another reason, everything already replaced is restored
-             from the backup and the update reports failure.
-        Returns a result dict ("ok", "error", "replaced", "staged", "backup", "branch");
-        makes no Tk calls."""
-        import urllib.error
+             from the backup and the update reports failure;
+          6. remove the "removed" files, clear the __pycache__ folders and record each
+             installed fingerprint in the manifest.
+        Returns {"ok", "error", "installed": [(path, status, abs path)], "staged",
+        "removed", "backup", "version", "commit"}."""
         root=_install_root()
+        commit=str((check or {}).get("commit") or "")
+        version=str((check or {}).get("version") or "?")
+        if not re.fullmatch(r"[0-9a-f]{40}",commit):
+            return {"ok":False,"error":"no commit to install (check for updates again)"}
+        want=[f for f in check.get("files") or [] if paths is None or f["path"] in paths]
+        for f in want:
+            if not (_update_path_ok(f["path"]) and (f["status"]=="removed" or re.fullmatch(r"[0-9a-f]{40}",f.get("sha","")))):
+                return {"ok":False,"error":"refused an unexpected path from GitHub: %r"%(f.get("path"),)}
+        put=[f for f in want if f["status"]!="removed"]
+        gone=[f["path"] for f in want if f["status"]=="removed" and f["path"] in UPDATE_RETIRED]
+        if not put and not gone: return {"ok":False,"error":"no files were selected"}
         tmp=tempfile.mkdtemp(prefix="mohaaupd_")
-        LOG.info("update to %s: install root %s, work folder %s",version,root,tmp)
+        LOG.info("update to commit %s (version %s): %d file(s) to write, %d to remove; root %s, work folder %s",
+                 commit[:7],version,len(put),len(gone),root,tmp)
         try:
-            zpath=os.path.join(tmp,"repo.zip")
-            used_branch=False
-            if not (version and re.fullmatch(r"[0-9A-Za-z._-]{1,32}",version)):
-                return {"ok":False,"error":"the version file named %r, which isn't a plain version"%(version,)}
-            # The version string comes from the network, so only a plain token goes into a URL.
-            tag_url=UPDATE_TAG_ZIP_URL.format(tag=UPDATE_TAG_FMT.format(version=version))
-            try:
-                MC.http_get(tag_url,UPDATE_UA,timeout=(15,90),dest=zpath,max_bytes=UPDATE_MAX_BYTES)
-            except urllib.error.HTTPError as e:
-                if e.code!=404: raise
-                LOG.warning("release tag for %s not found; trying the %s branch",version,GITHUB_BRANCH)
-                MC.http_get(UPDATE_ZIP_URL,UPDATE_UA,timeout=(15,90),dest=zpath,max_bytes=UPDATE_MAX_BYTES)
-                used_branch=True
-            exdir=os.path.join(tmp,"x")
-            with zipfile.ZipFile(zpath) as z:
-                bad=z.testzip()
-                if bad: return {"ok":False,"error":"the download is damaged (bad entry: %s)"%bad}
-                z.extractall(exdir)
-            tops=[d for d in os.listdir(exdir)
-                  if os.path.isdir(os.path.join(exdir,d)) and d!="__MACOSX"]
-            src=os.path.join(exdir,tops[0]) if len(tops)==1 else exdir
-            if not os.path.isfile(os.path.join(src,"bin","mohaa_launcher.py")):
-                return {"ok":False,"error":"the download doesn't look like this program (no bin/mohaa_launcher.py)"}
-            got=""
-            try:
-                with open(os.path.join(src,"docs","version.txt"),encoding="utf-8") as f:
-                    got=next((ln.strip() for ln in f if ln.strip()),"")
-            except OSError:
-                MC.swallowed("no docs/version.txt in the download")
-            if got!=version:
-                return {"ok":False,"error":"the downloaded files are version %r, not %r; nothing was changed"%(got or "?",version)}
-            # what will be written: every file of the download except folders this program owns
-            plan=[]
-            for dp,dn,files in os.walk(src):
-                rel=os.path.relpath(dp,src)
-                top=rel.replace("\\","/").split("/")[0]
-                if top in UPDATE_SKIP_DIRS: dn[:]=[]; continue
-                dn[:]=[d for d in dn if d not in UPDATE_SKIP_DIRS]
-                for fn in files:
-                    rp=fn if rel=="." else os.path.join(rel,fn)
-                    plan.append((os.path.join(dp,fn),os.path.join(root,rp),rp.replace("\\","/")))
-            if not plan: return {"ok":False,"error":"nothing to install (empty download?)"}
-            planned={rp for _s,_d,rp in plan}
-            retired=[(os.path.join(root,rp),rp) for rp in UPDATE_RETIRED
-                     if rp not in planned and os.path.isfile(os.path.join(root,rp))]
-            backup=self._update_backup(root,[(d,rp) for _s,d,rp in plan]+retired,version)
-            replaced=[]; staged=[]; failed=[]
-            for s,d,rp in plan:
+            data={}
+            if put:
+                zpath=os.path.join(tmp,"repo.zip")
+                MC.http_get(UPDATE_ZIP_FMT.format(sha=commit),UPDATE_UA,timeout=(15,90),dest=zpath,max_bytes=UPDATE_MAX_BYTES)
+                exdir=os.path.join(tmp,"x")
+                with zipfile.ZipFile(zpath) as z:
+                    bad=z.testzip()
+                    if bad: return {"ok":False,"error":"the download is damaged (bad entry: %s); nothing was changed"%bad}
+                    z.extractall(exdir)
+                tops=[d for d in os.listdir(exdir)
+                      if os.path.isdir(os.path.join(exdir,d)) and d!="__MACOSX"]
+                src=os.path.join(exdir,tops[0]) if len(tops)==1 else exdir
+                for f in put:
+                    s=os.path.join(src,*f["path"].split("/"))
+                    try:
+                        with open(s,"rb") as h: b=h.read()
+                    except OSError:
+                        return {"ok":False,"error":"%s is missing from the download; nothing was changed"%f["path"]}
+                    if not _blob_matches(b,f["sha"]):
+                        return {"ok":False,"error":"%s in the download doesn't match GitHub's file list; nothing was changed"%f["path"]}
+                    data[f["path"]]=b
+            for f in put:
+                d=os.path.join(root,*f["path"].split("/"))
+                if os.path.isdir(d): return {"ok":False,"error":"%s is a folder here; nothing was changed"%d}
+            backup=self._update_backup(root,[(os.path.join(root,*rp.split("/")),rp)
+                                             for rp in [f["path"] for f in put]+gone],version)
+            replaced=[]; staged=[]; failed=[]; installed=[]
+            for f in put:
+                rp=f["path"]; d=os.path.join(root,*rp.split("/"))
                 try:
-                    with open(s,"rb") as f: data=f.read()
+                    MC.ensure_dir(os.path.dirname(d))
                     new=d+".new"
-                    MC.atomic_write_bytes(new,data)
+                    MC.atomic_write_bytes(new,data[rp])
                     try:
                         os.replace(new,d); replaced.append((d,rp))
                     except PermissionError:
                         LOG.warning("%s is in use; staged as %s for the restart",d,new)
                         staged.append(d)
+                    installed.append((rp,f["status"],d))
                 except OSError as e:
                     LOG.error("update: could not write %s",d,exc_info=True)
                     failed.append("%s (%s)"%(rp,e))
@@ -3872,21 +4229,26 @@ class App(tk.Tk):
                 self._update_rollback(backup,replaced,staged)
                 return {"ok":False,"error":"%d file(s) could not be written, so the update was undone: %s"
                                             %(len(failed),"; ".join(failed[:4])),"backup":backup}
-            # only now, with every new file in place: the files this version no longer has
-            # (already copied into the backup above)
-            for d,rp in retired:
+            removed=[]
+            for rp in gone:                     # only now, with every new file in place
                 try:
-                    os.remove(d); LOG.info("update: removed %s (no longer part of the program)",rp)
+                    os.remove(os.path.join(root,rp)); removed.append(rp)
+                    LOG.info("update: removed %s (no longer part of the program)",rp)
                 except OSError:
                     LOG.warning("update: could not remove %s",rp,exc_info=True)
             for pc in (os.path.join(root,"bin","__pycache__"),os.path.join(root,"__pycache__")):
                 if os.path.isdir(pc):
                     shutil.rmtree(pc,onerror=lambda fn,p,ei:LOG.warning("could not remove %s: %s",p,ei[1]))
-            LOG.info("update to %s: %d replaced, %d staged, backup %s%s",version,len(replaced),len(staged),
-                     backup," (from the branch, version file checked)" if used_branch else "")
-            return {"ok":True,"replaced":[rp for _d,rp in replaced],"staged":staged,"backup":backup,"branch":used_branch}
+            man=_update_manifest_load(); mf=dict(man["files"])
+            for f in put: mf[f["path"]]=f["sha"]
+            for rp in removed: mf.pop(rp,None)
+            _update_manifest_save(commit,mf)
+            LOG.info("update to commit %s: %d written, %d staged, %d removed, backup %s",
+                     commit[:7],len(installed)-len(staged),len(staged),len(removed),backup)
+            return {"ok":True,"installed":installed,"staged":staged,"removed":removed,
+                    "backup":backup,"version":version,"commit":commit}
         except Exception as e:
-            LOG.error("update to %s failed",version,exc_info=True)
+            LOG.error("update to commit %s failed",commit[:7],exc_info=True)
             return {"ok":False,"error":"%s: %s"%(type(e).__name__,e)}
         finally:
             shutil.rmtree(tmp,onerror=lambda fn,p,ei:LOG.warning("could not remove %s: %s",p,ei[1]))

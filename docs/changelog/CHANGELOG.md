@@ -161,6 +161,48 @@ VIEWER_REV_REQUIRED is raised to the live VIEWER_REV whenever cached pages or si
     loaded paks" is on.
   - When its window gets the focus, it takes up a list the other changed meanwhile
     (`_paks_watch`, `_paks_follow`), with a line in its output.
+- **Updates are found by file, not by version number.** The check used to read only
+  `docs/version.txt`, so files pushed without a version bump never reached anyone ("up to
+  date" with new files on GitHub). Now (`update_check`):
+  - It reads the `main` branch's newest commit, that commit's full file list from the
+    tree API (each file's Git blob SHA-1 and size) and its version file, and compares
+    every program file in the folder with it: **new** (missing here), **changed**, or
+    **removed** (an `UPDATE_RETIRED` file GitHub no longer has). A CRLF checkout of an LF
+    file counts as the same (`_blob_matches`).
+  - `output/update_manifest.json` keeps each file's fingerprint as last installed or seen
+    matching; a file that differs while GitHub still has the recorded copy was changed
+    here, so it is listed as kept, not offered.
+  - It runs in the background as soon as either program starts (Help > Check for updates
+    at startup, on by default, one choice for both programs kept in the manifest). The
+    window opens only when something differs; up to date is one dim Output line; offline
+    or any failure is the log file only.
+  - The two programs update as one: either one's check covers every file in the folder
+    (the other viewer's included), the window is titled "MOHAA Model / Map Viewer"
+    (`UPDATE_PROGRAM_NAME`; it said "MOHAA Model Viewer" in both), and the Output pane
+    says to restart the other viewer if it is open.
+  - The window shows both versions and the commit, and lists the files in a scrolling
+    box, every file ticked (click one to keep your copy), with Download / Cancel; Close
+    when up to date or when the check failed.
+  - Download takes the zip of exactly the checked commit and installs only the ticked
+    files, each verified against its SHA-1 before anything is written (the old updater
+    wrote every file of the zip); backup, staged files and rollback work as before. The
+    Output pane lists the full path of every file added, updated or removed, the backup
+    folder and what to do next (`_update_report`).
+  - Paths from GitHub are refused unless relative and outside `output/`, the developer's
+    `Claude outputs/` and `.claude/` folders (any case), and any `libs*`, `.git` or
+    `__pycache__` folder at any depth (`_update_path_ok`); the old updater skipped those
+    folder names only at the top level. `.gitignore` keeps `Claude outputs/` and
+    `.claude/` out of the repository too.
+  - The version file is fetched while the file list downloads, and the startup check
+    starts 0.3 s after the window opens, so its window comes up as soon as GitHub answers.
+  - Privacy notice (both programs, `docs/PRIVACY.md`), README (Updating, Where Your Files
+    Go, Privacy) and SECURITY updated for the startup check and the manifest.
+- **Old popup windows: ticks over the labels** (Windows, on a scaled display such as a
+  laptop's 125% / 150%). Tk reserved no room for a native menu's check / radio mark, so
+  the tick covered each label's first letters. On Windows those entries now draw their
+  own mark (`_fill_native`, `_native_marks`: a tick or a dot image sized to the menu's
+  font, a blank one when off, Tk's indicator off) and the menu's other entries get the
+  blank image, so every label starts after the mark.
 
 ## Notable fixes (mohaa_view.py)
 
@@ -2079,6 +2121,29 @@ development is rebuilt because its scripts are newer).
   its value and name (the class's own from the QUAKED headers, then the editor's `!Easy`,
   `!Medium` ... that every class has; for a path node DONT_LINK to CRATE and LOW_WALL_ARC).
   A click sets or clears a bit, Clear takes them all off; each change is one Undo step.
+  Hotkey Alt+S (again, or Esc, closes it), listed in the keyboard map with Alt+M / T / E.
+- **Yaw** (Modify, after Trim origin; Alt+R): each press turns the selected entities to the
+  next of 0, 90, 180 and 270 degrees, as `"angle"` on an `info_` class and `"angles" "0 yaw 0"`
+  on anything else (taking out the other key); one Undo step a press.
+- **X-ray off hides labels behind walls.** With X-ray (9) off, entity labels and the AI path
+  tags show only where the camera can see their spot (`lblSeen`), at any distance and for
+  selected entities too; with it on they show through walls within 512 / 350 units as before.
+  The button's tooltip says so.
+- **Why an entity can't be modified.** Selecting a `.bsp`'s static model (`static_*`,
+  from the static model lump, not the entity lump) or a brush entity now says so in yellow
+  in Modify, as an entity the level script spawns already did; the static model's info card
+  adds that it isn't in the `.bsp`'s entity lump and can't be modified here.
+- **Pinched pants cuffs on MOHAA Reborn's allied_pilot** (Model Viewer, and the Map Viewer's
+  actors). The ankle helper was always posed as the retail rigs' `HOSEROTBOTH`, the calf's
+  frame flipped 180 degrees about its Y. `parse_skd` now reads each HoseRot bone's variant
+  (`hoseType`, as `LoadBoneFromBuffer2` does), and an ankle helper that is plain `HOSEROT` (or
+  `HOSEROTPARENT`) is posed by the HoseRot port instead. Only `zzzzzzzz_Reborn_pak8.pk3`'s
+  `allied_pilot.skd` has such ankles among the paks checked (Pak0, pak6, pak7 and the
+  `zzz` paks: 48 retail ankle helpers, all BOTH), so every other model draws as before.
+- **Changes on the info card.** A map entity changed in Modify gets a "Changed in Modify
+  (not saved yet)" section on its info card (N): each changed key with the map's value
+  struck through and the new one (spawnflags named), or DEL for a deleted one, before the
+  map's own keys (`modChangesHtml`, `sfNamesOf`).
 - **48-path relinking.** A map node that already has its 48 paths may have been cut short;
   when a node within 640 units of it is added, moved or deleted, it is linked again in the
   game's order, as the game would on the next build.

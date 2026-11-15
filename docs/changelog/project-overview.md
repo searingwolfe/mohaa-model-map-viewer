@@ -73,8 +73,10 @@ Model Viewer and what both share; the Map Viewer has its own notes in
 - A cached page is also rebuilt when any of the three `.py` files is newer than it.
 - Sidecar folders carry a `.rev` stamp; a mismatch with `VIEWER_REV_REQUIRED` clears the
   cached `a<id>.js` / `at<key>.js` files once.
-- `VERSION` (mohaa_launcher.py) and `docs/version.txt` must match on each release; Help →
-  Check for updates compares them. Both viewers share the version and update together.
+- `VERSION` (mohaa_launcher.py) and `docs/version.txt` must match on each release; the
+  update window shows both. The update check itself compares every file with GitHub's
+  file list (Git blob SHA-1), so a pushed change reaches users without a version bump.
+  Both viewers share the version and update together.
 
 ## The renderer in brief
 

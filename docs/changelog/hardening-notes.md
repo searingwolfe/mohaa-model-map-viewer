@@ -37,7 +37,7 @@ so it imports on a bare Python.
 - **Vendored packages per OS, in `bin/`.** `bin/libs` (Windows), `bin/libs-linux`,
   `bin/libs-mac`: one copy of the program can sit on a drive shared by a dual-boot PC without
   mixing compiled wheels. The folder sits next to the scripts (the coding rule), not
-  next to the RUN files. The updater never writes into these folders (`UPDATE_SKIP_DIRS`).
+  next to the RUN files. The updater never writes into these folders (`UPDATE_SKIP_DIRS`, at any depth).
 - **`pip install --target` instead of `--user` / system installs.** It never needs admin
   rights, never changes other programs' packages, and is exempt from PEP 668, so it works
   on Ubuntu / Kubuntu 23.04+ where plain `pip install` is refused. Ubuntu 24.04's packaged
@@ -79,9 +79,19 @@ so it imports on a bare Python.
 - **The updater's backups follow the owner's previous-versions convention:** one numbered
   folder per update in `output/previous-versions/`, with `changelog.txt` at its root holding
   lines like `3 - version 1.0.001 (replaced by 1.0.002 on 2026-12-01, 14 files)`.
-- **A branch download is accepted only if it is the advertised version.** The tag zip is
-  preferred; the `main` zip is the fallback only when its `docs/version.txt` equals the
-  version the check reported, so an untagged release can't install unreleased code.
+- **Updates compare files, pinned to one commit.** The check lists `main`'s newest commit's
+  files (tree API, Git blob SHA-1 each) and the install downloads that same commit's zip,
+  installing a file only if it matches its listed SHA-1. A version number alone missed
+  files pushed without a bump, and a branch zip fetched later could hold a newer push
+  than the list the user was shown. The tag-zip / version-file check this replaced
+  installed whole releases only.
+- **A local change is kept, not "updated" back.** `output/update_manifest.json` records
+  each file's SHA-1 as installed; a file that differs while GitHub still has that SHA-1
+  was edited here, so it isn't offered. Without a record (first run, a Git checkout) such
+  a file shows as changed, and the window says that unticking it keeps it.
+- **The startup check never shows a failure.** Offline, rate-limited (60 API requests an
+  hour per address unauthenticated; one check uses two) or anything else: a log line only,
+  so starting without a connection stays quiet. Help > Check for updates shows the error.
 - **The locked-file swap is Python, not a generated `.bat`.** A `.bat` written as UTF-8 and
   run by cmd in the OEM code page lost non-ASCII paths, and only worked on Windows.
 - **Every broad handler logs, nothing else changed.** `MC.swallowed()` was inserted by an

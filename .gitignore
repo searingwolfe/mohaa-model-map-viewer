@@ -68,3 +68,13 @@ bin/libs-mac/
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# ---------------------------------------------------------------------------
+#  The developer's own notes and tool settings (Claude's output folder, its local
+#  settings): not part of the program. Listed in both spellings, since Git matches
+#  case for case unless core.ignorecase is on. The updater never installs them either
+#  (UPDATE_SKIP_TOP in bin/mohaa_launcher.py).
+# ---------------------------------------------------------------------------
+/Claude outputs/
+/claude outputs/
+/.claude/

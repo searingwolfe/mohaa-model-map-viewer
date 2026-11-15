@@ -184,7 +184,8 @@ class MapApp(ML.App):
         import queue
         self._log_q = queue.Queue(); self._drop_paths = []
         self._status_base = "Ready"; self._pak_suffix = ""
-        self._upd_state = None; self._upd_dl_btn = None
+        self._upd_win = None; self._upd_busy = False
+        self._upd_startup = tk.BooleanVar(value=ML.update_check_at_startup())   # shared with the Model Viewer
         self._logfile = ML.open_console_mirror(MAP_LOG)
         self._startup_extras()       # the RUN window's text, "saved <file>" lines, window-open signal
         self._pk3_paths = []; self._tmp = None; self._animroot = None
@@ -251,6 +252,7 @@ class MapApp(ML.App):
         saved = [p for p in saved if os.path.exists(p)]
         if saved and self._remember.get(): self.after(200, lambda: self._add_pk3s(saved))
         self._paks_watch()
+        self._update_startup()           # quiet unless GitHub has new or changed files
         if initial_file: self.after(350, lambda: self._load(initial_file))
 
     # ------------------------------------------------------------- config ---

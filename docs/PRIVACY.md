@@ -15,18 +15,19 @@ where the Edit parameters box was left and Simulate's model, human and weapon am
 
 ```
 PRIVACY NOTICE  --  MOHAA Model Viewer
-Last updated: 12 November 2026
+Last updated: 14 November 2026
 
 1. THE SHORT VERSION
    This program does not collect, transmit, sell, share or profile anything.
    It contains no telemetry, no analytics, no crash reporting, no advertising
-   and no tracking identifiers, and it never checks for updates on its own. The
-   program uses the network only when YOU open Help --> Check for updates, and
-   the startup scripts only to install missing Python packages (see 3);
-   everything else happens entirely on your computer.
+   and no tracking identifiers. The program uses the network only to check
+   this project's GitHub page for updates (at startup, which you can turn off,
+   and when you open Help --> Check for updates), and the startup scripts only
+   to install missing Python packages (see 3); everything else happens entirely
+   on your computer.
 
 2. WHAT IS STORED, AND WHERE
-   The program stores six things, all on your own machine, all readable and
+   The program stores seven things, all on your own machine, all readable and
    deletable by you at any time:
 
      a) Settings file  --  mohaa_viewer_config.json
@@ -67,9 +68,16 @@ Last updated: 12 November 2026
         files.
 
      f) Previous versions  --  the "previous-versions" folder beside (a).
-        When Help --> Check for updates installs a new version, the files it
-        replaces are copied here first, one numbered folder per update, with a
-        changelog.txt listing them. Delete them whenever you like.
+        When an update installs new files, the files it replaces are copied
+        here first, one numbered folder per update, with a changelog.txt
+        listing them. Delete them whenever you like.
+
+     g) Update record  --  update_manifest.json, in the same folder as (a).
+        The fingerprint (SHA-1) GitHub lists for each program file, as last
+        installed or seen matching, so a file you changed yourself is not
+        offered as an update, and whether to check for updates at startup.
+        Both programs share it, as they share one update. It holds no
+        personal data.
 
    None of this is transmitted anywhere. If you want it gone, delete the folders
    above; the program will simply start fresh.
@@ -80,14 +88,17 @@ Last updated: 12 November 2026
    Content-Security-Policy that blocks outbound connections even if a malformed
    game file were to inject script into it.
 
-   The program reaches the network in only two places, both of which you start
-   yourself and neither of which runs in the background:
+   The program reaches the network in only two places:
 
-     - Help --> Check for updates reads a small version file from this project's
-       GitHub repository, and, if you choose to install an update, downloads the
-       new files from GitHub. This reveals your IP address to GitHub under its
-       privacy policy, not this one. It happens only when you open that window and
-       click to install; nothing is ever checked automatically.
+     - The update check reads this project's file list and version file from
+       GitHub (api.github.com, raw.githubusercontent.com) and compares it with the
+       files in the program folder. It runs as soon as the program starts,
+       unless you untick Help --> Check for updates at startup, and when
+       you open Help --> Check for updates. Only if you click Download are the
+       new files downloaded (codeload.github.com). Nothing about your computer
+       or your files is sent: the requests carry only the program's name and
+       version. They reveal your IP address to GitHub under its privacy policy,
+       not this one. Offline, the check fails quietly and nothing is shown.
 
      - The startup script (MOH Model-Map Viewer (Windows x86-x64).bat, or the .sh
        file on Linux and macOS) installs any missing Python packages from
