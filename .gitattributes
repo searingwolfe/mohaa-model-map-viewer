@@ -4,3 +4,5 @@
 # (bash fails on a CR at the end of a line).
 *.bat -text
 *.sh  text eol=lf
+# the compiler builds in bin/ommap are programs, stored byte for byte
+bin/ommap/** binary

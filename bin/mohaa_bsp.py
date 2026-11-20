@@ -674,6 +674,9 @@ def fit_texdef(normal, pts, sts, tex_w, tex_h):
 _VNI = None
 
 
+_TER_WN = {}     # (diagonal, tree) -> the triangles of nodes 1..63, as _terrain_vni splits them
+
+
 def _terrain_vni():
     """vni[diagonal][i][j] = ((tree, node), (tree, node)): the variance tree node that
     holds the hole bit of each of square (i, j)'s two triangles, for both diagonal
@@ -695,6 +698,7 @@ def _terrain_vni():
             j2 = a[1] + a[3]
             wn[i * 2 + 2] = [a[2], a[3], a[4], a[5], i2 >> 1, j2 >> 1]
             wn[i * 2 + 3] = [a[4], a[5], a[0], a[1], i2 >> 1, j2 >> 1]
+        _TER_WN[(diag, tree)] = wn
         for i in range(32, 64):
             a = wn[i]
             i2 = (a[0] + a[2]) >> 1
@@ -743,6 +747,78 @@ def terrain_holes(patch):
             if h0 or h1:
                 # plane[0] is the +x triangle on odd squares and the -x one on even ones
                 out[(i, j)] = (h0, h1) if (i + j) & 1 else (h1, h0)
+    return out
+
+
+def terrain_invisible(patch):
+    """{(i, j): (on_+x_triangle, on_-x_triangle)} for the holes EA's compiler was told
+    "invisible" rather than "nodraw": a nodraw hole has the land split down to it (0x8000
+    on its deepest node), an invisible one doesn't (m3l1b: 118 of its 2,619 holes). In the
+    same order as terrain_holes."""
+    vni = _terrain_vni()[1 if patch["flags"] & TERPATCH_NEIGHBOR else 0]
+    var = patch["var"]
+    out = {}
+    for i in range(8):
+        for j in range(8):
+            v0, v1 = vni[i][j]
+            k0 = v0[1] < 63 and bool(v0[0] & var[v0[0] & 1][v0[1]] & 0xFFFE) and not var[v0[0] & 1][v0[1]] & 0x8000
+            k1 = v1[1] < 63 and bool(v1[0] & var[v1[0] & 1][v1[1]] & 0xFFFE) and not var[v1[0] & 1][v1[1]] & 0x8000
+            if k0 or k1:
+                out[(i, j)] = (k0, k1) if (i + j) & 1 else (k1, k0)
+    return out
+
+
+def terrain_lod_words(patch):
+    """{(i, j): (words_+x_triangle, words_-x_triangle)}: the level-of-detail words of EA's
+    terrain faces that the patch's deepest nodes show, in terrain_holes' order. "nodetail":
+    the node never splits (0x4000). "trivial" / "important": the node's variance is half
+    (rounded up) / twice the height error its triangle has, as EA's compiler sets it for
+    those words (m3l1b: thousands of trivial triangles)."""
+    diag = 1 if patch["flags"] & TERPATCH_NEIGHBOR else 0
+    vni = _terrain_vni()[diag]
+    var, hm = patch["var"], patch["height"]
+    word = {}
+    for tree in (0, 1):
+        wn = _TER_WN[(diag, tree)]
+        for n in range(32, 64):
+            a = wn[n]
+            raw = abs(2 * hm[a[5] * 9 + a[4]] - hm[a[1] * 9 + a[0]] - hm[a[3] * 9 + a[2]])
+            flags = var[tree][n - 1]
+            v = flags & 0x7FF
+            w = []
+            if flags & 0x4000:
+                w.append("nodetail")
+            if v != raw:
+                if v == (raw + 1) // 2:
+                    w.append("trivial")
+                elif v == min(raw * 2, 0x7FF):
+                    w.append("important")
+            word[(tree, n - 1)] = tuple(w)
+    out = {}
+    for i in range(8):
+        for j in range(8):
+            v0, v1 = vni[i][j]
+            w0 = word.get((v0[0] & 1, v0[1]), ()) if v0[1] < 63 else ()
+            w1 = word.get((v1[0] & 1, v1[1]), ()) if v1[1] < 63 else ()
+            if w0 or w1:
+                out[(i, j)] = (w0, w1) if (i + j) & 1 else (w1, w0)
+    return out
+
+
+def terrain_nodetail(patch):
+    """{(i, j): (on_+x_triangle, on_-x_triangle)} for the triangles EA's compiler was told
+    "nodetail": their deepest node carries 0x4000, which the renderer never splits
+    (R_ConstChecksForTri, renderergl1/tr_terrain.c). In the same order as terrain_holes."""
+    vni = _terrain_vni()[1 if patch["flags"] & TERPATCH_NEIGHBOR else 0]
+    var = patch["var"]
+    out = {}
+    for i in range(8):
+        for j in range(8):
+            v0, v1 = vni[i][j]
+            n0 = bool(var[v0[0] & 1][v0[1]] & 0x4000) if v0[1] < 63 else False
+            n1 = bool(var[v1[0] & 1][v1[1]] & 0x4000) if v1[1] < 63 else False
+            if n0 or n1:
+                out[(i, j)] = (n0, n1) if (i + j) & 1 else (n1, n0)
     return out
 
 
@@ -1292,6 +1368,8 @@ def _terrain_lines(bsp, tp, tsize):
     (sh0, sh1), rot, (sx, sy) = texdef
     td = "( %s %s %s %s %d %s %s 0 0 0 )" % (sname, _fmt(sh0), _fmt(sh1), _fmt(rot), tw, _fmt(sx), _fmt(sy))
     holes = terrain_holes(tp)
+    words = terrain_lod_words(tp)
+    invis = terrain_invisible(tp)
     lines = [" {", "  terrainDef", "  {", "   9 9 0",
              "   %s %s %s" % ("%.6f" % x0, "%.6f" % y0, "%.6f" % z0), "\t\t{"]
     for _ in range(4):
@@ -1302,8 +1380,11 @@ def _terrain_lines(bsp, tp, tsize):
     for j in range(9):
         for i in range(9):
             h1, h2 = holes.get((i, j), (False, False))
-            lines.append("\t\t\t%.6f ( %s) ( %s)" % (hm[j * 9 + i] * 2.0, "nodraw " if h1 else "",
-                                                     "nodraw " if h2 else ""))
+            w1, w2 = words.get((i, j), ((), ()))
+            v1, v2 = invis.get((i, j), (False, False))
+            lines.append("\t\t\t%.6f ( %s%s) ( %s%s)" % (
+                hm[j * 9 + i] * 2.0, ("invisible " if v1 else "nodraw ") if h1 else "", "".join(x + " " for x in w1),
+                ("invisible " if v2 else "nodraw ") if h2 else "", "".join(x + " " for x in w2)))
     lines += ["\t\t}", "  }", " }"]
     return lines
 
@@ -1919,6 +2000,8 @@ def _find_entity(ents, s):
         o = _ent_origin(e)
         return o is not None and all(abs(a - float(b)) < 0.05 for a, b in zip(o, org))
     i = s.get("ei")
+    if i == 0 and cls == "worldspawn" and ents and _ent_class(ents[0]) == "worldspawn":
+        return 0                    # the world's keys (its card in the page)
     if isinstance(i, int) and 0 < i < len(ents) and same(ents[i]):
         return i
     hits = [j for j, e in enumerate(ents) if j and same(e)]
@@ -1988,6 +2071,11 @@ def write_bsp_entities(data, added, out_path, src_path=None, replace=None):
             kv = [(_clean(k), _clean(v)) for k, v in (s.get("kv") or ())]
             if not any(k.lower() == "classname" and v for k, v in kv):
                 raise BspError("a changed entity has no classname")
+            # a brush entity keeps its brush model ("model" "*N"): the decompiled .map its
+            # keys come from holds its brushes instead of that key
+            bm = next(((k, v) for k, v in ents[i] if k.lower() == "model" and v.startswith("*")), None)
+            if bm and not any(k.lower() == "model" for k, _v in kv):
+                kv.insert(0, bm)
             ents[i] = kv
         ndel = len(gone)
         ents = [e for j, e in enumerate(ents) if j not in gone]

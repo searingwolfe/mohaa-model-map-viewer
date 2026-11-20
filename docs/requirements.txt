@@ -31,3 +31,13 @@ Pillow>=10.3.0
 #   tkwebview2
 #
 # Install those with:  python -m pip install pythonnet "pywebview==4.4.1" tkwebview2 --target bin\libs --no-user
+
+# Optional, Linux only -- the embedded 3D pane (Qt WebEngine). About 650 MB once
+# installed; needs glibc 2.34+, Python 3.10 to 3.14 and the system library
+# libxcb-cursor0 (sudo apt install libxcb-cursor0). PINNED: 6.12 has no Qt WebEngine
+# for Python, and the two must be the same version.
+#
+#   PySide6-Essentials==6.11.1
+#   PySide6-Addons==6.11.1
+#
+# Install those with:  python3 -m pip install "PySide6-Essentials==6.11.1" "PySide6-Addons==6.11.1" --target bin/libs-linux --no-user

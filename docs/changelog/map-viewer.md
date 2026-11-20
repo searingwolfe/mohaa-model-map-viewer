@@ -179,6 +179,9 @@ run at once.
   nodes, paths, models and static props. With only some of those hidden by their own
   buttons, it stays on, dashed, and its tooltip names the hidden kinds; a click hides the
   rest, a second shows all.
+- **Hints** (`Ctrl+H`) covers hint, skip and vis brushes (`C_HINT|C_VIS`). Vis faces have
+  their own group, which only the looks used to show, so Hints left them hidden in the
+  In-game look; now one click shows all three whatever the look.
 - **All, In-game look, Editor look** (under the Show buttons; `Ctrl+A`, `G`, `Shift+G`):
   All shows every group. In-game look hides what the game never draws (caulk, clips,
   triggers, hints, origin brushes, areaportals, nodraw, rain, foliage clips) and the
@@ -241,6 +244,26 @@ run at once.
   view: an occlusion query on each frame's sky says whether any of it showed, and the
   redrawing stops when none did until the view changes. They aren't drawn with Simple Sky
   or Fog on, as the game's fog covers its sky.
+- **Moving surfaces** (with the game's lighting): a shader that moves in game - water
+  (`canal_sludge` on m2l2a-c, m3l2, mohdm4; the sea and surf at Omaha, m3l1a/b; the pond
+  on m4l0; the rivers of m4l3 and m5l2b), curtains, pulsing switches and lamps, the
+  snowfields' parallax - is drawn stage by stage as `RB_IterateStagesGeneric` draws it
+  (`fx_payload` in mohaa_map_view.py packs the stages; `fxDraw`, `VS_FX` / `FS_FX` in the
+  page). Each pass keeps its stage's pictures (both texture bundles, `nextBundle` and
+  `nextBundle add`; an `animMap`'s frames, up to 8), blendFunc, alphaFunc, depthWrite and
+  `depthFunc equal`; texture coordinates from `tcGen` (the surface's, the lightmap's,
+  `environment`, `vector`) and every tcMod in order (`scroll`, `scale`, `rotate`,
+  `stretch`, `transform`, `offset`, `turb`, `wavetrans` / `wavetrant`, `parallax`);
+  rgbGen (`const`, `wave`, `colorWave`, `vertex`, `oneMinusVertex`, `dot`) and alphaGen
+  (`const`, `wave`, `vertex`, `dot`, `distFade`, `heightFade`, `skyAlpha`). The vertices
+  move first (`deformVertexes wave`, `bulge`, `move`, `flap s` / `t`; `normal` wobbles
+  the normals an environment map reflects). The normals are the patch's own, else the
+  polygons' faces'. A `$lightmap` stage multiplies by the surface's lightmap, or by white
+  on a surface that has none (water is `nolightmap`), as the engine binds
+  `tr.whiteImage` there. While one is in view the view redraws up to 30 times a second.
+  With Full Brightness, Texture off or `r_lightmap` set, the surface shows its still
+  picture as before. Fog over a stage drawn on top of others fades it out (or, for a
+  multiplying stage, to white) rather than adding the game's separate fog pass.
 - **Sun flare** (`J`, on at first): the game draws its sun only as a lens flare
   (`RB_DrawSun` is compiled out), and the page draws it the same way (`drawSunFlare`).
   - The flare shows while the view faces within the flare's `dot_min` of the sun and the
@@ -1415,7 +1438,7 @@ model plumbing). The state is `ACT`, every function `act...`; the launcher side 
   `K` Simple Sky, `M` Simple models, `J` Sun flare, `0` Lights off, `-` Sun light, `=`
   Decals, `Y` Weather, `P` Leak trail, `I` AI routes, `Ctrl+E` Script ents,
   `Ctrl+B` Script trigs, `L`
-  opens the legend, `` ` `` the game cvars list and `T` switches the theme. The FOV
+  opens the legend, `` ` `` the game cvars list and `Ctrl+T` switches the theme (the launcher's, in its pane). The FOV
   slider runs from 60 to 150. Press `H` in the viewer for all of them (Keyboard
   shortcuts, above).
 
@@ -1429,9 +1452,13 @@ model plumbing). The state is `ACT`, every function `act...`; the launcher side 
 
 ## Known limits and open work
 
-- Each shader shows one picture (above), sky clouds aside; its other stages (a second
-  texture bundle, an added glow or highlight layer), `tcMod scroll` / `rotate` / `turb`,
-  animated maps and `deformVertexes` (but a model's `wave` and `flap`, below) don't play.
+- Each shader shows one picture (above), sky clouds and moving surfaces aside: a still
+  shader's other stages (a second texture bundle, an added glow or highlight layer)
+  aren't drawn. Moving surfaces are drawn stage by stage only on a `.bsp`'s own
+  polygons with the game's lighting on; on models only `deformVertexes wave` and `flap`
+  play (below). `tcMod macro`, the entity-driven tcMods and rgbGens, and the random part
+  of `tcMod scroll` / `offset` aren't drawn, and `deformVertexes normal` uses a smooth
+  noise in place of `R_NoiseGet4f`.
 - Lighting: dynamic lights (lamps switched by script, muzzle flashes) and the
   `alphaGen distFade` fade-out aren't drawn. Portal skies (`textures/common/skyportal`
   with a `script_skyorigin`) show the plain sky box; no retail Allied Assault map uses one.
@@ -1488,9 +1515,11 @@ model plumbing). The state is `ACT`, every function `act...`; the launcher side 
   camera's place rather than the player's feet (1.11 took the player's origin; across, it
   is the same). Script-spawned `func_rain`s have no brush to give them a box.
 - Modify: a changed map entity drawn with a model shows as a box while changed. New
-  entities are boxes (a model isn't drawn), get no light, and don't take
-  part in what the page simulates (doors, exploders, cvars that list entities). Only
-  point entities can be added or deleted. The routes on the `.pth`'s own nodes are the
+  entities with a model are drawn with it (the map's own mesh, else one the launcher
+  builds from the paks, as Simulate's), lit by the light grid where they stand; those
+  without one are boxes. They don't take part in what the page simulates (doors,
+  exploders, cvars that list entities). Only point entities can be added or deleted here
+  (the Map Editor also takes brush entities: [map-editor.md](map-editor.md)). The routes on the `.pth`'s own nodes are the
   file's; links to and from new, changed and deleted nodes are worked out, and so are
   those of a full node (48 paths) within 640 units of one, but a full cell isn't followed
   by the game's re-ordering of the rest.

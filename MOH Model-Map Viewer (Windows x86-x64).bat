@@ -150,13 +150,13 @@ if /i "!MODE!"=="map" goto mode_map
 set "R_NAME=Model Viewer"
 set "R_LOG=model"
 set "R_LAUNCHER=mohaa_launcher.py"
-set "R_FILES=mohaa_launcher.py mohaa_view.py mohaa_textures.py"
+set "R_FILES=mohaa_launcher.py mohaa_view.py mohaa_textures.py mohaa_anim_edit.py mohaa_anim_solver.js mohaa_skc_write.py"
 goto mode_done
 :mode_map
 set "R_NAME=Map Viewer"
 set "R_LOG=map"
 set "R_LAUNCHER=mohaa_map_launcher.py"
-set "R_FILES=mohaa_map_launcher.py mohaa_map_view.py mohaa_map_page.py mohaa_bsp.py mohaa_entdefs.py mohaa_map_actor.py mohaa_launcher.py mohaa_view.py mohaa_textures.py"
+set "R_FILES=mohaa_map_launcher.py mohaa_map_view.py mohaa_map_page.py mohaa_bsp.py mohaa_entdefs.py mohaa_map_actor.py mohaa_launcher.py mohaa_view.py mohaa_textures.py mohaa_map_edit.py mohaa_map_editor.js mohaa_compile.py"
 :mode_done
 title MOHAA !R_NAME!
 echo [OK] Python !R_VER!: !R_PY!

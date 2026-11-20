@@ -315,6 +315,8 @@ class Updater(TempDirCase):
     and tree API calls, the raw version file, and the commit zip)."""
 
     COMMIT = "c" * 40
+    HEAD_DATE = "2100-01-01T00:00:00Z"   # when GitHub's commit was made (far ahead: nothing is "newer here")
+    FILE_DATES = {}                      # path: when GitHub last committed it (else HEAD_DATE)
 
     @classmethod
     def setUpClass(cls):
@@ -326,6 +328,7 @@ class Updater(TempDirCase):
         cls.ML = ML
 
     def make_install(self):
+        self.lookups = []
         root = self.p("install")
         for rp, txt in (("bin/mohaa_launcher.py", b"old launcher"), ("bin/mohaa_view.py", b"same view\n"),
                         ("docs/version.txt", b"1.0.000\n"), ("output/keep.json", b"user data"),
@@ -360,6 +363,14 @@ class Updater(TempDirCase):
                         for rp, b in files.items()]
                 tree.append({"path": "bin", "type": "tree", "mode": "040000", "sha": "d" * 40})
                 return json.dumps({"sha": sha, "tree": tree, "truncated": False}).encode()
+            if url == ML.UPDATE_COMMIT_FMT.format(sha=sha):
+                self.lookups.append("head")
+                return json.dumps({"sha": sha, "committer": {"date": self.HEAD_DATE}}).encode()
+            if url.startswith(ML.UPDATE_API + "/commits?sha=" + sha + "&path="):
+                import urllib.parse
+                rp = urllib.parse.unquote(url.split("&path=", 1)[1].split("&", 1)[0])
+                self.lookups.append(rp)
+                return json.dumps([{"commit": {"committer": {"date": self.FILE_DATES.get(rp, self.HEAD_DATE)}}}]).encode()
             if url == ML.UPDATE_RAW_FMT.format(sha=sha, path="docs/version.txt"):
                 return files["docs/version.txt"]
             if url == ML.UPDATE_ZIP_FMT.format(sha=sha):
@@ -450,6 +461,53 @@ class Updater(TempDirCase):
         res = self.ML.update_check()
         self.assertEqual(res["files"], [])
         self.assertEqual(res["kept"], ["bin/mohaa_common.py"])
+
+    def _age(self, root, rp, when):
+        os.utime(os.path.join(root, rp), (when, when))
+
+    def test_newer_here_than_github_is_not_offered(self):
+        """A file that differs from GitHub's, with nothing in the manifest to say which side
+        changed it, is kept when it was saved here after GitHub committed its copy (work not
+        pushed yet), and offered when GitHub's copy is the newer."""
+        import time as _t
+        root = self.make_install()
+        self.HEAD_DATE = "2026-11-10T12:00:00Z"
+        head = self.ML._github_time(self.HEAD_DATE)
+        self._age(root, "bin/mohaa_launcher.py", head + 3600)          # saved here after GitHub's commit
+        self._age(root, "docs/version.txt", head - 86400)              # older than GitHub's
+        res = self.check(root, self.github())
+        got = {f["path"]: f["status"] for f in res["files"]}
+        self.assertEqual(got, {"bin/mohaa_common.py": "new", "docs/version.txt": "changed"})
+        self.assertEqual(res["newer"], ["bin/mohaa_launcher.py"])
+        # the launcher needed no per-file lookup (newer than GitHub's newest commit); the
+        # version file was looked up once, and the answer is kept for the next check
+        self.assertEqual(self.lookups, ["head", "docs/version.txt"])
+        self.lookups.clear()
+        self.ML.update_check()
+        self.assertEqual(self.lookups, ["head"])
+
+    def test_file_older_than_the_head_but_newer_than_its_own_commit(self):
+        root = self.make_install()
+        self.HEAD_DATE = "2026-11-10T12:00:00Z"
+        self.FILE_DATES = {"docs/version.txt": "2026-11-01T00:00:00Z"}
+        head = self.ML._github_time(self.HEAD_DATE)
+        self._age(root, "docs/version.txt", head - 86400)              # after its own commit, before the head
+        self._age(root, "bin/mohaa_launcher.py", head - 86400 * 30)
+        res = self.check(root, self.github())
+        self.assertEqual(res["newer"], ["docs/version.txt"])
+        self.assertIn("bin/mohaa_launcher.py", {f["path"] for f in res["files"]})
+
+    def test_installed_copy_is_updated_whatever_the_times(self):
+        """A file still as the updater installed it is offered when GitHub changes it, even
+        if GitHub's new commit is dated before the install (committed, pushed later)."""
+        root = self.make_install()
+        files = self.github()
+        self.install(self.check(root, files))
+        self.HEAD_DATE = "2000-01-01T00:00:00Z"
+        self.env(root, self.fake_get(dict(files, **{"bin/mohaa_common.py": b"newer module"})))
+        res = self.ML.update_check()
+        self.assertEqual([f["path"] for f in res["files"]], ["bin/mohaa_common.py"])
+        self.assertEqual(res["newer"], [])
 
     def test_unticked_files_are_left_alone(self):
         root = self.make_install()

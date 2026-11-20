@@ -46,17 +46,33 @@ except Exception as _mtx_e:
     _MTX_ERR="%s: %s"%(type(_mtx_e).__name__,_mtx_e)
     MTX=None
 
-# Optional embedded viewer: Edge WebView2 inside the Tk window (Windows only).
-# Requires `pip install pythonnet pywebview==4.4.1 tkwebview2` and the WebView2 runtime.
-# If unavailable, WEBVIEW2 stays None and models open in the external browser.
-# pywebview is pinned to 4.4.1 because tkwebview2 3.5.0 constructs its internals directly.
-WEBVIEW2=None; _WV_HAVE_RT=None; _WEBVIEW_ERR=""
+# Optional embedded viewer inside the Tk window. If unavailable, WEBVIEW2 stays None and
+# pages open in the external browser.
+#  * Windows: Edge WebView2 through tkwebview2 (pythonnet, pywebview==4.4.1, tkwebview2 and
+#    the WebView2 runtime). pywebview is pinned to 4.4.1 because tkwebview2 3.5.0 constructs
+#    its internals directly. WEBVIEW_DOTNET is True: Tk then runs on a .NET STA thread.
+#  * Linux: Qt WebEngine in a helper process (mohaa_webpane_linux.QtPane, which offers the
+#    same calls; PySide6 6.11.1 in bin/libs-linux).
+# WEBVIEW_HINT is what the empty pane says when it is unavailable.
+WEBVIEW2=None; _WV_HAVE_RT=None; _WEBVIEW_ERR=""; WEBVIEW_DOTNET=False; WEBVIEW_HINT=""
 if sys.platform.startswith("win"):
+    WEBVIEW_HINT="to enable:  python -m pip install pythonnet pywebview==4.4.1 tkwebview2"
     try:
         from tkwebview2.tkwebview2 import WebView2 as WEBVIEW2, have_runtime as _WV_HAVE_RT
+        WEBVIEW_DOTNET=True
     except Exception as _e:
         MC.swallowed()
         _WEBVIEW_ERR=str(_e)
+elif sys.platform.startswith("linux"):
+    WEBVIEW_HINT="to enable:  run the Linux RUN file (it installs PySide6 6.11.1)"
+    try:
+        import mohaa_webpane_linux as _WPL
+        _WEBVIEW_ERR=_WPL.why_unavailable()
+        if not _WEBVIEW_ERR: WEBVIEW2=_WPL.QtPane
+        else: LOG.info("embedded pane unavailable: %s",_WEBVIEW_ERR)
+    except Exception as _e:
+        LOG.error("mohaa_webpane_linux could not be imported",exc_info=True)
+        _WEBVIEW_ERR="%s: %s"%(type(_e).__name__,_e)
 
 # Hide the console windows of child processes (Python probes, viewer builds); needed
 # when the launcher itself runs under pythonw.
@@ -122,7 +138,7 @@ PRIVACY_SUMMARY=("This program collects nothing and sends nothing, and has no\n"
                  "telemetry. It uses the network only to check GitHub for updates.")
 
 PRIVACY_TEXT = """PRIVACY NOTICE  --  MOHAA Model Viewer
-Last updated: 14 November 2026
+Last updated: 18 November 2026
 
 1. THE SHORT VERSION
    This program does not collect, transmit, sell, share or profile anything.
@@ -163,9 +179,13 @@ Last updated: 14 November 2026
      d) Working files
         A temporary workspace under your system temp folder (mohaaview_*), and
         the generated .html viewers in your chosen output folder. Both are
-        removable from File --> Clear built models / Clear %temp% files. On
-        Windows, the embedded 3D pane (Microsoft Edge WebView2) also keeps its
-        browser files in a "webview2" folder beside (a).
+        removable from File --> Clear built models / Clear %temp% files. With
+        Edit animations on, the .skc files you save go where you choose (at
+        first the "skc" folder in the output folder), and Add to game keeps its
+        mod pak, a list of your animations and copies of them in the "mod"
+        folder there; delete them whenever you like. On Windows, the embedded
+        3D pane (Microsoft Edge WebView2) also keeps its browser files in a
+        "webview2" folder beside (a).
 
      e) Display choices in the browser
         The viewer pages remember a few display choices (theme, backdrop colour,
@@ -181,10 +201,11 @@ Last updated: 14 November 2026
 
      g) Update record  --  update_manifest.json, in the same folder as (a).
         The fingerprint (SHA-1) GitHub lists for each program file, as last
-        installed or seen matching, so a file you changed yourself is not
-        offered as an update, and whether to check for updates at startup.
-        Both programs share it, as they share one update. It holds no
-        personal data.
+        installed or seen matching, and when GitHub last committed a file
+        that differs from your copy, so a file you changed yourself (or saved
+        after GitHub's copy) is not offered as an update; and whether to check
+        for updates at startup. Both programs share it, as they share one
+        update. It holds no personal data.
 
    None of this is transmitted anywhere. If you want it gone, delete the folders
    above; the program will simply start fresh.
@@ -197,9 +218,9 @@ Last updated: 14 November 2026
 
    The program reaches the network in only two places:
 
-     - The update check reads this project's file list and version file from
-       GitHub (api.github.com, raw.githubusercontent.com) and compares it with the
-       files in the program folder. It runs as soon as the program starts,
+     - The update check reads this project's file list, version file and commit
+       dates from GitHub (api.github.com, raw.githubusercontent.com) and compares
+       them with the files in the program folder. It runs as soon as the program starts,
        unless you untick Help --> Check for updates at startup, and when
        you open Help --> Check for updates. Only if you click Download are the
        new files downloaded (codeload.github.com). Nothing about your computer
@@ -283,7 +304,7 @@ PAK_ENTRY_MAX=getattr(getattr(MTX,"Vfs",None),"MAX_ENTRY",192*1024*1024)
 # Source mtimes are the usual rebuild trigger, but a zip round-trip can scramble them,
 # so the baked rev is the backstop. Also gates the animation/attachment sidecar caches
 # (see _stamp_anim_cache).
-VIEWER_REV_REQUIRED=80
+VIEWER_REV_REQUIRED=82
 # Sentinel subdir for single-file builds (Browse / drag-drop / Recent / path bar). It
 # routes the output HTML to a "standalone" folder beside "models" instead of the
 # pak-mirroring tree; the null byte means it can't collide with a real folder name.
@@ -509,7 +530,7 @@ def init_runtime(app_name="mohaa_launcher"):
 #  docs/ and the RUN .bat. On each release, bump VERSION here and in docs/version.txt,
 #  then tag the release commit v<version>.
 # ============================================================================
-VERSION="1.0.003"
+VERSION="1.0.010"
 VERSION_LABEL="version "+VERSION
 # GitHub coordinates for the update check. The check compares every program file here
 # with the same file on GitHub's main branch, by its Git fingerprint (the blob SHA-1 the
@@ -528,6 +549,17 @@ UPDATE_REF_URL=UPDATE_API+"/git/ref/heads/"+GITHUB_BRANCH
 UPDATE_TREE_FMT=UPDATE_API+"/git/trees/{sha}?recursive=1"
 UPDATE_RAW_FMT=f"https://raw.githubusercontent.com/{GITHUB_OWNER}/{GITHUB_REPO}/{{sha}}/{{path}}"
 UPDATE_ZIP_FMT=f"https://codeload.github.com/{GITHUB_OWNER}/{GITHUB_REPO}/zip/{{sha}}"
+# When a file differs from GitHub's and the manifest can't say which side changed it (it was
+# edited here before any check recorded it, or the folder came from elsewhere), its time
+# here is compared with when GitHub last committed it: the commit's own date, then (for a
+# file older than that) the newest commit touching the file. A file saved here after
+# GitHub's copy was committed is your newer work, kept and not offered. At most this many
+# per-file lookups a check (each answer is kept in the manifest by the file's blob SHA, so a
+# file is looked up once per version on GitHub); past it a file is offered as before.
+UPDATE_COMMIT_FMT=UPDATE_API+"/git/commits/{sha}"
+UPDATE_FILE_COMMITS_FMT=UPDATE_API+"/commits?sha={sha}&path={path}&per_page=1"
+UPDATE_DATE_LOOKUPS=30
+UPDATE_TIME_SLACK=2.0                       # seconds: a copy written in the same moment isn't "newer"
 UPDATE_PAGE_URL=f"https://github.com/{GITHUB_OWNER}/{GITHUB_REPO}"
 # Largest update zip accepted, and the largest file list (the tree API's JSON).
 UPDATE_MAX_BYTES=200*1024*1024
@@ -558,7 +590,9 @@ UPDATE_PROGRAM_NAME="MOHAA Model / Map Viewer"
 # program (for a while named "RUN -- Medal of Honor Viewer").
 UPDATE_RETIRED=("RUN -- Medal of Honor Model Viewer.bat","RUN -- Medal of Honor Map Viewer.bat",
                 "RUN -- Medal of Honor Model Viewer.sh","RUN -- Medal of Honor Map Viewer.sh",
-                "RUN -- Medal of Honor Viewer.bat","RUN -- Medal of Honor Viewer.sh")
+                "RUN -- Medal of Honor Viewer.bat","RUN -- Medal of Honor Viewer.sh",
+                # the editors' own launchers, from before they were built into the viewers
+                "bin/mohaa_anim_launcher.py","bin/mohaa_map_edit_launcher.py")
 # The restart helper run after an update whose files were locked: waits for each staged
 # <file>.new to move into place (up to 2 minutes), then starts the launcher again.
 UPDATE_FINISHER_SRC=r"""import json, os, subprocess, sys, time
@@ -623,25 +657,33 @@ def _update_manifest_path():
     return os.path.join(DATADIR,UPDATE_MANIFEST_NAME)
 
 def _update_manifest_load():
-    """{"commit": sha, "files": {path: blob sha}, "startup": bool} from the last check or
-    install (shared by both programs), or the defaults."""
+    """{"commit": sha, "files": {path: blob sha}, "startup": bool, "dates": {path: [blob
+    sha, unix time GitHub last committed it]}} from the last check or install (shared by both
+    programs), or the defaults."""
     try:
         with open(_update_manifest_path(),encoding="utf-8") as f: m=json.load(f)
         if isinstance(m,dict) and isinstance(m.get("files"),dict):
+            dates={}
+            for k,v in (m.get("dates") or {}).items() if isinstance(m.get("dates"),dict) else ():
+                try:
+                    if isinstance(v,list) and len(v)==2 and re.fullmatch(r"[0-9a-f]{40}",str(v[0])):
+                        dates[str(k)]=[str(v[0]),float(v[1])]
+                except (TypeError,ValueError): MC.swallowed()
             return {"commit":str(m.get("commit") or ""),
                     "files":{str(k):str(v) for k,v in m["files"].items()},
-                    "startup":bool(m.get("startup",True))}
+                    "startup":bool(m.get("startup",True)),"dates":dates}
     except FileNotFoundError: pass
     except (OSError,ValueError): LOG.warning("update manifest unreadable; starting a new one",exc_info=True)
-    return {"commit":"","files":{},"startup":True}
+    return {"commit":"","files":{},"startup":True,"dates":{}}
 
-def _update_manifest_save(commit=None, files=None, startup=None):
+def _update_manifest_save(commit=None, files=None, startup=None, dates=None):
     """Save the manifest, changing only what is given (re-read first, since the other
     program may have written it meanwhile)."""
     m=_update_manifest_load()
     if commit is not None: m["commit"]=commit
     if files is not None: m["files"]=files
     if startup is not None: m["startup"]=bool(startup)
+    if dates is not None: m["dates"]=dates
     try:
         MC.ensure_dir(DATADIR)
         MC.atomic_write_text(_update_manifest_path(),json.dumps(m,indent=1,sort_keys=True))
@@ -659,6 +701,59 @@ def _update_offline(e):
     if isinstance(e,urllib.error.URLError): return True
     return isinstance(e,(socket.timeout,TimeoutError,ConnectionError,OSError)) and not isinstance(e,FileNotFoundError)
 
+def _github_time(iso):
+    """Unix time of a GitHub date ("2026-11-17T21:04:05Z" or with an offset), else None."""
+    import datetime
+    try:
+        t=datetime.datetime.fromisoformat(str(iso).replace("Z","+00:00"))
+        if t.tzinfo is None: t=t.replace(tzinfo=datetime.timezone.utc)
+        return t.timestamp()
+    except (TypeError,ValueError):
+        return None
+
+def _update_head_time(commit):
+    """When GitHub's newest commit was made (its committer date), else None."""
+    try:
+        c=json.loads(MC.http_get(UPDATE_COMMIT_FMT.format(sha=commit),UPDATE_UA,timeout=(8,15),
+                                 max_bytes=1<<20,attempts=2))
+        return _github_time(((c.get("committer") or {}).get("date")))
+    except Exception:
+        MC.swallowed("head commit date not read"); return None
+
+def _update_file_time(commit, rp):
+    """When GitHub last committed the file rp (at or before commit), else None."""
+    import urllib.parse
+    try:
+        url=UPDATE_FILE_COMMITS_FMT.format(sha=commit,path=urllib.parse.quote(rp))
+        lst=json.loads(MC.http_get(url,UPDATE_UA,timeout=(8,15),max_bytes=1<<20,attempts=2))
+        if isinstance(lst,list) and lst:
+            return _github_time((((lst[0] or {}).get("commit") or {}).get("committer") or {}).get("date"))
+    except Exception:
+        MC.swallowed("file commit date not read")
+    return None
+
+def _update_newer_here(cands, commit, dates, head_time=None, file_time=None):
+    """Which of cands [(path, blob sha on GitHub, local mtime)] were saved here after GitHub
+    committed its copy: {path: (local mtime, GitHub's time)}. A file newer than GitHub's
+    newest commit needs no lookup; the rest are looked up (cached in dates by blob sha, up to
+    UPDATE_DATE_LOOKUPS a check). head_time / file_time stand in for the lookups in tests."""
+    out={}
+    if not cands: return out
+    head=head_time() if head_time else _update_head_time(commit)
+    looked=0
+    for rp,sha,mt in cands:
+        if head is not None and mt>head+UPDATE_TIME_SLACK:
+            out[rp]=(mt,head); continue
+        got=dates.get(rp)
+        t=got[1] if got and got[0]==sha else None
+        if t is None and looked<UPDATE_DATE_LOOKUPS:
+            looked+=1
+            t=file_time(rp) if file_time else _update_file_time(commit,rp)
+            if t is not None: dates[rp]=[sha,t]
+        if t is not None and mt>t+UPDATE_TIME_SLACK:
+            out[rp]=(mt,t)
+    return out
+
 def update_check():
     """Compare the program folder with GitHub's main branch, file by file. No Tk calls.
 
@@ -667,11 +762,13 @@ def update_check():
       "new"      missing here;
       "changed"  here with different bytes (CRLF/LF-only differences don't count), unless
                  the manifest shows GitHub's copy is the one last installed, so the change
-                 was made here (listed in "kept" instead, never overwritten unasked);
+                 was made here (listed in "kept" instead, never overwritten unasked), or,
+                 when the manifest can't tell, the file here was saved after GitHub last
+                 committed it (listed in "newer": your work not pushed yet);
       same       nothing to do (its fingerprint goes into the manifest).
     Plus UPDATE_RETIRED files still here that GitHub no longer has ("removed").
     Returns {"ok", "commit", "version", "files": [{"path","sha","size","status"}], "kept",
-    "git"} or {"ok": False, "error", "offline"}."""
+    "newer", "git"} or {"ok": False, "error", "offline"}."""
     import urllib.error
     root=_install_root()
     try:
@@ -712,8 +809,8 @@ def update_check():
         off=_update_offline(e)
         LOG.warning("update check failed%s: %s",(" (offline)" if off else ""),e)
         return {"ok":False,"error":"%s: %s"%(type(e).__name__,e),"offline":off}
-    man=_update_manifest_load(); mf=dict(man["files"])
-    files=[]; kept=[]
+    man=_update_manifest_load(); mf=dict(man["files"]); dates=dict(man["dates"])
+    files=[]; kept=[]; unsure=[]
     for rp,(sha,size) in sorted(remote.items(),key=lambda kv:kv[0].lower()):
         p=os.path.join(root,*rp.split("/"))
         if os.path.isfile(p):
@@ -725,20 +822,31 @@ def update_check():
                 mf[rp]=sha; continue
             if data is not None and mf.get(rp)==sha:
                 kept.append(rp); continue                   # changed here; GitHub's copy is the one installed last
-            files.append({"path":rp,"sha":sha,"size":size,"status":"changed"})
+            f={"path":rp,"sha":sha,"size":size,"status":"changed"}
+            files.append(f)
+            # neither GitHub's copy nor (still) the copy last installed: which is newer?
+            if data is not None and not (mf.get(rp) and _blob_matches(data,mf[rp])):
+                try: unsure.append((rp,sha,os.path.getmtime(p)))
+                except OSError: MC.swallowed()
         elif os.path.exists(p):
             LOG.warning("update check: %s is a folder here, not a file; left alone",p)
         else:
             files.append({"path":rp,"sha":sha,"size":size,"status":"new"})
+    newer=_update_newer_here(unsure,commit,dates)
+    if newer:
+        files=[f for f in files if f["path"] not in newer]
     for rp in UPDATE_RETIRED:
         if rp not in remote and os.path.isfile(os.path.join(root,rp)):
             files.append({"path":rp,"sha":"","size":0,"status":"removed"})
-    if mf!=man["files"] or (not files and man["commit"]!=commit):
-        _update_manifest_save(commit if not files else man["commit"],mf)
-    LOG.info("update check: commit %s, version %s, %d new/changed/removed, %d changed here and kept",
-             commit[:7],version,len(files),len(kept))
+    if mf!=man["files"] or dates!=man["dates"] or (not files and man["commit"]!=commit):
+        _update_manifest_save(commit if not files else man["commit"],mf,dates=dates)
+    LOG.info("update check: commit %s, version %s, %d new/changed/removed, %d changed here and kept, "
+             "%d newer here than GitHub's",commit[:7],version,len(files),len(kept),len(newer))
+    for rp,(mt,gt) in sorted(newer.items()):
+        LOG.info("  newer here: %s (saved %s, GitHub's committed %s)",rp,
+                 time.strftime("%Y-%m-%d %H:%M",time.localtime(mt)),time.strftime("%Y-%m-%d %H:%M",time.localtime(gt)))
     return {"ok":True,"commit":commit,"version":version,"files":files,"kept":kept,
-            "git":os.path.isdir(os.path.join(root,".git"))}
+            "newer":sorted(newer),"git":os.path.isdir(os.path.join(root,".git"))}
 
 def find_python():
     """Interpreter for child mohaa_view.py builds: sys.executable first.
@@ -1075,6 +1183,7 @@ KEYS_LAUNCHER={
    _kx("F5","reload all loaded paks",("F5","reload")),
    _kx("Ctrl+T","dark / light theme",("Ctrl+T","theme")),
    _kx("Ctrl+Shift+T","old (OS-default) popup windows on / off",("Ctrl+Shift+T","old pop")),
+   _kx("Ctrl+Shift+E","Edit animations on / off (the animation editor)",("Ctrl+Shift+E","edit")),
    _kx("F1","this window",("F1","keys","the keyboard shortcuts (this window)")),
    _kx("right-click","on the Output console or the details panel: copy menu",
        ("RClick","copy","copy menu (Output console, details panel)")),
@@ -1953,13 +2062,21 @@ class KeyMapWindow:
                 return "break"
 
 class App(tk.Tk):
+    # This window's identity; the Map Viewer repeats __init__ with its own. The animation
+    # editor (mohaa_anim_edit.AnimApp, which mohaa_launcher.py runs) is this same window.
+    RUNTIME_NAME="mohaa_launcher"            # init_runtime: logs/mohaa_launcher.log
+    WINDOW_TITLE="MOHAA Model Viewer"
+    CONFIG_PATH=CONFIG                       # settings file
+    CONSOLE_LOG="output_console.log"         # Output-pane mirror in DATADIR
+    OUTDIR_NAME="models"                     # default output folder in DATADIR
+
     def __init__(self, initial_file=None):
-        init_runtime("mohaa_launcher")
+        init_runtime(self.RUNTIME_NAME)
         super().__init__()
         init_fonts()          # families() needs a live root; picks a real mono per-OS
-        self.title("MOHAA Model Viewer")
+        self.title(self.WINDOW_TITLE)
         self.geometry("1380x820"); self.minsize(1000,600)
-        self._config_path=CONFIG
+        self._config_path=self.CONFIG_PATH
         self._cfg=self._load_config(); self._pyexe=find_python()
         self._attach_busy=set()      # attachment keys currently building (see _build_attach)
         self._attach_lock=threading.Lock()   # one attachment build at a time (_build_attach_work)
@@ -1971,11 +2088,15 @@ class App(tk.Tk):
         self._log_q=queue.Queue(); self._drop_paths=[]
         self._status_base="Ready"; self._pak_suffix=""    # status-bar left cell = "<state>  --  N pak(s)"
         self._upd_win=None; self._upd_busy=False          # the update window, a check running
+        # the program's editor (Edit animations here, Edit map in the Map Viewer): on or off,
+        # and the animation editor's page requests and the .skc files it saved this session
+        self._editor_on=tk.BooleanVar(value=bool(self._cfg.get("editor_mode",False)))
+        self._anim_q=queue.Queue(); self._anim_saved=set()
         self._upd_startup=tk.BooleanVar(value=update_check_at_startup())   # shared by both programs
         # Mirror every Output-pane line to output_console.log in DATADIR (the previous
         # session's copy is kept as output_console.prev.log), line-buffered so a crash still
         # leaves it. The full, timestamped record is output/logs/mohaa_launcher.log.
-        self._logfile=open_console_mirror(os.path.join(DATADIR,"output_console.log"))
+        self._logfile=open_console_mirror(os.path.join(DATADIR,self.CONSOLE_LOG))
         self._startup_extras()       # the RUN window's text, "saved <file>" lines, window-open signal
         self._pk3_paths=[]; self._tmp=None; self._animroot=None
         self._vfs=None; self._SH=None; self._TI=None; self._GS=None; self._PROPS=None; self._ED=None; self._tex_ready=False; self._tex_gen=0
@@ -1988,7 +2109,7 @@ class App(tk.Tk):
         # Viewer renderer (View > Viewer renderer): "gl" (default) or "2d".
         self._renderer_var=tk.StringVar(value=("2d" if self._cfg.get("renderer")=="2d" else "gl"))
         self._outdir_on=tk.BooleanVar(value=bool(self._cfg.get("outdir_enabled",True)))
-        self._outdir=self._cfg.get("outdir") or os.path.join(DATADIR,"models")
+        self._outdir=self._cfg.get("outdir") or os.path.join(DATADIR,self.OUTDIR_NAME)
         self._run_opts={}          # one-shot per-build viewer options (right-click open)
         self._last_build=None      # (path,animroot,manifest,emittex,subdir) of the last build
         self._last_info=None       # (path,stdout,html_path) of the last info render, re-run on theme toggle
@@ -2077,7 +2198,7 @@ class App(tk.Tk):
         A damaged file is repaired (hand-typed backslash paths), restored from its .bak, or
         set aside as .corrupt-<date>; what happened is kept in self._cfg_notice and shown in
         the Output pane once the window is up (see mohaa_common.load_settings)."""
-        cfg,notice=MC.load_settings(path or CONFIG)
+        cfg,notice=MC.load_settings(path or getattr(self,"_config_path",CONFIG))
         self._cfg_notice=notice
         return cfg
     @staticmethod
@@ -2122,7 +2243,7 @@ class App(tk.Tk):
 
         Returns True on success. A failure is logged with its traceback and reported in the
         Output pane (the setting then only lasts for this session)."""
-        path=path or CONFIG
+        path=path or getattr(self,"_config_path",CONFIG)
         try:
             MC.atomic_write_json(path,self._cfg,backup=True)
             return True
@@ -2245,7 +2366,7 @@ class App(tk.Tk):
     def _menu_items_options(self):
         return [{"type":"check","label":"Remember loaded paks between sessions","variable":self._remember,"command":self._save_opts},
                 {"type":"check","label":"Auto-open viewer after build","variable":self._auto_open,"command":self._save_opts},
-                {"type":"check","label":"Embed 3D viewer in this window (needs tkwebview2)","variable":self._embed_on,"command":self._toggle_embed},
+                {"type":"check","label":"Embed 3D viewer in this window"+(" (needs tkwebview2)" if not sys.platform.startswith("linux") else ""),"variable":self._embed_on,"command":self._toggle_embed},
                 {"type":"check","label":"Don't save recent files (empty all)","variable":self._no_recent,"command":self._toggle_no_recent},
                 _MSEP,
                 {"type":"cascade","label":"Bake at most N of a .tik's own animations into the page","items":lambda:[
@@ -2270,7 +2391,7 @@ class App(tk.Tk):
                 _mi("Reset settings...",self._reset_settings)]
 
     def _menu_items_view(self):
-        return [_mi("Expand all folders",lambda:self._expand_all(True)),
+        return self._menu_items_editor()+[_mi("Expand all folders",lambda:self._expand_all(True)),
                 _mi("Collapse all folders",lambda:self._expand_all(False)),
                 _MSEP,
                 _mi("Toggle Dark / Light",self._toggle_theme,"Ctrl+T"),
@@ -2567,7 +2688,7 @@ class App(tk.Tk):
         if not os.path.isdir(pc): return None
         try: names=os.listdir(pc)
         except OSError: MC.swallowed(); return None
-        ours=("mohaa_view","mohaa_textures","mohaa_launcher")
+        ours=("mohaa_view","mohaa_textures","mohaa_launcher","mohaa_anim_edit","mohaa_skc_write")
         if any(any(nm.startswith(o+".") for o in ours) for nm in names): return pc
         return None
 
@@ -2728,13 +2849,14 @@ class App(tk.Tk):
     def _build_ui(self):
         # ---- top bar: title, model path, Browse, Open Viewer, tool buttons ----------
         top=ttk.Frame(self); top.pack(fill="x",padx=10,pady=(8,6))
-        ttk.Label(top,text="MOHAA Model Viewer",style="Title.TLabel").pack(side="left")
+        ttk.Label(top,text=self.WINDOW_TITLE,style="Title.TLabel").pack(side="left")
         self._theme_btn=self._mkbtn(top,text="\u25d0 Theme",style="Tool.TButton",command=self._toggle_theme,
                                     tip="Toggle Dark / Light theme.\n(Ctrl+T)")
         self._theme_btn.pack(side="right")
         self._help_btn=self._mkbtn(top,text="? Shortcuts",style="Tool.TButton",command=self._show_hotkeys,
                                    tip="Show all keyboard shortcuts.\n(F1)")
         self._help_btn.pack(side="right",padx=(0,6))
+        self._editor_button(top)
         # selected model path + open controls
         self._path_var=tk.StringVar()
         self._path_entry=tk.Entry(top,textvariable=self._path_var,bg=PANEL,fg=TXT,insertbackground=TXT,
@@ -2812,7 +2934,7 @@ class App(tk.Tk):
         if WEBVIEW2 is None:
             _ph+=("\n\nembedded view unavailable - models open in your browser."
                   +(("\n("+_WEBVIEW_ERR[:80]+")") if _WEBVIEW_ERR else "")
-                  +"\nto enable:  pip install pythonnet pywebview==4.4.1 tkwebview2")
+                  +("\n"+WEBVIEW_HINT if WEBVIEW_HINT else ""))
         self._view_placeholder=ttk.Label(self._viewpane,text=_ph,style="PanelDim.TLabel",
                                          justify="center",anchor="center")
         self._view_placeholder.pack(fill="both",expand=True)
@@ -3407,6 +3529,10 @@ class App(tk.Tk):
         self.bind_all("<Control-f>",lambda e:(self._search.focus_set(),self._search.select_range(0,"end"),"break"))
         self.bind_all("<Control-t>",lambda e:(self._toggle_theme(),"break"))
         self.bind_all("<Control-T>",lambda e:(self._toggle_old_popups_hotkey(),"break"))       # Ctrl+Shift+T
+        if self.EDITOR_LABEL:
+            # Ctrl+Shift+E (Ctrl+E is the Map Viewer page's Script ents)
+            for _k in ("<Control-E>","<Control-Shift-e>"):
+                self.bind_all(_k,lambda e:(self._editor_set(not self._editor_on.get()),"break"))
         self.bind_all("<Control-Shift-t>",lambda e:(self._toggle_old_popups_hotkey(),"break"))
         self.bind_all("<F5>",lambda e:(self._reload_all_cmd(),"break"))
         self.bind_all("<F1>",lambda e:(self._show_hotkeys(),"break"))
@@ -3942,6 +4068,10 @@ class App(tk.Tk):
                 else:
                     self._log_line("Update check: up to date with GitHub (version %s, commit %s)."
                                    %(res["version"],res["commit"][:7]),"dim")
+                if res.get("newer"):
+                    self._log_line("Update check: %d file(s) here are newer than GitHub's (not pushed yet), "
+                                   "so they aren't offered: %s"%(len(res["newer"]),", ".join(res["newer"][:8])
+                                   +(" ..." if len(res["newer"])>8 else "")),"dim")
             self._upd_bg(update_check,done)
         self.after(UPDATE_STARTUP_DELAY_MS,run)
 
@@ -4057,6 +4187,9 @@ class App(tk.Tk):
                    "and keep your own copy. The files replaced are saved first to output/previous-versions/."]
             if r.get("kept"):
                 notes.append("%d file(s) you changed here since the last update are kept as they are."%len(r["kept"]))
+            if r.get("newer"):
+                notes.append("%d file(s) here are newer than GitHub's copies (saved after GitHub last committed "
+                             "them: work not pushed yet), so they aren't offered."%len(r["newer"]))
             if r.get("git"):
                 notes.append("This folder is a Git checkout: a changed file may be your own edit that "
                              "isn't pushed yet, so untick it to keep it.")
@@ -4108,7 +4241,9 @@ class App(tk.Tk):
             if not r["files"]:
                 ver_lbl.configure(text="Installed version:  %s      On GitHub:  %s  (commit %s)"%(VERSION,r["version"],r["commit"][:7]))
                 status.configure(text="✓  You're up to date: every program file matches GitHub."
-                                 +(("\n%d file(s) you changed here are kept as they are."%len(r["kept"])) if r.get("kept") else ""))
+                                 +(("\n%d file(s) you changed here are kept as they are."%len(r["kept"])) if r.get("kept") else "")
+                                 +(("\n%d file(s) here are newer than GitHub's copies (not pushed yet), so "
+                                    "nothing is offered for them."%len(r["newer"])) if r.get("newer") else ""))
                 buttons(("Close",close)); return
             show_list(r)
         def start():
@@ -5611,6 +5746,7 @@ class App(tk.Tk):
                     # mirror the pak's models/ subfolders inside the output folder
                     cmd.append("--outdir="+(os.path.join(self._outdir,subdir) if subdir else self._outdir))
             if opts.get("theme") in ("light","dark"): cmd.append("--theme="+opts["theme"])
+            cmd+=self._builder_extra_args()         # a subclass's own builder options
             ext=bool(opts.get("external"))          # drag-out: always open, own window
             will_open=ext or (self._auto_open.get() and not opts.get("no_open"))
             # Always --no-open: the launcher opens the HTML itself (embedded pane or browser).
@@ -5674,6 +5810,7 @@ class App(tk.Tk):
                     elif kind=="closeview": self._close_viewer()   # viewer Esc (main thread)
                     elif kind=="setang": self._set_view_angles(msg)  # viewer angle dial
                     elif kind=="setrenderer": self._set_renderer(msg,from_page=True)   # Display > WebGL
+                    elif kind=="toggletheme": self._toggle_theme()       # the page's theme button / Ctrl+T
                     # Missing-asset warnings: shown in red but, unlike "err", they don't abort the open or
                     # stall a batch.
                     elif kind=="warn": self._log_line(msg,"err")
@@ -5987,7 +6124,8 @@ class App(tk.Tk):
                 return False
             self.update_idletasks()
             w=max(self._viewpane.winfo_width(),400); h=max(self._viewpane.winfo_height(),300)
-            wv=WEBVIEW2(self._viewpane,w,h)
+            if WEBVIEW_DOTNET: wv=WEBVIEW2(self._viewpane,w,h)
+            else: wv=WEBVIEW2(self._viewpane,w,h,on_fail=self._embed_failed)
             self._view_placeholder.pack_forget()
             wv.pack(fill="both",expand=True)
             self._webview=wv
@@ -5998,6 +6136,22 @@ class App(tk.Tk):
             self._log_line(f"(embedded viewer unavailable: {e}; using browser)","dim")
             self._webview=None
             return False
+
+    def _embed_failed(self,reason):
+        """The Linux pane stopped (or never started): log why, put the placeholder back and
+        show the page that was in it in the browser. Runs on the Tk thread."""
+        self._log_line(f"(embedded viewer unavailable: {reason}; using browser)","err")
+        url=self._embed_url
+        wv=self._webview; self._webview=None; self._embed_drop_hooked=False
+        if wv is not None:
+            try: wv.destroy()
+            except Exception: MC.swallowed()
+        self._embed_url=None
+        try: self._view_placeholder.pack(fill="both",expand=True)
+        except Exception: MC.swallowed()
+        if url:
+            import webbrowser
+            webbrowser.open(url.split("#",1)[0])
 
     # --- embedded-pane drag & drop --------------------------------------
     # WebView2 navigates to an externally dropped file by default, which downloads a
@@ -6017,7 +6171,7 @@ class App(tk.Tk):
         self._embed_drop_hooked=True
         try: wv.web.AllowExternalDrop=False            # 1) no navigate-on-drop
         except Exception: MC.swallowed()
-        try:                                           # 2) catch the drop ourselves
+        try:                                           # 2) catch the drop ourselves (Windows)
             from System.Windows.Forms import DataFormats,DragDropEffects
             def _enter(s,a):
                 try:
@@ -6062,6 +6216,9 @@ class App(tk.Tk):
                         # Placement dial moved: persist pitch/yaw/roll on the Tk main thread (same thread rule
                         # as "mohaa-close").
                         self._log_q.put(("setang",m.split(" ",1)[1]))
+                    elif m=="mohaa-theme-toggle":
+                        # The page's theme button or Ctrl+T: the whole launcher switches (Tk main thread).
+                        self._log_q.put(("toggletheme",None))
                     elif m and m.startswith("mohaa-renderer "):
                         # The page's Display > WebGL toggle: save it on the Tk main thread.
                         self._log_q.put(("setrenderer",m.split(" ",1)[1]))
@@ -6076,12 +6233,73 @@ class App(tk.Tk):
                         # The page requests the model list on boot (no navigation-timing race); a page opened
                         # in a plain browser never asks, so the panel stays hidden there.
                         self._send_attach_models()
+                    elif m:
+                        self._page_message(m)       # a subclass's own page messages
                 except Exception as e:
                     MC.swallowed()
                     self._log_q.put(("dim",f"(viewer message: {e})"))
             wv.core.WebMessageReceived+=_msg
             self._wv_msg_cb=_msg                        # keep delegate alive
         except Exception: MC.swallowed()
+
+    def _builder_extra_args(self):
+        """Extra mohaa_view.py arguments for every model build (a subclass's own options)."""
+        return []
+
+    # ---- the program's editor: on or off ----------------------------------------------
+    # The Model Viewer's is the animation editor (mohaa_anim_edit.AnimApp), the Map Viewer's
+    # the map editor (mohaa_map_edit.EditApp); each sets EDITOR_LABEL and EDITOR_TIP. App
+    # itself has none, and shows no button or menu item for it.
+    EDITOR_LABEL=None
+    EDITOR_TIP=""
+
+    def _menu_items_editor(self):
+        """The editor's View menu item (and a separator), or nothing."""
+        if not self.EDITOR_LABEL: return []
+        return [{"type":"check","label":self.EDITOR_LABEL,"variable":self._editor_on,
+                 "command":lambda:self._editor_set(self._editor_on.get()),"accel":"Ctrl+Shift+E"},_MSEP]
+
+    def _editor_button(self,parent):
+        """The toolbar's editor button, left of Shortcuts (nothing without an editor)."""
+        self._editor_btn=None
+        if not self.EDITOR_LABEL: return
+        self._editor_btn=self._mkbtn(parent,text="\u270e "+self.EDITOR_LABEL,style="Tool.TButton",
+                                     command=lambda:self._editor_set(not self._editor_on.get()),tip=self.EDITOR_TIP)
+        self._editor_btn.pack(side="right",padx=(0,6))
+        self._editor_btn_show()
+
+    def _editor_btn_show(self):
+        b=getattr(self,"_editor_btn",None)
+        if b is None: return
+        on=bool(self._editor_on.get())
+        try: b.configure(text=("\u270e "+self.EDITOR_LABEL+(": on" if on else "")),
+                         style=("Accent.TButton" if on else "Tool.TButton"))
+        except Exception: MC.swallowed()
+
+    def _editor_hash(self):
+        """The page URL's editor flag: every page carries the editor, dormant; #edit=1 opens
+        it with the editor's section and picking on."""
+        return "&edit=1" if (self.EDITOR_LABEL and self._editor_on.get()) else ""
+
+    def _editor_set(self,on,reopen=True):
+        """Turn the editor on or off (saved in the settings). The open page switches in
+        place (setEditorMode, nothing rebuilt or reloaded), and the page URL kept for a
+        reload carries the new flag. reopen is kept for callers and changes nothing."""
+        on=bool(on)
+        self._editor_on.set(on)
+        self._cfg["editor_mode"]=on; self._save_config()
+        self._editor_btn_show()
+        if reopen:
+            self._log_line("%s: %s"%(self.EDITOR_LABEL,"on" if on else "off"),"ok" if on else "dim")
+        url=getattr(self,"_embed_url",None)
+        if url:
+            self._embed_url=re.sub(r"&edit=1","",url)+self._editor_hash()
+        self._embed_js("try{if(typeof setEditorMode==='function')setEditorMode(%s)}catch(e){}"%("true" if on else "false"))
+
+    def _page_message(self, m):
+        """A page message the shared handler doesn't know (a subclass's own). Runs on the
+        WebView2 thread: hand anything that touches Tk or the control to the Tk thread."""
+        return None
 
     # --- on-demand animation builds -------------------------------------------
     # A character can reach over a thousand animations through its $include chain, so the
@@ -6463,6 +6681,7 @@ class App(tk.Tk):
                  "--animsrc="+src,"--animout="+self._anim_outdir,"--no-open"]
             if face_stem: cmd.append("--animpair="+aid+":"+face_stem)
             if legs: cmd.append("--animlegs="+legs)
+            cmd+=self._builder_extra_args()     # a subclass's own builder options
             p=subprocess.run(cmd,capture_output=True,text=True,encoding="utf-8",errors="replace",env=MC.child_env(),timeout=180,**NOWIN)
             # Relay the child's own "!" failure text to the viewer instead of a generic message
             # (e.g. "drives none of this skeleton's 72 bones" means it can never work). The
@@ -6594,7 +6813,11 @@ class App(tk.Tk):
             if w is self._webview or str(w).startswith(str(self._webview)): return  # click landed on the pane
         except Exception: MC.swallowed()
         try:
-            if self.focus_displayof() is None and w.winfo_exists(): w.focus_force()
+            # The Linux pane says when a click gave it the keyboard; Tk can't tell then.
+            took=bool(getattr(self._webview,"has_keyboard",False))
+            if (took or self.focus_displayof() is None) and w.winfo_exists():
+                w.focus_force()
+                if took: self._webview.take_keyboard_back()
         except Exception: MC.swallowed()
 
     def _watch_camera_stop(self):
@@ -6666,6 +6889,7 @@ class App(tk.Tk):
                 url+="&renderer="+self._renderer()
                 _ang=self.view_angles()
                 if _ang: url+="&ang="+",".join(str(x) for x in _ang)
+                url+=self._editor_hash()
                 self._webview.load_url(url); self._embed_url=url
                 self._set_status(f"Viewing {os.path.basename(path)}")
                 self.after(700,self._embed_merge_ui); self.after(2200,self._embed_merge_ui)
@@ -6767,7 +6991,7 @@ def run_gui(make_app, app_name):
                 r=tk.Tk(); r.withdraw(); messagebox.showerror(app_name,msg,parent=r); r.destroy()
             except Exception:
                 MC.swallowed("no display for the error box")
-    if WEBVIEW2 is not None:
+    if WEBVIEW_DOTNET:
         try:
             from System.Threading import Thread as _NetThread, ApartmentState as _ApState, ThreadStart as _TStart
             _t=_NetThread(_TStart(_run)); _t.ApartmentState=_ApState.STA
@@ -6786,8 +7010,12 @@ if __name__=="__main__":
     init=None
     for a in sys.argv[1:]:
         if a.lower().endswith((".skd",".tik")) and os.path.exists(a): init=a; break
-    _code=run_gui(lambda:App(initial_file=init),"mohaa_launcher")
-    if WEBVIEW2 is not None:
+    # The window is the animation editor's (Edit animations), which builds on this module:
+    # it is imported as mohaa_launcher, so it must find this one, not load a second copy.
+    sys.modules.setdefault("mohaa_launcher",sys.modules[__name__])
+    import mohaa_anim_edit as _AE
+    _code=run_gui(lambda:_AE.AnimApp(initial_file=init),"mohaa_launcher")
+    if WEBVIEW_DOTNET:
         # pythonnet's CLR + WebView2 crash during normal interpreter shutdown, and all cleanup
         # already ran in _on_close, so exit immediately (with the real exit code).
         os._exit(_code)

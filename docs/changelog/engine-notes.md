@@ -134,6 +134,28 @@ and line numbers next to the code that depends on them.
   RGB divided by it). Keeping the texture's own alpha under-lights it, and forcing alpha
   to 255 punches opaque black squares through the backdrop with canvas `'lighter'`.
 
+## Moving surfaces (shader stages)
+
+What the Map Viewer's moving surfaces follow (tr_shade.c, tr_shade_calc.c, tr_shader.c):
+
+- A world surface's waves use its own numbers: `backEnd.currentEntity` is the world
+  entity, so the `r_static_shader*` cvars (which scale a static model's) don't apply.
+- `deformVertexes flap` reads the spread but never uses it (`RB_CalcFlapVertexes` adds no
+  per-vertex offset to the phase); `deformVertexes bulge` takes `refdef.time` in
+  milliseconds and the vertex's base `s`; `tcMod bulge` computes its offset and throws
+  it away, so it changes nothing.
+- `tcMod turb` ignores its first number: s moves by sin((x + z) / 1024 + now) and t by
+  sin(y / 1024 + now), times the amplitude, now = phase + time x frequency.
+- `alphaGen dot` / `oneMinusDot` set the colour, not the alpha (`RB_CalcAlphaFromDot`
+  writes channels 0-2), and `ComputeColors` returns before the alpha is touched.
+- `map $lightmap` on a surface with no lightmap (water is `surfaceparm nolightmap`, or a
+  vertex-lit polygon) binds `tr.whiteImage`, so a lightmap stage there changes nothing.
+- An unset rgbGen is identity for a stage with a second bundle or a lightmap, else
+  identityLighting; both are white, as identityLight is 1.
+- `nextBundle add` adds the second picture (`GL_ADD`); plain `nextBundle` multiplies. A
+  stage whose first bundle is the lightmap and has a second one swaps them
+  (`FinishShader`).
+
 ## Map entities
 
 - A spawn key that starts with `$` or `#` (`SpawnArgs::SpawnInternal`, fgame/g_spawn.cpp)

@@ -2221,3 +2221,860 @@ look of the walk and the doors should be confirmed by eye in the launcher.
 - SECURITY lists the requests a map page sends its launcher, and how each is checked.
 - README, map-viewer.md, doors-notes.md, engine-notes.md, game-cvars-candidates.md,
   project-overview.md and development-workflow.md describe the changes above.
+
+## Animation Editor (November 2026)
+
+- A third program, the Animation Editor, started from the RUN launcher's menu (3; exit code
+  13 from `mohaa_envcheck.py menu`). It is the Model Viewer's window
+  (`bin/mohaa_anim_launcher.py`, `AnimApp(mohaa_launcher.App)`) with its own title, settings
+  (`mohaa_anim_editor_config.json`), console log (`output_console_anim.log`) and output folder
+  (`output/animations`). It has no file kind of its own: a .skd / .tik dropped on the RUN
+  launcher still opens in the Model Viewer. `tools/make_launchers.py` gained the `anim`
+  program and regenerated both RUN launchers.
+- `mohaa_launcher.App` reads its identity from class attributes (`RUNTIME_NAME`,
+  `WINDOW_TITLE`, `CONFIG_PATH`, `CONSOLE_LOG`, `OUTDIR_NAME`) and has two hooks for a
+  subclass: `_builder_extra_args()` (added to model and on-demand animation builds) and
+  `_page_message(m)` (page messages the shared handler doesn't know). The Model Viewer's
+  values are unchanged.
+- `mohaa_view.py --editor` writes `<stem>_<kind>_anim_view.html`: the payload gains `editor`
+  (`rig`, the opening pose's raw channels as `base`, and `apose` on Bip01 rigs) and every
+  animation record its raw channels (`raw`, plus `mv` for a movement slot). The page inlines
+  `bin/mohaa_anim_solver.js` and a temporary "Animation Editor" panel: start an edit from the
+  selected animation, the A-pose or the opening pose; the edit is re-solved in the page and
+  plays as an ordinary animation, and starting from an animation checks the page's solve
+  against the built frames. Without `--editor` the page and sidecars are byte-for-byte
+  unchanged, so `VIEWER_REV` stays 80.
+- New: `bin/mohaa_skc_write.py` (lossless SKAN v13 reader / writer; 3,203 of 3,217 shipping
+  .skc rewrite byte-identical, the rest are v11 / v12 prototypes the engine rejects) and
+  `bin/mohaa_anim_solver.js` (the Python pose solver ported for the page). Tests:
+  `tests/test_skc_write.py`, `tests/anim_solver_parity.py` (+ `.js`: every shipping clip,
+  JS against Python, largest difference 7e-13).
+- Editor: bone selection. While an animation is being edited the page draws the skeleton
+  (Skeleton button) and a click on a joint (press and release without moving; a drag
+  still moves the camera) selects its bone; the panel's bone list (tree order, with a
+  filter) does the same. Only bones the engine reads channels for can be selected:
+  ROTATION, POSROT and the IK foot. A thigh or calf selects its foot (the legs are IK);
+  HoseRot / AvRot helpers and ZERO bones are shown but not selectable. The panel names the
+  selected bone's type and whether this animation keys its channels. The overlay wraps the
+  page's `draw()` from the editor script, so Model Viewer pages are unchanged.
+- Editor: handles on the selected bone. Rotate: three rings in the bone's own X / Y / Z
+  planes. Move (Bip01, POSROT tags and the IK feet): three arrows along the model's X / Y /
+  Z. An ordinary bone's turn is written to its local "rot" (and "rotFK" when the animation
+  has one); the foot's "rot" and "pos" are model-space, as the engine's IK reads them, so
+  moving a foot re-solves the leg and moving Bip01 leaves planted feet in place. "Applies
+  to" this frame, or every frame as the same offset from each frame's own pose. A bone the
+  animation doesn't key gets its channels in every frame, from the pose shown; a foot also
+  gets "pos" on its POSROT ancestors that lack one (Bip01 on an upper-body clip), since the
+  solver places a POSROT bone with no position at its bind offset and the IK target is
+  absolute. Undo / Redo buttons (60 steps). A handle takes the press before the camera
+  does; quaternions keep the sign nearest their previous value.
+- Editor: timeline. Keys are whole frames; the frames between keys are in-betweens, made
+  from the keys either side (rotations by the solver's quat_slerp, positions and values in a
+  straight line; before the first and after the last key they hold it). A clip starts with
+  every frame a key, a pose as one key. A strip shows the frames and keys (click or drag to
+  go to a frame); ◀ key / Set key / Delete key / key ▶, Copy pose / Paste pose / Paste bone,
+  and the frame count and fps (the .skc frame time; the viewer's speed slider follows it;
+  added frames hold the last key, removed frames drop their keys). A handle edit on an
+  in-between makes it a key and refills the frames around it; "every frame" edits the keys.
+  Undo covers keys, frame count and fps.
+- Editor: Save .skc. The page sends `mohaa-anim-save` + JSON: every channel's four floats per
+  frame, each frame's bounds (the box of the skeleton's joints, which is what the shipping
+  .skc hold, not the mesh's) with `RadiusFromBounds` (q_math.c; it matches all 8,223
+  shipping frames checked), and the frame's movement and turn. An edited clip keeps its own
+  movement, turn and header flags (TAF_DELTADRIVEN on the movement clips); a new animation
+  has zeros. For each leg whose foot is an IK target, "rotFK" is refreshed to the IK-solved
+  leg in the frames that changed; untouched frames keep theirs. The Animation Editor asks
+  where to save (default `<output folder>/skc`), writes with `mohaa_skc_write.save_skc`
+  (atomic, keeps a .bak), sums the totals (`recompute_totals`), reads the file back with
+  the writer's reader and `parse_skc` and compares every value, then reports to the Output
+  pane and the page. An unedited clip saves with every channel value, delta and flag
+  identical (misc/salute_idle, walks_runs/rifle_walk_forward). `parse_skc` also returns the
+  header flags and each frame's angleDelta (`flags`, `fang`); editor pages carry them with
+  the per-frame deltas.
+- Editor: Add to game. After a save, "Add to game..." asks the Animation Editor for a name
+  (`[A-Za-z0-9_]`, 47 at most: the engine's alias is `char[48]`) that no human .tik in the
+  loaded paks already reaches (all 54 are read: some, like the den_actor dialogue, declare
+  names of their own), then writes `<output folder>/mod/zzz_mohaa_custom_anims.pk3`: the
+  .skc under `models/human/animation/custom/`, a `custom_anims.tik` with one animations{}
+  block listing every custom animation (a registry, `custom_anims.json`, and copies of the
+  files live beside the pak), and the game's own `models/human/new_generic_human.tik`,
+  byte for byte, with one `$include` of it added (every human .tik includes that file;
+  later paks override earlier ones, hence `zzz_`). New paths, so no `newanim/` copy can
+  shadow them. Re-adding a name replaces it. The pak is then read back through
+  mohaa_textures' Vfs: every human .tik's animation catalogue must list the name once,
+  pointing at its .skc, and the .skc must load. Human (Bip01) animations only; the pak is
+  never written into the game folder. Only files saved in this session can be added.
+- SECURITY.md: a row for the editor page's requests (save and Add to game) and their
+  limits. Privacy notice: the Animation Editor shows it under its own name with its own
+  files (`_PRIVACY_SWAPS` in mohaa_anim_launcher.py); tests/check_privacy_sync.py checks
+  those swaps too.
+
+## Embedded 3D pane on Linux (November 2026)
+
+- On Linux the launchers embed their pages too, with Qt WebEngine instead of WebView2.
+  `bin/mohaa_webpane_qt.py` is a helper process that shows the page and puts its X11 window
+  inside the launcher's pane (under Wayland both run on XWayland: the helper sets
+  `QT_QPA_PLATFORM=xcb`). Qt's `QWindow.setParent` on a foreign window doesn't hold, because
+  WebEngine recreates the view's native window when it switches to GPU drawing, so the
+  helper re-parents it with libX11's `XReparentWindow` whenever it isn't inside. A click in
+  the view gives it the keyboard (`XSetInputFocus`), and the helper reports it so a later
+  click on a launcher widget takes the keyboard back. The page's
+  `window.chrome.webview.postMessage` is a stand-in injected into every page and carried by
+  QWebChannel; messages posted before the channel is up are queued. The profile is off the
+  record.
+- `bin/mohaa_webpane_linux.py`: `QtPane`, the launcher's Tk frame for the helper, with the
+  WebView2 calls the launchers use under the same names, so the Model Viewer, Map Viewer
+  and Animation Editor share their pane code unchanged: `load_url`, `core.ExecuteScriptAsync`,
+  `core.AddScriptToExecuteOnDocumentCreatedAsync`, `core.WebMessageReceived +=`,
+  `core.Settings.AreBrowserAcceleratorKeysEnabled = False` (no Reload / Back / Forward),
+  `web.AllowExternalDrop = False`, `web.Dispose()`. `core` stays None until the helper is up,
+  like WebView2's start-up. Page messages are handled on the Tk thread. If the helper stops,
+  the reason (with the fix for a missing `libxcb-cursor0`) goes to the Output pane and the
+  page opens in the browser (`App._embed_failed`).
+- `mohaa_launcher.py`: `WEBVIEW_DOTNET` (True only with tkwebview2) now decides the .NET STA
+  thread and the `os._exit` at the end, in all three launchers, instead of `WEBVIEW2 is not
+  None`. `WEBVIEW_HINT` is the empty pane's "to enable" line for the platform: on Linux it
+  points at the RUN file instead of the Windows-only packages (it used to suggest
+  `pip install pythonnet pywebview==4.4.1 tkwebview2`, which can't work there), and the
+  Windows one now says `python -m pip`. The Embed option drops "(needs tkwebview2)" on Linux.
+- `mohaa_envcheck.py deps --embed` on Linux installs `PySide6-Essentials==6.11.1` and
+  `PySide6-Addons==6.11.1` into `bin/libs-linux` (6.12 has no Qt WebEngine for Python),
+  checks the system first (glibc 2.34+, Python 3.10 to 3.14, x86_64 / aarch64) and warns
+  when `libxcb-cursor0` or an X11 display is missing. The `.sh` RUN file passes `--embed`;
+  on macOS it says there is no embedded pane.
+- Checked under Xvfb with the real Animation Editor: the helper starts, the page loads in
+  the pane and posts to the launcher, the pane follows the window's size, the viewer's Esc
+  closes it and stops the helper, a click moves the keyboard between the page and a
+  launcher box, and a killed helper falls back to the browser. Not yet checked on a real
+  KDE Plasma (Wayland) desktop.
+- Animation Editor clean-up: the "temporary section" note is gone from the panel and the
+  source. A failure in one of the editor's drawing hooks (the skeleton overlay, the
+  timeline strip) is now said once, in the console and on the editor's status line, instead
+  of being swallowed every frame. The launcher logs the error when mohaa_textures can't be
+  imported.
+- `tests/webpane_qt_demo.py`: a stand-alone Tk window to try the Linux pane by hand.
+- README: the macOS and Linux install starts with three one-time steps: the Tk package,
+  `libxcb-cursor0` (Linux, for the pane; with the Fedora and Arch package names) and
+  `chmod +x` on the RUN file. Tried on Kubuntu: the pane works in the launcher.
+
+## Map Editor (November 2026)
+
+- The fourth program, started from the RUN file's menu (**4**, exit code 14): the Map
+  Viewer's window (`bin/mohaa_map_edit_launcher.py`, `EditApp(MapApp)`) with its own title,
+  settings (`mohaa_map_editor_config.json`), console log (`output_console_edit.log`), logs
+  (`mohaa_map_edit_launcher.log`) and output folders (`maps_edit`, `maps_edit_standalone`).
+  A `.bsp` / `.map` / `.bak` dropped on the RUN file still opens in the Map Viewer.
+- `mohaa_map_view.py --editor` names the page `<stem>_<kind>_edit_view.html` and inlines
+  `bin/mohaa_map_editor.js` at the `__EDITOR_JS__` token in the page template, just before
+  `main()` runs. Without `--editor` the token is empty: Map Viewer pages of mohdm6, m4l0 and
+  a hand-written `.map` built before and after came out the same byte for byte apart from
+  the time stamp every build has in its page data, so `MAP_VIEWER_REV` stays 108. A build
+  asked for `--editor` without the editor's file stops with exit code 6.
+- The editor's page: an **Editor** section at the top of the panel with **Modify** moved
+  under it, a line naming the map being edited and where Save as writes, and **New map...**
+  (greyed out in a browser, which can't write the file).
+- **New map...** (File menu, Ctrl+N, the page's button through `mohaa-edit-new`): a starter
+  `.map` written where the user chooses (`output/my_maps/` at first): six 16-unit slabs round
+  a 512 x 512 x 256 room, textured on the inside with textures the retail maps use and caulk
+  outside, a `info_player_start`, a `info_player_deathmatch` and a `light`. Each face's
+  three points are ordered so q3map's `MapPlaneFromPoints` gives the outward plane. The file
+  is written atomically (`.bak` of a file it replaces), read back, and checked
+  (`check_map_text`): braces balance, and every brush rebuilt from its planes closes inside
+  the world (no side missing, nothing past `MAX_WORLD_COORD`).
+- `mohaa_map_launcher.py`: `MapApp` now has the class attributes `App` has
+  (`RUNTIME_NAME`, `WINDOW_TITLE`, `CONFIG_PATH`, `CONSOLE_LOG`, `OUTDIR_NAME`) plus
+  `STANDALONE_NAME`, read in `__init__`, the config load / save, the title label, About,
+  `_standalone_dir` and `_unsafe_to_wipe`, so the editor only overrides them. Its builder
+  command adds `_builder_extra_args()`, a page message it doesn't know goes to
+  `_page_message()` (as in the Model Viewer's launcher), and Clear built maps also takes the
+  editor's `_edit_view.html` pages. The Map Viewer behaves as before.
+- `tests/test_map_editor.py` (the starter room, its check refusing broken text and an
+  open brush, page names, the editor's code only in editor pages); `check_privacy_sync.py`
+  also checks the editor's privacy wording against the Map Viewer's notice.
+- Checked under Xvfb: the three launchers start with their own title, settings and output
+  folder; New map writes, checks and builds the room. The editor pages of mohdm6 and the
+  room load in headless Chrome without a console error, and the room reads back as 6
+  brushes and 4 entities. The `.sh` RUN file run end to end (menu 4, packages, the Map
+  Editor's window), and in the Linux pane the page's New map button reaches the launcher,
+  which writes the room and shows its page in the pane. Not yet checked on Windows.
+
+## Map Editor: brush entities and the level script (November 2026)
+
+- **Brush entities in Modify** (editor pages only, `bin/mohaa_map_editor.js`): selecting a
+  door, trigger, ladder or other brush entity gives it a Modify row, so Edit parameters,
+  Move, Trim origin, Delete / Restore and Undo work on it as a whole. Its place is its
+  `origin`, as in the game (`SV_SetBrushModel`: the model at origin + its bounds); one with
+  no origin key gets an anchor at the middle of its brushes. Its faces are drawn where the
+  row puts them (the door code's `entPose`, the row's offset added to `doorXf`); DEL hides
+  them. Save as `.bsp` writes the origin the game needs; Save as `.map` moves its brushes
+  and patch points, keeping each face's texture where it was (texture lock: the shift
+  changed by the move along the face's texture axes, `texVecs`). Copy refuses brush
+  entities. The page's functions are wrapped by reassignment, so Map Viewer pages stay the
+  same byte for byte.
+- `mohaa_bsp.write_bsp_entities`: a changed entity keeps its `"model" "*N"` when the new
+  keys have no model. The page reads a `.bsp`'s entities from its decompiled `.map`, which
+  holds a brush entity's brushes instead of that key, so without this a saved door would
+  have lost its brush model. The Map Viewer's Modify never sends brush entities, so it was
+  not affected.
+- **Level script...** in the Editor section: the map's `.scr` (beside the map file, or a
+  starting script) in a box over the view, saved by the launcher (`mohaa-edit-scr-load`,
+  `-save`: only beside the open map from disk, a `.bsp` or `.map`; 4 MB, single-byte text,
+  no NUL; atomic with `.bak`, the file's own line endings, read back). The page is then
+  built again and reopened (`mohaa-edit-scr-reload`), its camera handed back once the new
+  page is ready (`mohaa-edit-ready`, `MOHAA_EDIT_CAM`) and Modify's unsaved work offered
+  back by its recovery file.
+- `bin/mohaa_webpane_linux.py`: messages a page posts before the launcher has added its
+  handler are kept (200 at most) and given to the first handler, instead of being dropped.
+  A page that loads quickly could otherwise lose its first messages (Modify's recovery
+  question, the map's load-time notes).
+- Checked: on m4l0 and mohdm6 a `func_rotatingdoor` and `trigger_use`s moved by
+  ( 48 0 8 ) are drawn, saved and read back moved, the saved `.bsp` puts them exactly there
+  in the Map Viewer and keeps their brush models; on a hand-made `.map` a moved door's
+  texture coordinates are unchanged to the texel; the level script's launcher side (new and
+  existing CRLF files, `.bak`, the refusals, the reload and camera) under Xvfb and its page
+  side in headless Chrome. Not checked: a moved door in the game, Windows.
+- Docs: map-viewer.md's known limits said new Modify entities are drawn as boxes without
+  light; they are drawn with their model, lit by the light grid, when they have one.
+
+## Map Editor: brushes (November 2026)
+
+- **Brushes** in the Editor section (`bin/mohaa_map_editor.js`): select a brush in the view
+  and change it by typed values: a new box of a given size on the surface ahead, a box's
+  corners, move / copy by x y z, delete, clip on an axis value or a plane through three
+  points, each face's plane (three points), texture, shift, rotation and scale, push a face
+  along its normal, one texture on every face. Texture lock (on at first) keeps the faces'
+  pictures in place as a brush moves, for Quake-style and `brushDef` faces.
+- Each change is a checked edit of the map's text (the faces must close into a solid,
+  corners inside 65536, numbers only), after which the scene is rebuilt from the text
+  (0.1 to 0.4 s on the retail maps); a refused value changes nothing. Brush changes join
+  Modify's Undo / Redo, its unsaved count and its recovery file.
+- A texture browser: the map's textures and every texture in the loaded paks, filtered by
+  what is typed. The launcher sends the list (`mohaa-edit-texlist`) and loads a texture the
+  page doesn't hold yet from the paks (`mohaa-edit-tex`, on a worker thread; names must
+  start `textures/`, with no `..` or control characters).
+- Saving: Save as `.map` writes the brush changes with Modify's; Save as `.bsp` is refused
+  once a brush changed (a `.bsp` holds its brushes compiled). The close question names the
+  brush changes (`_close_ask` in the editor), and the recovery file keeps brush-only work,
+  its changes checked by the launcher before it is written (`_modify_backup`). After the
+  first brush change the page stops drawing the baked light.
+- `mohaa_map_launcher.py`: Modify's `.map` save message also counts brush changes when the
+  request carries them (only editor pages send them).
+- Checked in headless Chrome on the starter room, a hand-made `.map` with a door and a
+  trigger, and m4l0 (every operation, the refusals, Undo back to the exact text, recovery,
+  the save and close requests), the launcher side under Xvfb (2,772 textures listed, a
+  texture loaded and refused names, brush-only recovery, a `.map` written with three brush
+  changes). Not checked: Windows, a changed map compiled and played in the game.
+
+## Map Editor: patches and terrain (November 2026)
+
+- **Patches** (editor pages, `bin/mohaa_map_editor.js`): a new flat patch, wall, cylinder
+  or arch of a typed size; with one selected, each control point's x y z s t typed (or
+  picked by clicking near it), the patch / a point / a row / a column moved by x y z, a
+  copy, Turn 90, Flip, Delete, and its texture with s t kept, natural or fit. The panel
+  says which way it faces (rows crossed with columns, as the normals in the game's `.bsp`
+  files show), and the view draws its control net with the chosen point marked.
+- **Terrain**: a new flat block of 512-unit patches on the 64-unit grid; with one selected,
+  heights set or raised over a range of vertices, a smooth / cone / flat raise round a
+  vertex within a distance, Smooth, holes cut and filled over a range of squares, the
+  texture lines' texture, shift, rotation and scale, Move / Copy (64-unit steps) and
+  Delete. Refused: off the 64-unit grid, past -8192 to 8192, heights past 32000; a patch
+  spanning more than 510 in height is said (a `.bsp` holds 510 at most).
+- Only what changed is written: a patch's changed points (its header and other points keep
+  their text), a terrain block's changed heights, flags and texture lines (flags such as
+  `maxdetail` kept). Every change is now written in the file's own line endings (CRLF in
+  EA's sources), brushes included.
+- Messages that counted brush changes now count geometry changes (brushes, patches,
+  terrain): the close question, Modify's `.map` save message, the recovery question.
+- Checked in headless Chrome on the starter room, EA's `mohdm6.map` and `m4l0.map` and
+  m4l0's decompiled `.map`: every operation, the refusals, Undo back to the exact text,
+  changes that differ from the file only where made, and a saved `.map` with new patches and
+  terrain built again by the builder. Not checked: Windows, the game.
+
+## Map Editor: the compiler, first part (November 2026)
+
+- **ommap** (`tools/ommap`, from OpenMoHAA's `code/tools/ommap` at commit a2f3401, GPL):
+  made to build again on Linux, Windows and macOS, with MoHAA's surfaceparms, the terrain
+  record at the game's 388 bytes (`vec2_t` was three floats), MOHRadiant's `detail` groups
+  taken into the world, `static_*` entities written as static models (and the static model
+  index lump written from the right array), a missing shader file a warning, and
+  `-gamedir`. The changes are listed in `tools/ommap/README.md`.
+- `tools/build_ommap.py` builds it with the system's C compiler, or for every system with
+  Zig's (`python -m pip install ziglang`); builds for Linux x86_64 / arm64, Windows x86_64
+  and macOS x86_64 / arm64 are in `bin/ommap/`.
+- **Compile map...** (File menu, F9, or the page's Compile button): the open `.map` through
+  bsp (+ vis), with the paks' shader scripts in a game folder in the workspace
+  (`bin/mohaa_compile.py`); the `.bsp` written beside the map (atomic, `.bak`, read back)
+  and offered to open; a leak said, its trail written as `<name>.lin` and drawn on the page.
+- `tools/bsp_compare.py`: two `.bsp` files compared lump by lump.
+- Checked: EA's `mohdm6.map` compiled and compared with the game's `mohdm6.bsp` (bounds,
+  models, entities and static models match; the same geometry drawn), the starter room
+  compiled and a leaking copy's trail read (tests), the launcher's compile run under Xvfb,
+  the page's button and trail in headless Chrome. Not done yet: light (it runs but leaves
+  the lightmaps nearly black), terrain, EA's surface materials and collision bevels.
+  Not checked: Windows and macOS builds run (built only), a compiled map in the game.
+
+## Map Editor: the compiler, second part (November 2026)
+
+- **Light** (`tools/ommap/mohlight.c`, `light.c`): the light step now runs for MoHAA. The
+  world's `ambientlight`, `suncolor`, `sundiffuse` / `sundiffusecolor` and `sundirection`,
+  light from the sky, spotlights, lightmaps for terrain, and the game's light grid
+  (32-unit cells, a 255-colour palette, run-length coded columns). Fixed: a crash in the
+  light tracer on 64-bit systems (a pointer cut to an `int`). Threads on Linux and macOS.
+- **Terrain** (`tools/ommap/mohterrain.c`): `terrainDef` blocks compiled into the terrain
+  lump (heights, holes, texture coordinates, neighbours, the level-of-detail tree) and
+  the per-leaf terrain index lump.
+- **Surface materials**: every brush side's shader record carries the surface types of
+  all its brush's sides (stone when none is named) and the flags MOHRadiant writes on the
+  face; draw surfaces share their side's record, so no-draw faces such as caulk stay
+  undrawn.
+- `info_splinepath` entities no longer count as inside the map for the leak test (m4l0's
+  camera paths made it leak).
+- **Compile map...** offers bsp + vis + light, bsp + fast vis + light, or bsp only; light
+  runs after a leak (vis doesn't); F9 during a compile offers to stop it. The step output
+  pipe is closed after each step.
+- Checked against EA's `mohdm6.map` / `m4l0.map` and the game's `.bsp` files: the light
+  grid's cells match (colours 15 apart on average on mohdm6, 10 on m4l0); lightmaps a
+  little brighter than EA's; mohdm6's 6 terrain patches match in flags, heights, texture
+  coordinates and neighbours; 104 of EA's 297 shader records matched exactly; the two
+  mohdm6 maps look alike in the Map Viewer from the same camera. Tests: the room compiled
+  with light (lightmaps, grid lumps) and with no drawn surface on a no-draw record. The
+  launcher's compile run under Xvfb. Not done yet: sphere lights, `lightdef`s, static model
+  light, terrain shadows, EA's terrain variance and patch dropping, materials between
+  touching brushes, the extra collision sides. Not checked: Windows and macOS builds run
+  (built only), a compiled map in the game.
+
+## Map Editor: the compiler, third part (November 2026)
+
+- **Lights for models**: the light step writes the game's sphere lights (every light
+  entity but NO_ENTITIES ones) and, for each leaf, the lights that can reach it, the sun
+  first where the leaf sees sky. The game lights players, weapons and other models from
+  these; until now a compiled map had none.
+- **Static props lit per vertex**: before the light step the launcher writes the static
+  models' vertices (`<name>.smv`, from the Map Viewer's model code, split out of
+  `ModelBuilder._build` as `_posed` / `_pack`, with `engine_vertices`), and ommap lights
+  each vertex. Without it the game drew them unlit (full white).
+- **Spotlights**: a light with `angles` or `radius` is a spotlight, as in the game's maps
+  (it was `spawnflags 2`, which is NO_ENTITIES).
+- **Hint and clip brushes** are open space, not solid: MoHAA's shaders for them have no
+  `trans`, so the tree filled them in (a light inside a hint brush sat in solid).
+- **Terrain** that no open leaf reaches is left out (m4l0: 241 patches).
+- Checked against the game's mohdm6 and m4l0 (details in `tools/ommap/README.md`): the
+  sphere lights equal EA's field for field; the leaf lists agree where it matters; static
+  prop light has EA's layout, colours 27 apart on average on mohdm6; light grid and
+  lightmaps as before. Found that EA's released sources are older than the shipped maps
+  (hundreds of clip brushes missing), which explains most of the brush, side and shader
+  differences. Terrain shadows were tried and left out: EA's own grids and lightmaps fit
+  better without them. Map Viewer pages are unchanged by the model code split (compared
+  apart from their output folder). Not checked: Windows and macOS builds run, a compiled
+  map in the game.
+
+## Map Editor: the compiler, fourth part (November 2026)
+
+- **Light through foliage, fences and tree lines**: before the light step the launcher
+  copies the `.tga` images of the map's `alphashadow` shaders from the paks into the
+  compiler's game folder (`alpha_shadow_images` in `mohaa_compile.py`). ommap can't read
+  the paks, and without an image it took the whole surface as solid: m4l0's tree lines
+  were stopping the sun.
+- **Light tracer**: a trace ending in solid had its hit point replaced by the trace's far
+  end, so the sun test could miss the sky brush it reached (`light_trace.c`).
+- **Static props**: lit by three quarters plus a quarter of their facing (was half and
+  half), which gives EA's overall brightness on both maps.
+- **Terrain holes in the level-of-detail data** as EA writes them: bits for fully holed
+  children on every node, and the forced split on every node with a hole under it or
+  reaching a hole's corner (`TerrainHoleFlags` in `mohterrain.c`).
+- Checked against the game's mohdm6 and m4l0: m4l0's light grid now 6 apart on average
+  (was 10), its lightmaps level with EA's surface by surface (were 9% darker), its static
+  props mean 52 against EA's 60 (was 39); mohdm6's props 185 against 192 (was 180),
+  the rest of its light unchanged. Terrain hole bits match EA's node for node on mohdm6 (98% on m4l0), split bits
+  93% / 96%. Still different: terrain variance values (a third match), prop shading
+  vertex by vertex. Not checked: Windows and macOS builds run, a compiled map in the
+  game.
+
+## Map Editor: the compiler, fifth part (November 2026)
+
+- **Terrain detail as EA writes it**: a node's variance is how far its triangle's apex
+  sits from the mean of its long edge's ends, the largest in its subtree (was the
+  midpoint's error); `invisible` cuts a hole as `nodraw` does but forces no split;
+  `maxdetail` triangles are kept at full detail; the forced splits follow the rule worked
+  out from the game's maps (each `nodraw` hole, each `maxdetail` triangle, each triangle
+  sharing an edge with a `nodraw` hole and the one across that one's long edge, then the
+  node across each split node's long edge, in its patch or the one beside it on the
+  512-unit grid), in `TerrainHoleFlags` (`mohterrain.c`).
+- **Terrain in the leaves**: every world leaf, solid ones too, lists each patch one of
+  whose smallest triangles' boxes its box meets, as EA's do; a patch cut away entirely is
+  kept when a leaf lists it (`EmitLeafTerrain`, `writebsp.c`).
+- **Lightmaps laid out and lit as EA's**: a texel every 32 units (was 16), or half a
+  surface's width along an axis where that is less (`lightmaps.c`); texels stored rescaled
+  by colour at 127, as the game doubles them on loading (`LightmapToBytes`); lights light
+  surfaces 1.25 times as brightly as q3map's formula (`surfaceLightScale`). mohdm6's
+  lightmaps, 8% darker than EA's surface by surface, are now level with them.
+- **Static props reaching into brushes** are lit from the first clear point within 16
+  units on the way to each light: ceiling lamps' bulbs were dark.
+- **Light-step faults**: the patch-shadow setting of the grid's, the props' and
+  vertex-lit surfaces' traces was never set, so the gcc and clang builds lit maps
+  differently (now the same `.bsp` from every build); an alphashadow texel lookup could
+  read outside its image, which crashed the clang builds on m4l0 (`light_trace.c`).
+- Checked against the game's mohdm6 and m4l0: terrain holes and variance node for node
+  (wherever the released source's heights are the shipped map's), forced splits 99.5% /
+  99.3%, the leaves' patch lists by EA's rule on EA's own files exactly; lightmaps the same
+  size as EA's on 94% / 98% of flat faces, level with EA's (median 1.00 on both), 7 / 8
+  apart a channel texel by texel; light grid 15 / 6 apart; static props 22 / 26 apart a
+  vertex (mohdm6 was 28). Still different: fences and grates (no side equations or
+  fence-mask names yet, so the game takes them as solid to shots), the props' shading
+  across each model, the last 0.5 to 0.7% of the forced splits. m4l0 keeps 731 patches
+  against EA's 591 because the shipped map's terrain was trimmed after its source was
+  released. Not checked: Windows and macOS builds run, a compiled map in the game.
+
+## Map Editor: the compiler, sixth part (November 2026)
+
+- **Fences and grates**: the shader records name their fence masks as EA's do (the
+  shader's editor image, `ignore` for `nodraw`, `nomask` for terrain); fence sides get
+  their texture coordinates as side equations (lump 10), which the game uses to let a
+  shot through a fence's see-through pixels; a brush's collision record holds all its
+  sides' contents (without it, a gate with `nodraw` round its face wasn't a fence to the
+  game at all); bevel sides take the brush's first shader instead of none (a shot that
+  met a gate's bevel stopped dead). `FenceMaskName`, `EmitSideEquation` (`writebsp.c`),
+  the bevels in `map.c`.
+- **Textures laid out by their images' real sizes**: ommap took every image it couldn't
+  read as 64 by 64, and it can't read the paks, so most textures were stretched or
+  squeezed. The compile launcher copies each used shader's image into the compiler's
+  folder before the bsp step (`texture_images`, `map_shaders` in `mohaa_compile.py`),
+  and ommap reads a `.jpg`'s size from its header (`JpegSize`, `shaders.c`).
+- Checked against the game's mohdm6: the fence brushes' sides, shaders, masks and all
+  82 side equations as EA's; texture coordinates EA's at 97% of vertices (was 9%), 93%
+  on m4l0. Light unchanged on both maps. Test for a gate's fence data and a `.jpg`
+  texture's layout. Not checked: shooting through a compiled fence in the game.
+
+## Map Editor: the compiler, seventh part (November 2026)
+
+- **Static props shaded as the game shades a model**: each light's strength is taken at
+  the model's centre (the mean of its vertices) and each vertex takes it by how far it
+  faces the light (v.n / |v|^2 from the vertex, times the distance from the centre), as
+  the game's own model lighting does (`renderergl1/tr_sphere_shade.cpp`); the sun by the
+  vertex's facing alone; and the whole model gets the world's ambient light and the light
+  grid at its centre. Scales as the game's maps fit: lights 2, sun and ambient 2.6, grid
+  0.234. It was three quarters of every light from any side plus a quarter by facing,
+  which flattened the shading (a sandbag's top and sides came out alike) and left a
+  lamp's outside dark when its light sat inside it. `MohVertexLight`, `MohStaticModelBase`,
+  `MohGridLight` (`light.c`), `MohStaticModelLight` (`mohlight.c`).
+- Checked against the game's mohdm6 and m4l0: lit on EA's own mohdm6, the props are 12.6
+  apart a vertex on average (was 22.4), the mean 195 against EA's 192; compiled from the
+  released sources, 18 on mohdm6 (was 22; the shipped map moved some lamps) and 21 on
+  m4l0 (was 26), 11 on m4l0 leaving its trees out (was 23). Nothing else in the `.bsp`
+  changes (every other lump the same as before). Test for a prop under a light. Still
+  different: trees and bushes (30 apart on m4l0; EA's leaves are brighter, in the shade
+  most of all). Not
+  checked: a compiled map in the game.
+
+## Map Viewer: moving surfaces (November 2026)
+
+- **Water and other moving surfaces play as in game.** A shader that moves in game
+  (`deformVertexes`, a moving tcMod, an `animMap`, a wave on its rgbGen or alphaGen) used
+  to show one still picture. The build now packs its stages (`fx_payload`, `fx_stage`,
+  `_fx_deform`, `_fx_rgb`, `_fx_alpha`, `_fx_tcmods`, `_fx_tcgen` in mohaa_map_view.py;
+  `_parse_stage` keeps each texture bundle's tcMods, tcGen and animMap, the `nextBundle`
+  mode and the depthFunc), and the page draws the `.bsp`'s polygons that use it one pass
+  per stage with the game's lighting on (`FX`, `fxDraw`, `fxMods`, `fxNormals`, `VS_FX`,
+  `FS_FX` in mohaa_map_page.py), redrawing up to 30 times a second while one is in view
+  (`fxTick`). Retail Allied Assault maps with one: m1l2b, m1l3c, m2l2a-c, m3l1a/b, m3l2,
+  m4l0-m4l3, m5l1b, m5l2b, m6l1a, m6l2a/b, m6l3a/c, mohdm3/4/6, obj_team3/4. Checked by
+  rendering m2l2b, m3l1a, m4l0, m4l3 and m6l3c in a headless browser: the frames change
+  over time where the moving surfaces are.
+- `MAP_VIEWER_REV` / `MAP_VIEWER_REV_REQUIRED` go to 109 and `INDEX_VERSION` to 11 (the
+  cached shader index now keeps the stages), so cached map pages and indexes rebuild.
+
+## Editors folded into the viewers (November 2026)
+
+- **Two programs again.** The Animation Editor and the Map Editor are no longer programs 3
+  and 4 behind the RUN menu: they are modes of the Model Viewer and the Map Viewer.
+  **View → Edit animations** / **View → Edit map** (or the **✎** button beside Help, or
+  `Ctrl+Shift+E`) turns the mode on or off and builds the open file again in that mode;
+  the choice is kept in the viewer's settings (`editor_mode`). `App._editor_set`,
+  `_editor_button`, `_menu_items_editor` (mohaa_launcher.py) appear when the running class
+  sets `EDITOR_LABEL`; the Model Viewer runs `AnimApp` (`bin/mohaa_anim_edit.py`, was
+  `mohaa_anim_launcher.py`) and the Map Viewer `EditApp` (`bin/mohaa_map_edit.py`, was
+  `mohaa_map_edit_launcher.py`), whose builder flag, page names and cached-page check
+  apply only while the mode is on. The editors' own settings, console logs and output
+  folders are gone: they use their viewer's (editor pages are `_anim_view.html` /
+  `_edit_view.html` beside the viewer's). An update removes the two old launcher scripts.
+  New map (Ctrl+N) and Compile map (F9) are always in the Map Viewer's File menu; New map
+  turns Edit map on. `Ctrl+Shift+E` because `Ctrl+E` is the Map Viewer page's Script ents.
+- **Save as .map after a geometry change alone.** Removing terrain (or any brush or patch
+  change with no entity changed) left Modify's Save as `.map` greyed, since Modify's
+  render counted entities only. `edSaveButtons` (mohaa_map_editor.js) now lights it for
+  any brush, patch or terrain change and keeps Save as `.bsp` greyed with a tooltip
+  saying why; undoing every change greys both again. Checked in headless Chrome on an
+  m3l1a editor page.
+- **Compiled maps crashing the game a second after spawning**: not found yet. The
+  compiler's output was checked against OpenMoHAA's loaders and the light grid lookup
+  (every read in range) on the starter room and m4l0; what was checked and what still
+  differs from EA's output is in [map-editor.md](map-editor.md) (Known limits). A bsp-only
+  compile (no lightmaps, no light grid) is now labelled in the dialog and the Output pane
+  as for the viewer only.
+- Docs: README, map-editor.md, project-overview.md, development-workflow.md, SECURITY.md,
+  PRIVACY.md and tools/ommap/README.md describe the modes; the RUN menu (1 Map Viewer,
+  2 Model Viewer) and `tools/make_launchers.py` are back to two programs, with the editors'
+  files in their viewer's lists.
+
+## Edit map / Edit animations switch in place (November 2026)
+
+- **No rebuild when the editor is turned on or off.** Turning View → Edit map or Edit
+  animations on or off used to close the page and build the file again as a separate
+  editor page (`_edit_view.html` / `_anim_view.html`). Every page now carries its editor,
+  dormant: mohaa_map_view.py always inlines mohaa_map_editor.js, and mohaa_view.py always
+  includes the rig, the raw `.skc` channels and the animation editor (`EDITOR` is on;
+  `--editor` is accepted and changes nothing, `--no-editor` leaves it out). The page head
+  reads `#edit=1` from its URL into `window.__EDITON__` and defines `setEditorMode(on)`,
+  which runs the editors' hooks (`__EDITHOOKS__`). `App._editor_set` runs it in the open
+  page and keeps the flag in the URL used for a reload (`_editor_hash`); nothing is closed,
+  rebuilt or reloaded. One page name for both modes, so `_builder_extra_args` and the
+  editors' `_viewer_html_name` are gone; `_html_current` checks every page against the
+  editor's own files.
+- Map page, mode off (`EON()` in mohaa_map_editor.js): the Editor section is hidden and
+  Modify goes back to its own place (`edMode`, `MODHOME`), the title loses "Map Editor -",
+  `modTakes` takes no new brush entity, `edPickSync` selects nothing and `edMarks` draws
+  only the leak trail. Rows and brush / patch / terrain changes already made stay, and
+  still save, undo and go into the recovery file. Model page, mode off: the Animation
+  Editor panel, skeleton overlay, joint picking and handles are off; an edit in progress
+  is kept for when it is turned on again.
+- Checked in headless Chrome on m3l1a (a brush entity taken only with the mode on, a
+  terrain removal keeping Save as `.map` lit after the mode is turned off, the section and
+  Modify's place both ways) and allied_pilot (the panel both ways, the edit kept).
+- `MAP_VIEWER_REV` 110 and `VIEWER_REV` 81, so cached pages rebuild once with the editor in
+  them. A model page is about 30% larger (the editor and each animation's raw channels).
+
+## Edit animations: posing tools (November 2026)
+
+- **Drag tool** (the default): any joint follows the mouse in the plane facing the camera
+  (`screenDelta`, `camAxes`, from project()'s own turns). What it moves (`dragKind`): the
+  hips, pelvis or lower spine move the body (Bip01's "pos"; with the feet planted both
+  feet become IK targets where they are, so the knees bend); a foot (or its knee / thigh)
+  moves the foot's IK target; tags move; any other joint is pulled to the mouse by
+  turning the bones above it (`applyReach`, cyclic coordinate descent over `reachChain`:
+  2 bones for hands and fingers, 4 for the head and neck, or as set).
+- **Rotate tool**: drag inside the circle round the selected joint to turn it about the
+  view line; Shift tumbles it about the screen's up and side lines. Bip01 with **feet:
+  move with the body** turns the whole body with the feet's targets carried round
+  (`applyTurn`): flips, lying down, hand-stands.
+- **Axes** keeps the rings and arrows. All three tools work on this frame or every key,
+  and share one undo step per drag (`beginEdit` / `endEdit`: the whole change re-applied
+  to the snapshot taken at the press).
+- Typed values for the selected bone (turn in degrees about X, Y, Z from its parent, a
+  foot's facing; its place), **Reset bone** (the pose the model opened in), **Copy from
+  other side** and **Mirror pose** (left and right swapped across the model's middle; each
+  bone's axis correction taken from the symmetric A-pose, `mirrorCorr`).
+- Plain-language hints: under the tools, and beside a joint the mouse is over.
+- **The "solver check: DIFFERS" message is fixed at its cause.** The page's pose solver
+  (mohaa_anim_solver.js) lacked the ankle helper's HoseRot variants that mohaa_view.py
+  has (`hoseType` 0 / 1, as MOHAA Reborn's allied_pilot.skd uses): it flipped the ankle
+  cuff as on a retail rig, 1.1 off on bar_wall_left_shoot. Ported, `hoseType` added to
+  the rig the page gets (`EDITOR_RIG_KEYS`) and to tests/anim_solver_parity.py; 203
+  clip / rig cases including the Reborn pilot match to 1e-13. If the check ever differs
+  again, the panel says so in plain words (only the preview is affected, never the saved
+  file) and the Output pane logs the bone, dimmed.
+- `VIEWER_REV` 82.
+
+## Edit map: building in the view (November 2026)
+
+- **Tools in the Editor section**, used with the mouse in the 3D view (mohaa_map_editor.js,
+  `EDTOOLS`, `edToolHtml`, the capture-phase mouse and key handlers): Select, **Draw
+  brush**, **Resize**, **Move**, **Clip** and **Terrain**. Each drag is drawn as outlines
+  (`ED.prev`, added to `edMarks`) and written once on release, one Undo step, on the grid
+  size (`gridSize()`, 8 at first).
+- **Draw brush** (`edDrawDown`): an outline dragged on the plane of the surface under the
+  mouse (its main axis: floor, wall or ceiling), then a height set by the mouse along that
+  axis (`rayLineT`), then a click. Shapes: box, 3- to 16-sided prism (`edPrismFaces`,
+  corners on whole units), cylinder and pipe (curved patches, upright).
+- **Resize** (`edResizeDown`): a brush face dragged along its normal; checked as it moves
+  (`edCheck`), red when it would turn the brush inside out.
+- **Move** (`edMoveDown`): a brush, patch or terrain block slid over the floor, Shift up
+  and down, Alt a moved copy; terrain in 64-unit steps.
+- **Clip** (`edClipDown`, `edClipDo`): two points and the eye make the cutting plane, so the
+  cut follows the line drawn on screen whatever depth each click lands at; a third point
+  tilts it. Enter cuts, Shift+Enter splits into two brushes (one text change), Tab flips.
+- **Terrain** (`edTerrDown`): single triangles cut or filled by click or drag (the second
+  "( nodraw )" group of a vertex is the square's other triangle, `terrainTris`; ommap and
+  the game already took them one by one, only the panel did whole squares); raise / lower
+  by dragging, flatten, smooth, within a radius with a smooth edge. The terrain under the
+  mouse is found behind clip and other editor brushes too (`edTerrHit`).
+- The panel: tools and their options first, a one-line summary of what is selected with
+  Delete, and every typed value folded under **Exact values**.
+- Checked in headless Chrome on the starter room (a box drawn 64 x 128 x 64, its top
+  pulled to 128, moved 64, clipped; an 8-sided prism drawn and split in two) and m3l1a (one
+  triangle cut, ground raised).
+
+## Edit map: building in the view, second part (November 2026)
+
+- **Corners and edges** (Resize, `edGrabAt`, `edGrabDown`, `pointDrag`): a brush's corners
+  (white crosses, `edCornerMarks`) and edges are dragged on the axis plane most square to
+  the view (Shift: up and down), on the grid. The brush is rebuilt as the convex hull of its
+  corners (`hull3`, `facesFromCorners`), each new face taking the texture of the old face
+  that faced most the same way. A patch's control points drag the same way.
+- **Texture tool** (`edPaintDown`, `edFaceTex`): click paints a face (Shift: the whole
+  brush; patches and terrain patches too), Alt+click picks the texture under the mouse,
+  Ctrl+click selects a face for Fit, turn, flip, shift, scale and Natural. A list of tool
+  textures beside the Texture box (`TEXPRESETS`: caulk, hint, vis, skip, clip, playerclip,
+  monster clip, nodraw, trigger, origin, areaportal, ladder, caulksky, weapon clip).
+- **Curved shapes**: cone (`edPatchCone`) and pipe bend (`edPatchElbow`, a quarter torus)
+  join the cylinder; all three can be drawn on a floor, wall or ceiling (built standing on
+  z, then turned by a cyclic swap of axes so they still face outward).
+- **Patches**: +rows / −rows / +cols / −cols (`edPatchGrow`: de Casteljau halving keeps the
+  shape; removing merges two spans back), **Cap ends** (`edPatchCap`: a disc patch on each
+  closed edge, facing away from the patch), **Thicken** (`edPatchThicken`: a copy pushed back
+  along each control point's normal, rows reversed so it faces the other way, plus strips
+  on every edge that isn't a seam or a point; `edAddPatches` writes them as one Undo step).
+- **Region** (`edRegionSet`, `edInRegion`, wrapping `faceShown` and `entShown`): only what
+  lies within the margin round the selection is drawn.
+- **Terrain**: **paint texture** (a terrain patch's texture line, reached behind brushes),
+  **draw a new block** (`edTerrNewDown`, `edTerrNewText`: whole 512-unit patches on the
+  64-unit grid, optionally fitted to the ground round it), and for a selected block in any
+  tool **Join edges** / **Fit to neighbours** (`terrHeightsMap`, `terrFit`: edge heights
+  from the neighbouring blocks' shared vertices, the inside blended as a Coons patch).
+- **Map Viewer: Hints (`Ctrl+H`)** now covers vis brushes too (`C_HINT|C_VIS`), so hint,
+  skip and vis brushes show in the In-game look without switching to the Editor look.
+- Checked in headless Chrome on the starter room (a corner raised 32 to give a 7-faced
+  brush, hint painted, a texture picked, a face fitted, a pipe bend given two more rows and
+  a control point raised 40, a cone drawn on a wall, a new terrain block, a cylinder capped,
+  a flat patch thickened into a slab of 6 patches, a cylinder into a tube) and m3l1a (244
+  hint and vis faces shown by Ctrl+H in the In-game look, a block's 17 shared edge
+  vertices raised 40 and joined back, a terrain patch painted through a brush, Region round
+  one block drawing 12 of 2,683 faces).
+
+## Edit map: Compile builds what you see (November 2026)
+
+- **Compile... works on any open map, changes included** (`edCompileAsk`, `_edit_compile`):
+  the page sends its text (a `.bsp`'s decompiled `.map` with every edit in it), the user picks
+  the steps and where the `.bsp` goes, the text is written beside it as `<name>.map` (kept,
+  to open and carry on later) and compiled there. It used to refuse a `.bsp` ("a .bsp is
+  already compiled") and compile only a `.map` as saved. A `.map` there that Compile didn't
+  write, the opened map, and the opened `.bsp` are replaced only when the user says so
+  (kept as `.bak`). The page counts its changes saved once they are in the compiled `.map`
+  (`edCompiledSaved`). F9 and the menu ask the page for its text the same way.
+- The Editor section's note says how Compile works now, and that baked light comes back
+  once the map is compiled.
+- **The compiler builds as EA's does**, checked by compiling the same `.map` with EA's own
+  `Q3map.exe` (run under Wine as a reference only, never shipped):
+  - each static prop gets its model's collision brushes from the paks
+    (`models/<model>.map`, turned, scaled and moved with it), so props are solid in the
+    game, and worldspawn's `map_time` is set to the compile's time, so the game never pairs
+    the new `.bsp` with an old `.pth` (`ea_prepare`, on the map's copy);
+  - no edge bevels (`noEdgeBevels`, tools/ommap/map.c): brush sides now match EA's count
+    exactly (decompiled m3l1a: 28,285 against 63,923 before);
+  - the Windows build leaves out the editor's pak headers, so it builds from
+    `tools/ommap` alone; all five programs in `bin/ommap` rebuilt.
+- Tests: `CompileFlow` (the launcher's flow from a `.bsp`'s page, with the `.map` questions)
+  and `AsEaBuildsIt` (the map_time stamp, and a prop's collision planes against EA's).
+
+## Updater: files newer here than GitHub's (November 2026)
+
+- **A file saved here after GitHub last committed it isn't offered as an update**
+  (`update_check`, `_update_newer_here`). The manifest already kept a file changed here after
+  an update; one changed before any check saw it matching (work not pushed yet) was offered,
+  older than the copy here. Now, for a differing file the manifest can't place, the file's
+  time here is compared with GitHub's: the newest commit's date first (`/git/commits`, one
+  request), then for a file older than that the newest commit touching it (`/commits?path=`,
+  at most 30 a check, each answer kept in the manifest by the file's blob SHA, `dates`). A
+  file still as the updater installed it is offered whatever the dates, so a commit made
+  before an install and pushed after it still reaches it. The update window, the Output pane
+  and the log say which files were left so.
+- Privacy notice dated 18 November 2026 (`PRIVACY_TEXT`, `docs/PRIVACY.md`): the update record
+  also keeps when GitHub last committed a differing file, and the check reads commit dates.
+- Tests: `Updater` (newer than GitHub's newest commit, newer than the file's own commit only,
+  an installed copy offered whatever the dates, the lookups cached).
+
+
+## Map Editor: full vis in minutes, MBuilder's options (November 2026)
+
+- **Why vis ran all night**: a decompiled map has lost its `vis_leafgroup` entities (the
+  compile consumes them; a `.bsp` keeps only their `common/vis` brushes), and full vis of an
+  open map follows every path each portal might see through. MBuilder sat at 99% for over
+  9 hours on a decompiled m3l1b.
+- **Vis groups put back** (`restore_leafgroups`, `bsp_leafgroups`, `find_origin_bsp` in
+  mohaa_compile.py): Compile turns the map's loose vis brushes back into groups on its copy
+  of the map, each targeting the groups it never sees in the original `.bsp`'s vis (m3l1b:
+  115 groups, 3,493 blocks). The decompiled `.map` itself is left as it was.
+- **ommap reads them as EA's compiler does** (`map.c`, `prtfile.c`, `vis.c`, `visflow.c`):
+  the bsp step writes the groups' clusters and blocks to `<map>.lgv`; vis leaves blocked
+  clusters out of each row, and also out of the work with worldspawn's `vis_derived` (or
+  `-derived`); worldspawn's `farplane` (when `farplane_cull` is 0) or `-farplane N` skips
+  portals further apart. `-nomanvis`, `-noderived`, `-nofarplane` turn these off.
+- **A cap on the vis work** (`-cap N`, ommap): past N flow steps for a portal, everything
+  its paths might still see counts as seen, so a capped portal sees more than it would
+  have, never less. Compile passes 100,000 (Cap the work per portal, on by default):
+  m3l1b's full vis took 2 min 51 s on two cores; 10,000 took 32 s. Without the cap it
+  hadn't finished after 22 minutes. Against a full vis of the same tree run to the end, the
+  capped one sees 12% more and every pair the full one sees both ways.
+- **MBuilder's switches in the Compile window**: bsp verbose, no curves, no detail, no hint
+  (`-nohint`, new in ommap: hint and vis brushes don't split the map), entities only
+  (`-onlyents`: the entities written into the `.bsp` compiled before, vis skipped; ommap
+  now leaves the static props out of them), detail as structural;
+  vis verbose, passage only, merge, groups skip the work, ignore the farplane, vis groups,
+  the cap; light verbose, extra, no shadows; and more switches for each step. The `.bsp` can
+  go straight into the game's maps folder for its gametype (`maps`, `maps/dm`, `maps/obj`),
+  and the game can be started with it after (its command line, `g_gametype` and `+devmap`),
+  as MBuilder does. Each step's time is in the Output pane, and vis's progress shows as it
+  comes (`_printf` flushes).
+- A hint brush splits the map by its hint sides only, not its skip sides, as EA's compiler
+  does (`facebsp.c`). A Windows machine with more than 32 CPUs no longer runs the compiler
+  on one thread.
+- Tests: `CompileOptions` (the switches, the cap's number, groups put back from a small
+  `.bsp`, twice the same), `Compile.test_entities_only` (only the entity lump changes; no
+  `.bsp` before: refused) and `CompileFlow`'s switches.
+- The game started after a compile gets `+set logfile 2` by default: the engine then flushes
+  `qconsole.log` after every line (`com_logfile`, qcommon/common.c), so a crash keeps the
+  log's last lines; with the usual buffered log they are lost.
+
+## Map Editor: the in-game crash, door textures, theme key (November 2026)
+
+- **Wires, bars and grates were vertex lit** (`lightmaps.c`): q3map's `SURF_POINTLIGHT` is
+  0x800, which is MoHAA's `SURF_NONSOLID`, so every nonsolid surface got lightmap -3, which
+  EA's compiler never writes. The game spammed "Vertex color specified for shader
+  'textures/general_industrial/ge_wires_para', but vertex colors are not valid for this
+  model" and crashed on m3l1b a moment after the player looked into the room past the
+  bunker door. Those surfaces now get lightmaps: m3l1b's faces and patches are lit the way
+  the game's own `.bsp` has them.
+- **Doors, crates and other brush entities had shifted textures** (`map.c`,
+  `AdjustBrushesForOrigin`): their textures now stay where the editor shows them, as in
+  EA's compiler (m3l1b: 91% of their vertices at the game's own texture position, from 2%).
+- **Ctrl+T is the theme everywhere**: in either viewer's page, Ctrl+T (and the page's
+  theme button) switches the whole launcher's theme, page included, instead of only the
+  page's panel; in a plain browser it switches the page. The page's own `T` (Map Viewer)
+  and `L` (Model Viewer) theme keys are gone. The Map Viewer's Triggers filter moved from
+  Ctrl+T to **Ctrl+U** (`FILTER_KEYS`, the Show button, the legend and the keyboard map).
+- **The Compile window's three step choices have tooltips**: what each does and roughly how
+  long it takes, plus how long the last compile of that kind took here (`compile_last` in
+  the settings).
+- **The real freeze: terrain** (`mohterrain.c`). The game didn't crash, it stopped
+  responding ("not responding") as soon as terrain came into view: looking down the room
+  past the bunker door, or flying out with noclip. A terrain patch's two big triangles take
+  one diagonal or the other (`TERPATCH_NEIGHBOR`), and neighbours must alternate for the
+  renderer's splits to meet across patch edges. ommap alternated them only inside each
+  `terrainDef`, and a decompiled map has one `terrainDef` a patch, so every patch had the
+  same diagonal and the splits went round in circles. They now alternate across the whole
+  map from its first patch: m3l1b's 426 patches get exactly the game's own flags.
+- The "Compiled" question says it opens the `.bsp` here in the Map Viewer (not the game);
+  its button is still **Open the .bsp**.
+- **Terrain level-of-detail words** (`mohterrain.c`, `mohaa_bsp.py`, `mohaa_compile.py`;
+  first thought to be the cause of the colour bars below, which it wasn't). EA's `terrainDef` vertices can carry `nodetail`,
+  `important` and `trivial` (and `invisible`, a hole that splits nothing); the decompiled map
+  had none of them, so far terrain dropped to big triangles that the game's texture
+  coordinates smear. ommap now reads the words as EA's compiler does (a leaf all `nodetail`
+  and not `nodraw` never splits, 0x4000, passed up and down the tree; `important` doubles
+  a leaf's variance, `trivial` halves it), the decompiler writes them from the `.bsp`'s
+  variance tree, and a compile of a decompiled map that lacks them puts them back from its
+  original `.bsp` (`restore_terrain_detail`, said in the Output pane). m3l1b recompiled:
+  8,970 never-split nodes (the game's own `.bsp` has 8,968) and the same variances. The
+  page and the editor take `invisible` as a hole like `nodraw`.
+- **A long vis group stopped the bsp step** ("Token too large", m2l1): a group can block
+  hundreds of others, more than the 1,023 characters a `.map` value holds. The restored
+  groups now spread their names over `target`, `target2`, `target3`... and ommap joins them.
+  Test: `CompileOptions.test_long_leafgroup_target_is_split`.
+- **Lighting, measured, not changed**: recompiled lightmaps against the game's own (mean,
+  ours / game's): m3l1a 1.01, m5l1a 1.04, mohdm6 1.08, m3l1b 1.09 (its terrain 1.37, its
+  sunlit floors 1.27). m3l1b and m3l1a have the same sky settings (`sundiffuse 3`), and
+  m3l1a matches, so no general rule for the sky light came out of it yet.
+- **The real cause of the long colour bars on terrain** (`mohterrain.c`): the texture
+  coordinates. A terrain patch's texture now turns and shifts as a floor brush face's does
+  (s = x, t = -y, turned, then shifted), as EA's compiler does it; ommap turned it the other
+  way and shifted t the other way. Worse, `cos(270)` came out as -4e-8, putting a corner's t
+  at -1e-8: the game takes `floor()` of a patch's lowest coordinate
+  (`R_PreTessellateTerrain`, renderergl1 `tr_terrain.c`), so the whole patch moved one
+  repeat over, past the edge of a `clampmap` texture (m3l1b's grass borders and corners),
+  which then smeared its last row of pixels into bars. Right angles now turn exactly.
+  m3l1b recompiled: 425 of its 426 patches get the game's texture coordinates exactly
+  (from 282); the last differs only by one whole repeat, from EA's own float noise. m4l0
+  from EA's source: 580 of 591 (from 557), the rest whole repeats. The Map Viewer already
+  drew terrain this way, which is why the page looked right and the game didn't. Test:
+  `Compile.test_terrain_texcoords`.
+
+## Map Editor: the world's keys, Compile's map-only choice (November 2026)
+
+- **The world's keys in the Map Viewer** (`mohaa_map_page.py`): the stats line under the
+  map's name ("decompiled from the .bsp (v19)", or "$world: N keys") lists the worldspawn's
+  keys in its tooltip and opens the world's card when clicked; so do its row in the class
+  list and Find (`world`, `$world`, `entnum: 1022`, the world's ENTITYNUM_WORLD). The card
+  (`infoWorld`) describes each key (OpenMoHAA `fgame/worldspawn.cpp` and the compiler's own
+  keys), shows what changed, and edits them as `"key" "value"` lines; nothing is selected.
+  The edits (`WED`) go with Save as `.bsp` (the entity lump's worldspawn: `_find_entity`
+  takes entity 0 for a worldspawn change), Save as `.map` and Compile (`worldMapText`:
+  only the block's key lines are written again, its brushes, patches and terrain stay).
+  The fog follows `farplane` / `farplane_color` as they are typed.
+- **Compile window** (`mohaa_map_edit.py`):
+  - a fourth choice, **map file only**: the `.map` (the page's changes and the MAP box's
+    keys) written where chosen or in the game's maps folder, nothing compiled
+    (`_edit_save_map_only`); "bsp only (a look in the viewer)" is now "bsp only (for
+    viewer only)" so the four fit on one line;
+  - what a choice doesn't use is greyed out (Quick test: passage vis, vis groups skip the
+    work, the farplane and the cap, which fast vis ignores), and a box with nothing that
+    applies is hidden (bsp only: VIS and LIGHT; map file only: BSP, VIS and LIGHT);
+  - a **MAP** box beside LIGHT (the row scrolls sideways): the worldspawn's keys as
+    `"key" "value"` lines, with a list that adds a key and a tooltip saying what each does;
+    checked before the window closes (`parse_key_lines`) and written into the `.map`
+    (`set_worldspawn_keys` in `mohaa_compile.py`);
+  - the three "more switches" boxes have tooltips listing the compiler's other switches for
+    that step;
+  - the game's program is shown under "Start the game", with **Browse...** to pick it (kept
+    as `game_exe`); with Start the game ticked and no program found, Compile asks for it
+    first (`_game_program_ask`). The command line is split as a shell would (`shlex`), so a
+    quoted value with spaces stays one word; each word goes to the game as its own
+    argument, in its own folder, as a shortcut's target gives them.
+- Tests: `CompileFlow.test_map_only_with_world_keys`, `CompileFlow.test_world_keys`.
+- **Light step: `-sunscale N` and `-skyscale N`** (`light.c`): the sun's and the sky's
+  baked light scaled without changing the map's keys (the game's own sun for models keeps
+  `suncolor`). m3l1b recompiled with `"sundiffuse" "1"` matched the game's brightness but
+  its sunlit ground was about 10% bright and its shading flatter; a fit of the game's own
+  terrain lightmaps against our sun and sky gives 0.77 x the sun and the sky at
+  `sundiffuse 1`. Relit with `-sunscale 0.77`: 93% of m3l1b's terrain texels within 5 of
+  the game's (8% before), mean difference 2.9 (from 8.9). Listed in the Compile window's
+  LIGHT "more switches" tooltip. Measured on m3l1b only (the other maps measured are cut
+  off at the lightmaps' limit outdoors), so it isn't the default.
+
+## Light: EA's own rules, found with EA's light step (November 2026)
+
+- EA's `Q3map.exe` and `MOHlight.exe` now run here (Wine needed `/run/user/0`; MOHlight
+  with `-threads 1`, as its pak reader isn't thread safe), so the light step was checked
+  against them directly on test maps (a 4096-unit sky box with a floor, and a pillar), and
+  four rules found (`mohlight.c`, `light.c`):
+  - **A one-character key value is ignored**: MOHlight reads a worldspawn light key only
+    when its value is longer than one character. `"sundiffuse" "3"` (m3l1b, m3l1a, m2l1)
+    lights as the default 1; `"3.0"` lights as 3. This is why m3l1b looked right with
+    `"sundiffuse" "1"`: its "3" never did anything in EA's tools.
+  - **`sunlight` is the sun's colour** when it is there (read after `suncolor`, into the
+    same place). mohdm1 (`"sunlight" "255 243 171"`, `"suncolor" "65 60 45"`): its
+    lightmaps went from half the game's to within 10%.
+  - **The sky is EA's**: its 92 directions, (1 + cos) / 2 each, every other one counted
+    twice, 2.3 / 92 x sundiffuse x the colour each (an open floor 1.07 x the colour, not 1).
+  - **No sky light (`sundiffuse` 0 or less, or the new `-nodiffusesun`): the sun x 1.3.**
+  On the test maps our lightmaps are EA's to the byte (sun at four angles, sky, sundiffuse
+  0.0 / 0.5 / 3.0 / "3", sunlight); on m3l1b within 1% of MOHlight's. Left: EA lets a little
+  more sky past a tall object right beside a surface.
+- **The game's own maps aren't what MOHTools gives** for their keys: MOHlight on the
+  decompiled m3l1b is 8% brighter than the game's `.bsp`, on m2l1 32% (Pak5's lightmaps were
+  baked by another version or with other settings). The Compile window's LIGHT box now has
+  **Sun scale** (`-sunscale`), 0.77 by default, which brings ours closest to the game's
+  maps: m3l1b 88% of the terrain texels within 5 of the game's (15% at 1), m2l1's sunlit
+  floors 108 against the game's 101 (113 at 1). 1 lights as MOHTools does.
+- Tests: `CompileOptions.test_switches_checked` (the sun scale's switch).
+- The Compile window's **Sun scale** has a tick box like the other switches (ticked by
+  default; unticked, no `-sunscale`).
+
+## Map Editor: new brushes stay selectable (November 2026)
+
+- **A new brush couldn't be clicked again once deselected** when its kind was hidden by a
+  Show button (a caulk cube with Caulk off: its faces weren't drawn, so they weren't in the
+  pick pass either), and a drawn box vanished as soon as it was made. A brush, patch or
+  terrain block whose text an edit since the last save wrote (added, moved, resized) is
+  now "new" (`EDNEW`, `edNewCalc` in `mohaa_map_editor.js`): drawn and clickable whatever
+  the Show buttons hide (only Hide hides it), outlined in amber (`edNewLines`), and its More
+  info card starts with a note that it is new and not in the map's file or a `.bsp` yet.
+  Saving (Save as .map, Compile, or discarding on close) makes it the map's own again
+  (`edNewSync`). Checked in the page: a caulk cube with its category hidden stays drawn
+  (6 of 6 faces), the view's pick at its centre returns it, and after a save it follows
+  the filter again.
+
+## 1.0.010 (November 2026)
+
+- Released as v1.0.010: everything in the November 2026 sections above (the Map Editor,
+  the built-in compiler ommap and its EA light rules, the world's keys, the Compile
+  window). `VERSION` (`mohaa_launcher.py`, `mohaa_envcheck.py`) and `docs/version.txt` say
+  1.0.010; the updater finds it by the tag `v1.0.010`.

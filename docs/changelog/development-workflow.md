@@ -11,7 +11,8 @@ beyond Python 3, Node.js and a headless browser.
    hardening checks in `tests/` (they need tkinter): `test_hardening.py`,
    `check_batch_files.py`, `check_privacy_sync.py`, `check_init_attrs.py`, `test_map_actor.py`
    (set `MOHAA_GAMEFOLDER` to a folder of the game's files to run its real-data tests) and
-   `fuzz_parsers.py bin 1`; each prints OK or what failed, and exits nonzero on failure.
+   `fuzz_parsers.py bin 1` and `test_map_editor.py`; each prints OK or what failed, and exits
+   nonzero on failure.
 2. **Runtime check.** Static checks miss temporal-dead-zone errors (a `const` read before
    its line runs) and most behaviour. Build a real page and load it headlessly
    (Playwright, or jsdom with stubbed canvas/`requestAnimationFrame`); run the launcher
@@ -179,6 +180,55 @@ beyond Python 3, Node.js and a headless browser.
    - Modify: Delete on one of the map's path nodes marks it DEL and its links go; Save as
      .bsp, then open the copy: the node is gone and the entity count is one less; Restore
      and Undo bring it back. The Spawnflags list sets and clears bits (each an Undo step).
+8. **Edit map.** The Map Viewer's pages built with and without the editor's files must
+   be the same byte for byte (only the gzip time stamp in the page data differs), and
+   View → Edit map (`Ctrl+Shift+E`) must switch the open page both ways in place, with no
+   rebuild or reload (the Editor section shown and hidden, Modify moved and put back).
+   Removing a terrain block alone lights up Save as `.map` (Save as `.bsp` stays greyed);
+   undoing it greys both again. On an
+   editor page of m4l0: select the `func_rotatingdoor` (entity 24) and a `trigger_use`,
+   move them by a known offset (Trim origin), Save as `.bsp`, open the copy in the Map
+   Viewer: their boxes are moved by exactly that offset and their `"model" "*N"` keys are
+   kept. On a hand-made `.map` with a door without an origin key, Save as `.map`: the door's
+   faces give the same texture coordinates at the moved corners as before. DEL hides the
+   faces, Undo brings them back. Level script: a new `.scr` and an existing CRLF one (saved
+   back CRLF, `.bak` kept), a pak map refused, the page rebuilt with the spawned entity
+   drawn and the camera back. Brushes, on the starter room and on m4l0's editor page: add
+   a box, set a box's corners, move with texture lock, copy, clip on an axis and on three
+   points, set and push a face, delete; a bad number and a face whose points are in a line
+   are refused with the text unchanged; Undo of every change gives back the exact text;
+   Save as `.bsp` is refused and Save as `.map` holds the changes; the recovery file brings
+   them back; a texture from the paks is listed, loaded and drawn on a face. Patches and
+   terrain: each new shape and its facing, a point set, a row moved, Turn, Flip, texture
+   fit; a terrain block made, heights set and raised, smoothed, a hole cut and filled, its
+   texture set, moved (and refused off the 64-unit grid). On EA's `mohdm6.map` and
+   `m4l0.map` (CRLF) each change differs from the file only in what was changed, and Undo
+   gives back the exact text. The compiler: after changing `tools/ommap`,
+   `python tools/build_ommap.py --target all`; compile one of EA's `.map` sources with
+   `bin/ommap/<system>/ommap -gamedir <folder with scripts/ and maps/> <map>` and compare
+   with the game's own `.bsp` (`python tools/bsp_compare.py ours.bsp theirs.bsp`), then
+   `-vis -fast` and `-light` on the same map, and look at both in the Map Viewer from the
+   same camera (caulk and other no-draw faces must not show, static props must not be
+   flat white). Compile through `mohaa_compile.compile_map` (not ommap alone) when static
+   props matter: it writes the `.smv` their vertex light needs. The tests compile the
+   starter room (no drawn surface on a no-draw record; with light, the lightmaps, the
+   light grid's three lumps, its light as a light for models and the leaves' lists) and a
+   leaking copy, a terrain patch on the room's floor (its nodraw and invisible holes, and
+   splits only round nodraw and maxdetail), a gate (its fence brush, side equation and
+   masks, and the floor's `.jpg` texture laid out by the image's size), a static prop
+   under the room's light (the vertex facing it lit, the ones facing away all taking only
+   the model's own ambient and grid light), and check the
+   static props' turn, that lightmap texels stop at 127, and which alphashadow images
+   are copied.
+   When the light changes, compare it on both mohdm6 and m4l0 (m4l0 is outdoor, at night,
+   with tree lines and terrain): grid, lightmaps surface by surface, static props. For
+   the props' shading alone, light the game's own mohdm6 `.bsp` with a `.smv` written from
+   it (`static_model_vertices`): the same geometry and prop places as EA's, so only the
+   light rule differs. A change to `ModelBuilder` in
+   `mohaa_map_view.py` must leave Map Viewer pages the same apart from their output
+   folder. The C must build with clang too
+   (`--target all` uses it), which refuses undeclared functions.
+   `python tests/test_map_editor.py` (with `MOHAA_GAMEFOLDER`).
 
 ## Things that must change together
 
@@ -196,8 +246,12 @@ beyond Python 3, Node.js and a headless browser.
 | The Map Viewer's game cvars | `CVAR_DEFAULTS` and `CVAR_ROWS` in the page's script (mohaa_map_page.py); a cvar that draws something gets `LEGEND` rows (a `lines` swatch), and data it needs from the `.bsp` or the paks goes in the build's payload (`vis_payload`, `paths_payload`), so the page rev goes up |
 | Package requirements | `REQUIRED` / `OPTIONAL_EMBED` in `bin/mohaa_envcheck.py` (what the RUN files install), `PILLOW_MIN` in `bin/mohaa_common.py` (the run-time floor) and `docs/requirements.txt` (`Pillow>=10.3.0`, `pywebview==4.4.1`) |
 | A new `bin/` script the Map Viewer needs | Its name in `PROGRAMS["map"]["FILES"]` (tools/make_launchers.py: the RUN files check it is there), the `ours` tuple of `_own_pycache` (mohaa_map_launcher.py), then regenerate the launchers |
+| A new `bin/` script Edit map or Edit animations needs | Its name in its viewer's `PROGRAMS["map"]["FILES"]` / `PROGRAMS["model"]["FILES"]` and in that launcher's `_own_pycache`, then regenerate the launchers |
+| Edit map's page code (`bin/mohaa_map_editor.js`) | Nothing else: a page older than it is rebuilt (`EditApp._html_current`). It is in every page, so with the mode off it must change nothing: gate new behaviour on `EON()` |
+| The editor modes' toggle | `App._editor_set` / `_editor_button` / `_menu_items_editor` (mohaa_launcher.py), shown when a subclass sets `EDITOR_LABEL`; the key is `Ctrl+Shift+E` in `KEYS_LAUNCHER` and `MAP_KEYS_LAUNCHER` (`Ctrl+E` is the Map Viewer page's Script ents) |
 | A RUN launcher (.bat or .sh) | The generator template (see [hardening-notes.md](hardening-notes.md)), so the Model and Map files stay twins; then `python tests/check_batch_files.py` |
 | A file the RUN launchers require | `PROGRAMS` (per program) or `COMMON` (needed before the menu) in `tools/make_launchers.py`, then run it |
+| A WebView2 call the launchers start using (`wv.core...`, `wv.web...`) | The same name on `mohaa_webpane_linux.QtPane` (and an `op` in `mohaa_webpane_qt.py` if the helper must do it), or the Linux pane fails with an AttributeError (logged, and the page opens in the browser) |
 | An attribute set in `App.__init__` | The same in `MapApp.__init__` (it repeats App's start-up); `python tests/check_init_attrs.py` lists any gap |
 
 ## Engine references

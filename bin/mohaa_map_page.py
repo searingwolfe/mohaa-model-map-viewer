@@ -260,12 +260,20 @@ __KEYS_CSS__
     if(i<0)p[decodeURIComponent(kv)]=true;
     else p[decodeURIComponent(kv.slice(0,i))]=decodeURIComponent(kv.slice(i+1));});
   window.__HOSTEMBED__=!!p.embed;
+  // the editor mode (Edit map / Edit animations): #edit=1 from the launcher, or #edit by hand
+  window.__EDITON__=!!p.edit&&p.edit!=="0";
   var t=(""+(p.theme||"")).toLowerCase();
   window.__HOSTTHEME__=(t==="light"||t==="dark")?t:"";
   var el=document.documentElement;
   if(window.__HOSTEMBED__)el.classList.add("embed");
   if(window.__HOSTTHEME__)el.classList.toggle("light",window.__HOSTTHEME__==="light");
 }catch(_e){}})();
+/* setEditorMode(on): the launcher's Edit toggle, run in the open page. The editor code
+   (inlined at the end of the page script) registers its hooks in __EDITHOOKS__; the page
+   is never rebuilt for it. */
+window.__EDITHOOKS__=[];
+window.setEditorMode=function(on){window.__EDITON__=!!on;
+  window.__EDITHOOKS__.forEach(function(f){try{f(!!on);}catch(e){console.error(e);}});};
 </script></head>
 <body><div id="wrap">
  <div id="stage"><canvas id="gl"></canvas><canvas id="c"></canvas>
@@ -310,7 +318,7 @@ __KEYS_CSS__
    <div class="sect" id="modelSect">
      <h2>Map</h2>
      <div class="row">
-       <button id="bTheme" style="flex:1" title="Toggle Light / Dark theme (T). Your choice is remembered.">&#9728; Light mode</button>
+       <button id="bTheme" style="flex:1" title="Toggle Light / Dark theme (Ctrl+T). Your choice is remembered.">&#9728; Light mode</button>
        <button id="bHelp" title="Show the viewer's keyboard shortcuts (H)">? Shortcuts</button>
        <button id="bLegend" title="What the colours, markers and editor surfaces mean (L)">Legend</button>
      </div>
@@ -650,7 +658,7 @@ function readMap(text){
     let k=0;
     while(p<N&&t[p]!=='}'){
       const hv=num(); let g=0;
-      while(p<N&&t[p]==='('){p++;let nd=0;while(p<N&&t[p]!==')'){if(/^nodraw$/i.test(tokStr(t[p])))nd=1;p++;}expect(')');
+      while(p<N&&t[p]==='('){p++;let nd=0;while(p<N&&t[p]!==')'){if(/^(nodraw|invisible)$/i.test(tokStr(t[p])))nd=1;p++;}expect(')');
         if(k<nv){if(g===0)h1[k]=nd;else if(g===1)h2[k]=nd;} g++;}
       if(k<nv)hs[k]=hv; k++;
     }
@@ -1165,7 +1173,12 @@ function setTheme(light){document.documentElement.classList.toggle('light',light
   try{const b=$('bgcol');if(b&&!document.documentElement.style.getPropertyValue('--bg'))b.value=cssVar('--bg')||b.value;}catch(_e){}
   try{if(typeof GRID!=='undefined'){GRID.key='';if(!GRID.col)$('gridcol').value=gridDefCol();}}catch(_e){}
   requestDraw();}
-themeBtn.onclick=()=>setTheme(!document.documentElement.classList.contains('light'));
+// In the launcher's pane the theme is the launcher's: the button and Ctrl+T ask it to switch
+// (it switches itself and every page with it); in a browser they switch this page alone.
+function themeToggleAll(){
+  try{if(window.chrome&&window.chrome.webview&&location.hash.indexOf('embed')>=0){window.chrome.webview.postMessage('mohaa-theme-toggle');return;}}catch(_e){}
+  setTheme(!document.documentElement.classList.contains('light'));}
+themeBtn.onclick=themeToggleAll;
 const bgIn=$('bgcol');
 function applyBackdrop(col,save){
   if(col)document.documentElement.style.setProperty('--bg',col);else document.documentElement.style.removeProperty('--bg');
@@ -1771,6 +1784,92 @@ void main(){
   if(uFog.z>0.5){float f=clamp((distance(vPos,uEye)-uFog.x)/max(1.0,uFog.y-uFog.x),0.0,1.0);c=mix(c,uFogCol,f);}
   o=vec4(c,t.a*vA*uTint.a);
 }`;
+// Moving surfaces (water, flowing slime, pulsing lights): a shader that moves in game is
+// drawn the way tr_shade.c RB_IterateStagesGeneric draws it, one pass per stage, with its
+// own blendFunc, depthWrite and depthFunc (FX, fxDraw). The vertex program moves the
+// vertices first (RB_DeformTessGeometry, tr_shade_calc.c: deformVertexes wave along the
+// normal by base + amplitude x wave(phase + (x + y + z) x spread + time x frequency); bulge
+// by sin of (s x width + time x speed) x height; move along a vector; flap scaled by
+// min..max along s or t; normal wobbles the normals, which only an environment map shows,
+// with a smooth noise standing in for R_NoiseGet4f), then makes each bundle's texture
+// coordinates (ComputeTexCoords: the surface's own, the lightmap's, environment mapped
+// (RB_CalcEnvironmentTexCoords) or a tcGen vector) and runs its tcMods in order: uMk 1 an
+// affine step (scroll, scale, rotate, stretch, transform, offset, wave translations and
+// parallax, worked out each frame in fxMods), 2 turb (RB_CalcTurbulentTexCoords: s by
+// sin((x + z) / 1024 + now), t by sin(y / 1024 + now), times the amplitude). Colours as
+// ComputeColors: uRg 0 constant (uCol, worked out each frame for waves), 1 vertex, 2 one
+// minus vertex, 3 / 4 the view's angle to the surface squared (dot / oneMinusDot); uAgK 0
+// constant, 1 / 2 vertex alpha, 3 / 4 alphaGen dot (which, as the engine has it, sets the
+// colour), 5 / 6 distFade, 7 heightFade.
+const VS_FX=`#version 300 es
+layout(location=0) in vec3 aPos; layout(location=1) in vec2 aUV; layout(location=7) in vec4 aCol; layout(location=8) in vec3 aLM;
+layout(location=9) in vec3 aNrm; layout(location=13) in float aVP;
+uniform mat4 uVP; uniform vec3 uEye; uniform float uT;
+uniform ivec3 uDk; uniform ivec3 uDf; uniform vec4 uDw[3]; uniform vec4 uDx[3];
+uniform int uG[2]; uniform vec3 uGs[2]; uniform vec3 uGt[2];
+uniform int uMk[12]; uniform vec3 uMa[12]; uniform vec3 uMb[12];
+uniform int uRg; uniform vec2 uRgP; uniform int uAgK; uniform vec2 uAgP; uniform vec4 uCol;
+uniform highp sampler2D uVR; uniform int uVROn;
+out vec2 vST0; out vec2 vST1; out vec3 vPos; out vec4 vC; out vec4 vVC; out vec3 vLM;
+float wf(int f,float x){x=fract(x);
+  if(f==1)return x<0.25?4.0*x:x<0.75?2.0-4.0*x:4.0*x-4.0;
+  if(f==2)return x<0.5?1.0:-1.0; if(f==3)return x; if(f==4)return 1.0-x;
+  return sin(x*6.28318530718);}
+float nz(vec3 p,float t){return sin(dot(p,vec3(0.031,0.047,0.023))+t*6.28318530718)*0.5+sin(dot(p,vec3(-0.053,0.029,0.041))-t*4.1)*0.5;}
+vec2 bundle(int b,vec3 p,vec3 n){
+  int g=uG[b]; vec2 st=aUV;
+  if(g==1)st=aLM.xy;
+  else if(g==2){vec3 v=normalize(uEye-p);float d=dot(n,v);vec3 r=n*2.0*d-v;st=vec2(0.5+r.y*0.5,0.5-r.z*0.5);}
+  else if(g==3)st=vec2(dot(p,uGs[b]),dot(p,uGt[b]));
+  else if(g==4)st=vec2(0.0);
+  for(int i=0;i<6;i++){int j=b*6+i,k=uMk[j];
+    if(k==1)st=vec2(dot(uMa[j].xy,st)+uMa[j].z,dot(uMb[j].xy,st)+uMb[j].z);
+    else if(k==2){float now=uMa[j].y;
+      st+=vec2(sin(((p.x+p.z)/1024.0+now)*6.28318530718),sin((p.y/1024.0+now)*6.28318530718))*uMa[j].x;}}
+  return st;}
+void main(){
+  vec3 p=aPos, n=aNrm;
+  for(int i=0;i<3;i++){int k=uDk[i];vec4 w=uDw[i];vec4 x=uDx[i];
+    if(k==1){float off=w.w==0.0?0.0:(p.x+p.y+p.z)*x.x;p+=n*(w.x+wf(uDf[i],w.z+off+uT*w.w)*w.y);}
+    else if(k==2)p+=n*(sin((aUV.x*x.x+uT*x.z)*6.28318530718)*x.y);
+    else if(k==3)p+=x.xyz*(w.x+wf(uDf[i],w.z+uT*w.w)*w.y);
+    else if(k==4||k==5){float sc=(w.x+wf(uDf[i],w.z+uT*w.w)*w.y)*((x.y-x.x)*(k==4?aUV.x:aUV.y)+x.x);p+=n*sc;}
+    else if(k==6){vec3 q=p*0.98;float tt=uT*w.w;
+      n=normalize(n+w.y*vec3(nz(q,tt),nz(q+vec3(100.0,0.0,0.0),tt),nz(q+vec3(200.0,0.0,0.0),tt)));}}
+  vVC=aCol;
+  if(uVROn==1&&aVP>=0.0){int k=int(aVP+0.5);vVC=vec4(texelFetch(uVR,ivec2(k%4096,k/4096),0).rgb,aCol.a);}
+  vec4 c=uCol;
+  if(uRg==1)c.rgb=vVC.rgb; else if(uRg==2)c.rgb=1.0-vVC.rgb;
+  else if(uRg==3||uRg==4){float d=dot(n,normalize(uEye-p));d*=d;if(uRg==4)d=1.0-d;c.rgb=vec3(clamp((uRgP.y-uRgP.x)*d+uRgP.x,0.0,1.0));}
+  if(uAgK==1)c.a=vVC.a; else if(uAgK==2)c.a=1.0-vVC.a;
+  else if(uAgK==3||uAgK==4){float d=dot(n,normalize(uEye-p));d*=d;if(uAgK==4)d=1.0-d;c.rgb=vec3(clamp((uAgP.y-uAgP.x)*d+uAgP.x,0.0,1.0));}
+  else if(uAgK==5||uAgK==6){float l=(distance(p,uEye)-uAgP.x)/uAgP.y;c.a=uAgK==5?1.0-clamp(l,0.0,1.0):clamp(l,0.0,1.0);}
+  else if(uAgK==7){float d=clamp(abs(uEye.z-p.z),uAgP.x,uAgP.y);c.a=1.0-(d-uAgP.x)/max(uAgP.y-uAgP.x,1e-6);}
+  vC=c;vST0=bundle(0,p,n);vST1=bundle(1,p,n);vLM=aLM;vPos=p;
+  gl_Position=uVP*vec4(p,1.0);}`;
+// uP0 / uP1: what each bundle shows (0 its picture, 1 the lightmap: its page, or white for
+// a surface with none, as ParseStage gives "$lightmap" tr.whiteImage then; 2 white, 3 none); uEnv 1 adds the second bundle
+// (nextBundle add), else it multiplies. uFogK: how fog meets a stage drawn over others
+// (fxFogKind): 1 the colour goes to the fog's, 2 the added colour fades out, 3 a
+// multiplying stage fades to white, 4 the alpha fades out.
+const FS_FX=`#version 300 es
+precision highp float;
+in vec2 vST0; in vec2 vST1; in vec3 vPos; in vec4 vC; in vec4 vVC; in vec3 vLM;
+uniform sampler2D uT0; uniform sampler2D uT1; uniform highp sampler2DArray uLM;
+uniform int uP0; uniform int uP1; uniform int uEnv; uniform int uAF; uniform int uFogK;
+uniform vec3 uFogCol; uniform vec3 uFog; uniform vec3 uEye; uniform float uClip;
+out vec4 o;
+vec4 lmc(){return vec4(vLM.z>-0.5?texture(uLM,vec3(vLM.xy,floor(vLM.z+0.5))).rgb:vec3(1.0),1.0);}
+void main(){
+  if(uClip>0.0){vec3 d=abs(vPos-uEye);if(max(d.x,max(d.y,d.z))>uClip)discard;}
+  vec4 c=(uP0==0?texture(uT0,vST0):uP0==1?lmc():vec4(1.0))*vC;
+  if(uP1<3){vec4 s=uP1==0?texture(uT1,vST1):uP1==1?lmc():vec4(1.0);
+    c=uEnv==1?vec4(min(c.rgb+s.rgb,vec3(1.0)),c.a*s.a):c*s;}
+  if(uAF==1&&c.a<=0.0)discard; if(uAF==2&&c.a<0.5)discard; if(uAF==3&&c.a>=0.5)discard;
+  if(uFog.z>0.5&&uFogK>0){float f=clamp((distance(vPos,uEye)-uFog.x)/max(1.0,uFog.y-uFog.x),0.0,1.0);
+    if(uFogK==1)c.rgb=mix(c.rgb,uFogCol,f); else if(uFogK==2)c.rgb*=1.0-f;
+    else if(uFogK==3)c.rgb=mix(c.rgb,vec3(1.0),f); else c.a*=1.0-f;}
+  o=c;}`;
 // Sky polygons: the shader's sky box seen in the direction of each pixel (tr_sky.c), or
 // one flat colour when there is no box. Drawn with the depth range squeezed to the far
 // end (RB_StageIteratorSky: qglDepthRange(1, 1)), so the sky is behind everything and
@@ -1901,6 +2000,7 @@ void main(){o=vec4(vC.rgb,vC.a*uAlpha);}`;
 let PW=null,PM=null,PC=null,PL=null;   // programs: world, model, coloured, lines
 let PMK=null;                          // entity markers
 let PLIT=null;                         // the game's lighting: lit polygons
+let PFX=null;                          // moving surfaces, stage by stage (FX)
 const PSKY={};                         // the game's sky, by polygons (L .bsp, W .map faces) and cloud layers
 const GLT=[];                          // GL texture per TEX entry
 const GLTG=[];                         // the game's own picture where it differs (water)
@@ -2002,6 +2102,7 @@ function loadTextures(){
     if(te.b!=null)TEXURL[i]=load(te.b,te.m,t=>{GLT[i]=t;});
     if(te.gb!=null&&LIT)load(te.gb,te.gm,t=>{GLTG[i]=t;});
   }
+  if(LIT)fxLoad();
 }
 
 // ---- which world faces are drawn, grouped by texture --------------------------
@@ -2344,7 +2445,8 @@ function buildLit(){
   const byTex=new Map();
   units.forEach((u,k)=>{if(!u.n)return;let l=byTex.get(u.ti);if(!l){l=[];byTex.set(u.ti,l);}l.push(k);});
   return {nv:v,pos:pos.subarray(0,v*3),uv:uv.subarray(0,v*2),lm:lm.subarray(0,v*3),col:col.subarray(0,v*4),nrm:nrm.subarray(0,v*3),
-          tri:tri.subarray(0,Math.max(3,t)),units:units,byTex:byTex,rep:rep,ops:[],trans:[],sky:[]};
+          fxn:fxNormals(units,pos,tri,nrm,v),
+          tri:tri.subarray(0,Math.max(3,t)),units:units,byTex:byTex,rep:rep,ops:[],trans:[],sky:[],fxo:[],fxt:[]};
 }
 function initLitGL(){
   B.lPos=makeBuf(gl.ARRAY_BUFFER,LIT.pos);B.lUV=makeBuf(gl.ARRAY_BUFFER,LIT.uv);
@@ -2352,7 +2454,9 @@ function initLitGL(){
   B.lTri=makeBuf(gl.ELEMENT_ARRAY_BUFFER,new Uint32Array(LIT.tri.length),gl.DYNAMIC_DRAW);
   B.vLit=gl.createVertexArray();gl.bindVertexArray(B.vLit);attr(0,B.lPos,3);attr(1,B.lUV,2);attr(8,B.lLM,3);
   gl.bindBuffer(gl.ARRAY_BUFFER,B.lCol);gl.enableVertexAttribArray(7);gl.vertexAttribPointer(7,4,gl.UNSIGNED_BYTE,true,0,0);
-  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,B.lTri);gl.bindVertexArray(null);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,B.lTri);
+  if(LIT.fxn){B.lNrm=makeBuf(gl.ARRAY_BUFFER,LIT.fxn);attr(9,B.lNrm,3);}   // moving surfaces' normals (FX)
+  gl.bindVertexArray(null);
   const L=D.lit;
   // lightmap pages: white until the picture is decoded. The page holds the .bsp's own
   // bytes (raw); they are brightened here as the game does it, and kept for r_lightmap 2.
@@ -2376,6 +2480,105 @@ function initLitGL(){
     for(const p of [gl.TEXTURE_MIN_FILTER,gl.TEXTURE_MAG_FILTER])gl.texParameteri(gl.TEXTURE_2D,p,gl.NEAREST);}
   else B.smTex=colourTex([1,1,1]);
 }
+// ---- moving surfaces (FX) -----------------------------------------------------------------
+// Each moving shader's stages (fx_payload in mohaa_map_view.py) are drawn one pass at a
+// time with VS_FX / FS_FX while the game's lighting, textures and the page's own lightmap
+// view are on (fxActive); otherwise the surface shows its still picture as before. While
+// one is in view the page redraws 30 times a second (fxTick), as it does for moving clouds.
+const FX={on:false,timer:0,seen:false};
+const FXWF={sin:0,triangle:1,square:2,sawtooth:3,inversesawtooth:4,noise:0};
+const FXTG={t:0,l:1,e:2,v:3,i:4};
+// a moving surface's vertex normals: a patch's own (the .bsp's), else its triangles'
+// (front faces wind clockwise, so the normal is minus their cross product)
+function fxNormals(units,pos,tri,nrm,nv){
+  if(!TEX.some(te=>te&&te.fx))return null;
+  const out=new Float32Array(nv*3);
+  for(const u of units){if(!u.n||!(TEX[u.ti]||{}).fx)continue;
+    for(let q=u.i0;q<u.i0+u.n;q+=3){const a=tri[q]*3,b=tri[q+1]*3,c=tri[q+2]*3;
+      const ux=pos[b]-pos[a],uy=pos[b+1]-pos[a+1],uz=pos[b+2]-pos[a+2],vx=pos[c]-pos[a],vy=pos[c+1]-pos[a+1],vz=pos[c+2]-pos[a+2];
+      const nx=-(uy*vz-uz*vy),ny=-(uz*vx-ux*vz),nz=-(ux*vy-uy*vx);
+      for(const i of [a,b,c]){out[i]+=nx;out[i+1]+=ny;out[i+2]+=nz;}}
+    for(let q=u.i0;q<u.i0+u.n;q++){const i=tri[q]*3;
+      if(u.k===1&&(nrm[i]||nrm[i+1]||nrm[i+2])){out[i]=nrm[i];out[i+1]=nrm[i+1];out[i+2]=nrm[i+2];}}}
+  for(let i=0;i<nv*3;i+=3){const l=Math.hypot(out[i],out[i+1],out[i+2]);if(l>0){out[i]/=l;out[i+1]/=l;out[i+2]/=l;}}
+  return out;
+}
+function fxLoad(){
+  for(const te of TEX){if(!te||!te.fx)continue;
+    for(const s of te.fx.s){s.tx=[null,null];
+      s.p.forEach((P,b)=>{if(!P||typeof P!=='object')return;const L=P.b.map(()=>null);s.tx[b]=L;
+        P.b.forEach((bl,k)=>blobTexture(bl,P.m[k],x=>{L[k]=x;}));});}}
+  FX.on=TEX.some(te=>te&&te.fx);
+}
+function fxActive(ti){const te=TEX[ti];return !!(FX.on&&te&&te.fx&&view.tex&&!CVARS.r_lightmap);}
+// a bundle's tcMods at time T as the vertex program runs them: runs of affine ones folded
+// into one map (cloudStage), turb kept apart since it depends on the vertex's position;
+// parallax is an offset by the camera's position times its rates (RB_CalcParallaxTexCoords)
+function fxMods(list,T){
+  const out=[];let run=[];
+  const flush=()=>{if(run.length){const r=cloudStage({tm:run,rg:['c',1,1,1],ag:['c',1]},T);out.push([1,r.A,r.B]);run=[];}};
+  for(const m of list){
+    if(m[0]==='turb'){flush();out.push([2,[m[1],m[2]+T*m[3],0],[0,0,0]]);}
+    else if(m[0]==='par')run.push(['offset',cam.pos[0]*m[1],cam.pos[1]*m[2]]);
+    else run.push(m);}
+  flush();return out.slice(0,6);
+}
+// the picture a bundle shows now (an animMap's frame: R_BindAnimatedImage), or null
+function fxPic(s,b,T){
+  const L=s.tx&&s.tx[b];if(!L)return null;const P=s.p[b];
+  let k=0;if(L.length>1){k=Math.max(0,Math.floor((T+(P.ph||0))*(P.f||0)));k=P.o?Math.min(k,L.length-1):k%L.length;}
+  return L[k];
+}
+const FX_RGK={v:1,'1v':2,dot:3,'1dot':4}, FX_AGK={v:1,'1v':2,dot:3,'1dot':4,df:5,'1df':6,hf:7};
+// how fog meets a stage (FS_FX uFogK): a first stage drawn solid takes the fog's colour;
+// a multiplying one fades to white, an alpha-blended one fades out, an added one darkens
+function fxFogKind(s){const f=s.f;
+  if(f[0]===1&&f[1]===0)return 1;
+  if((f[0]===4&&f[1]===0)||(f[0]===0&&f[1]===2))return 3;
+  if(f[0]===6||f[1]===7)return 4;
+  return 2;}
+function fxDraw(op,vp){
+  const te=TEX[op.ti],F=te.fx,m=(MAT[op.ti]&&MAT[op.ti].lit)||{};
+  if(!PFX)PFX=compile(VS_FX,FS_FX);
+  const P=PFX,T=(performance.now()-T0)/1000,GB=[gl.ZERO,gl.ONE,gl.SRC_COLOR,gl.ONE_MINUS_SRC_COLOR,gl.DST_COLOR,
+    gl.ONE_MINUS_DST_COLOR,gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA,gl.DST_ALPHA,gl.ONE_MINUS_DST_ALPHA,gl.SRC_ALPHA_SATURATE];
+  if(opInView(op))FX.seen=true;
+  gl.useProgram(P);gl.uniformMatrix4fv(P.u.uVP,false,vp);gl.uniform3fv(P.u.uEye,cam.pos);gl.uniform1f(P.u.uT,T);
+  gl.uniform1f(P.u.uClip,clipOn?clipDist:0);const ff=fogFar();gl.uniform3fv(P.u.uFogCol,fogCol());gl.uniform3f(P.u.uFog,ff*0.25,ff,fogOn()?1:0);
+  bindLit(P);gl.uniform1i(P.u.uT0,0);gl.uniform1i(P.u.uT1,2);
+  const dk=[0,0,0],df=[0,0,0],dw=new Float32Array(12),dx=new Float32Array(12);
+  F.d.forEach((d,i)=>{dk[i]=d[0];df[i]=FXWF[d[1]]|0;dw.set([d[2],d[3],d[4],d[5]],i*4);dx.set([d[6],d[7],d[8],0],i*4);});
+  gl.uniform3iv(P.u.uDk,dk);gl.uniform3iv(P.u.uDf,df);gl.uniform4fv(P.u['uDw[0]'],dw);gl.uniform4fv(P.u['uDx[0]'],dx);
+  if(m.two)gl.disable(gl.CULL_FACE);else gl.enable(gl.CULL_FACE);
+  F.s.forEach((s,si)=>{
+    if((s.ag[0]==='sky'&&SKY_ALPHA<0.01)||(s.ag[0]==='1sky'&&SKY_ALPHA>0.99))return;
+    const kind=b=>{const p=s.p[b];return p==null?3:p==='lm'?1:p==='w'?2:0;}, k0=kind(0),k1=kind(1);
+    const t0=k0===0?fxPic(s,0,T):null, t1=k1===0?fxPic(s,1,T):null;
+    if((k0===0&&!t0)||(k1===0&&!t1))return;        // its picture is still loading
+    gl.activeTexture(gl.TEXTURE2);gl.bindTexture(gl.TEXTURE_2D,t1||whiteTex);
+    gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,t0||whiteTex);
+    gl.uniform1i(P.u.uP0,k0);gl.uniform1i(P.u.uP1,k1);gl.uniform1i(P.u.uEnv,s.e|0);gl.uniform1i(P.u.uAF,s.f[2]|0);
+    gl.uniform1i(P.u.uFogK,fxFogKind(s));
+    const g=s.tg.map(x=>FXTG[x[0]]|0), vs=s.tg.map(x=>x[0]==='v'?x[1]:[0,0,0]), vt=s.tg.map(x=>x[0]==='v'?x[2]:[0,0,0]);
+    gl.uniform1iv(P.u['uG[0]'],g);gl.uniform3fv(P.u['uGs[0]'],vs.flat());gl.uniform3fv(P.u['uGt[0]'],vt.flat());
+    const mk=new Int32Array(12),ma=new Float32Array(36),mb=new Float32Array(36);
+    for(let b=0;b<2;b++)fxMods(s.tm[b],T).forEach((e,i)=>{mk[b*6+i]=e[0];ma.set(e[1],(b*6+i)*3);mb.set(e[2],(b*6+i)*3);});
+    gl.uniform1iv(P.u['uMk[0]'],mk);gl.uniform3fv(P.u['uMa[0]'],ma);gl.uniform3fv(P.u['uMb[0]'],mb);
+    const c=cloudStage({tm:[],rg:FX_RGK[s.rg[0]]?['c',1,1,1]:s.rg,ag:FX_AGK[s.ag[0]]?['c',1]:s.ag},T).C;
+    gl.uniform4fv(P.u.uCol,c);
+    gl.uniform1i(P.u.uRg,FX_RGK[s.rg[0]]|0);gl.uniform2f(P.u.uRgP,+s.rg[1]||0,+s.rg[2]||0);
+    gl.uniform1i(P.u.uAgK,FX_AGK[s.ag[0]]|0);gl.uniform2f(P.u.uAgP,+s.ag[1]||0,+s.ag[2]||0);
+    if(s.f[0]===1&&s.f[1]===0)gl.disable(gl.BLEND);else{gl.enable(gl.BLEND);gl.blendFunc(GB[s.f[0]]||gl.ONE,GB[s.f[1]]||gl.ZERO);}
+    if(s.df===2)gl.disable(gl.DEPTH_TEST);else{gl.enable(gl.DEPTH_TEST);gl.depthFunc(s.df===1?gl.EQUAL:gl.LEQUAL);}
+    gl.depthMask(!!s.dw);
+    drawRuns(op);
+  });
+  gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.disable(gl.BLEND);gl.activeTexture(gl.TEXTURE0);
+}
+// is any part of an op in view (its cells' boxes, as drawRuns checks them)?
+function opInView(op){const S=op.seg;if(!S||!FR)return true;
+  for(let i=0;i<S.st.length;i++)if(boxSeen(FR,S.bb,i*6))return true;return false;}
+function fxTick(){if(!FX.timer&&FX.seen&&litOn())FX.timer=setTimeout(()=>{FX.timer=0;requestDraw();},33);}
 // R_ColorShiftLightingBytes: each channel shifted up (the overbright bits), and a texel
 // that goes past 255 scaled back by its brightest channel, so it keeps its colour
 function lmShift(raw,sh){const out=new Uint8Array(raw.length);
@@ -2536,7 +2739,7 @@ function litUnitShown(u){
 }
 function rebuildLit(){
   const tri=new Uint32Array(LIT.tri.length);let n=0;
-  LIT.ops=[];LIT.trans=[];LIT.sky=[];
+  LIT.ops=[];LIT.trans=[];LIT.sky=[];LIT.fxo=[];LIT.fxt=[];
   cullPrepLit();
   for(const[ti,list]of LIT.byTex){
     const start=n,sg=cullSegs();
@@ -2544,7 +2747,11 @@ function rebuildLit(){
     if(n===start)continue;
     const te=TEX[ti]||{f:0}, m=(MAT[ti]&&MAT[ti].lit)||{kind:0,af:0,alpha:1}, op={ti:ti,start:start,count:n-start,m:m,seg:sg.done()};
     if(te.f&TF_SKY)LIT.sky.push(op);else(m.kind>=2?LIT.trans:LIT.ops).push(op);
+    // a moving surface is also listed for FX, which draws it instead while it can: with
+    // its first stage drawn solid among the solid surfaces, else among the see-through ones
+    if(te.fx&&!(te.f&TF_SKY)){op.fx=true;const f=te.fx.s[0].f;(f[0]===1&&f[1]===0?LIT.fxo:LIT.fxt).push(op);}
   }
+  LIT.fxt.sort((a,b)=>(TEX[b.ti].fx.s[0].dw|0)-(TEX[a.ti].fx.s[0].dw|0));
   // those that write depth in game first (they hide what is behind them), then by kind
   const ord={4:0,5:1,2:2,3:3};
   LIT.trans.sort((a,b)=>((b.m.dw?1:0)-(a.m.dw?1:0))||(ord[a.m.kind]-ord[b.m.kind]));
@@ -2669,6 +2876,7 @@ function setModelCommon(vp,mode,lit){
 }
 function drawScene(vp,mode){
   FR=frustumOf(vp);
+  if(mode===0)FX.seen=false;
   gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.depthMask(true);gl.frontFace(gl.CW);gl.cullFace(gl.BACK);
   if(mode===2){   // pick ids of the sky faces alone, at their own depth (pickAt)
     setCommon(PW,vp,1);gl.bindVertexArray(B.vTri);gl.disable(gl.BLEND);
@@ -2687,7 +2895,9 @@ function drawScene(vp,mode){
   gl.uniform1f(PW.u.uPush,0);
   if(lit){
     setCommon(PLIT,vp,0);bindLit(PLIT);gl.bindVertexArray(B.vLit);
-    for(const op of LIT.ops){bindMat(PLIT,op.ti,0,true);drawRuns(op);}
+    for(const op of LIT.ops){if(op.fx&&fxActive(op.ti))continue;bindMat(PLIT,op.ti,0,true);drawRuns(op);}
+    for(const op of LIT.fxo)if(fxActive(op.ti))fxDraw(op,vp);
+    gl.depthMask(true);
   }
   if(gameSky&&mode===0&&!THU.flash)drawGameSky(vp);
   // models (solid surfaces)
@@ -2719,10 +2929,11 @@ function drawScene(vp,mode){
   // then the models', then the editor's volumes (triggers, clips, hints...) over all of
   // them, so water can't paint over a trigger that is above it.
   gl.depthMask(false);
-  if(lit&&LIT.trans.length){
+  if(lit&&(LIT.trans.length||LIT.fxt.length)){
     setCommon(PLIT,vp,0);bindLit(PLIT);gl.bindVertexArray(B.vLit);
-    for(const op of LIT.trans){gl.depthMask(!!op.m.dw);blendFor(op.m.kind);bindMat(PLIT,op.ti,0,true);
+    for(const op of LIT.trans){if(op.fx&&fxActive(op.ti))continue;gl.depthMask(!!op.m.dw);blendFor(op.m.kind);bindMat(PLIT,op.ti,0,true);
       drawRuns(op);}
+    for(const op of LIT.fxt)if(fxActive(op.ti))fxDraw(op,vp);
     gl.depthMask(false);
   }
   drawDecals(vp,lit);
@@ -4347,6 +4558,7 @@ function draw(){
   // costs a layout), and once more when it stops
   textSoon();
   cloudTick();
+  fxTick();
 }
 // ---- view culling --------------------------------------------------------------------------
 // Only what can be seen is sent to the graphics card. The world's faces (and the game's
@@ -7710,7 +7922,7 @@ function setHover(h){
 setHover.key=null;setHover.h=null;
 // a click that selects what is under the mouse takes its hover outline away
 function refreshHover(){if(!gl)return;setHover.key=undefined;setHover(setHover.h);}
-function selectionChanged(){modSyncSel();rebuildSelection();refreshHover();updateSelPanel();if($('info').classList.contains('on'))showInfo(infoMode==='errs'||infoMode==='leak'||infoMode==='scr'?'sel':infoMode);requestDraw();listSoon();}
+function selectionChanged(){modSyncSel();rebuildSelection();refreshHover();updateSelPanel();if($('info').classList.contains('on'))showInfo(infoMode==='errs'||infoMode==='leak'||infoMode==='scr'||infoMode==='world'?'sel':infoMode);requestDraw();listSoon();}
 // The Find lists show what is selected in green, however it was selected (a click in the
 // view, Enter in the search box, a list row): they are drawn again once, a frame after.
 let _listRaf=0;
@@ -8185,8 +8397,8 @@ function typing(){const a=document.activeElement;return a&&(a.tagName==='INPUT'|
 const CAM_KEYS_FREE=new Set(['w','a','s','d','q','e','c',' ','arrowup','arrowdown','arrowleft','arrowright']);
 const CAM_KEYS_RAD=new Set(['arrowup','arrowdown','arrowleft','arrowright',',','.','d','c','a','z']);
 const FILTER_KEYS={'alt+1':C_WORLD,'alt+2':C_ENTITIES,'alt+3':C_PATCH,'alt+4':C_TRANS,'alt+5':C_LIQUID,'alt+6':C_CAULK,
-  'alt+7':C_CLIP,'alt+8':C_PATH,'alt+9':C_AINODE,'alt+0':C_LIGHT,'ctrl+d':C_DETAIL,'ctrl+h':C_HINT,'ctrl+m':C_MODEL,
-  'ctrl+r':C_TERRAIN,'ctrl+t':C_TRIGGER,'ctrl+p':C_PORTAL,'ctrl+k':C_SKY,'ctrl+o':C_NODRAW,'ctrl+i':C_RAIN,'ctrl+g':C_FOLIAGE,'ctrl+e':C_SCRIPT,'ctrl+b':C_SCRTRIG};
+  'alt+7':C_CLIP,'alt+8':C_PATH,'alt+9':C_AINODE,'alt+0':C_LIGHT,'ctrl+d':C_DETAIL,'ctrl+h':C_HINT|C_VIS,'ctrl+m':C_MODEL,
+  'ctrl+r':C_TERRAIN,'ctrl+u':C_TRIGGER,'ctrl+p':C_PORTAL,'ctrl+k':C_SKY,'ctrl+o':C_NODRAW,'ctrl+i':C_RAIN,'ctrl+g':C_FOLIAGE,'ctrl+e':C_SCRIPT,'ctrl+b':C_SCRTRIG};
 window.addEventListener('keydown',e=>{
   // never the browser's reload or back / forward, even from a text box: they would throw
   // away Modify's work (the launcher turns the pane's own browser keys off too)
@@ -8209,6 +8421,7 @@ window.addEventListener('keydown',e=>{
   if(combo==='ctrl+z'){undoHide();e.preventDefault();return;}     // before Radiant-look's Z
   if(combo==='ctrl+a'){showAllGroups();flash('Every group is shown');e.preventDefault();return;}   // and A
   if((e.ctrlKey||e.metaKey)&&kl==='f'){$('findIn').focus();$('findIn').select();e.preventDefault();return;}
+  if((e.ctrlKey||e.metaKey)&&!e.altKey&&!e.shiftKey&&kl==='t'){themeToggleAll();e.preventDefault();return;}
   if((e.ctrlKey||e.metaKey)&&(kl==='\\'||e.code==='Backslash')){toggleClip();e.preventDefault();return;}
   // camera keys (held). An auto-repeat of a key the camera has let go of doesn't take it up
   // again, only a new press does: once stopCamera has cleared the keys (the launcher took
@@ -8259,7 +8472,6 @@ window.addEventListener('keydown',e=>{
     case 'r':resetCam();break;
     case 'x':stopCamera();flash('Camera stopped');break;
     case 'l':toggleLegend();break;
-    case 't':themeBtn.click();break;
     // U levels the view (no pitch, no tilt). Not End: in a browser End scrolls whatever has
     // the focus to its end, so the side panel would jump to its bottom.
     case 'u':cam.pitch=0;cam.roll=0;camChanged();requestDraw();break;
@@ -8353,10 +8565,10 @@ const FILTERS=[
  {m:C_AINODE,l:'AI nodes',key:'Alt+9',t:'info_pathnode navigation nodes, coloured as in MOHRadiant (a node\'s info card explains its colours)'},
  {m:C_LIGHT,l:'Lights',key:'Alt+0',t:'light entities'},
  {m:C_DETAIL,l:'Details',key:'Ctrl+D',t:'Detail brushes'},
- {m:C_HINT,l:'Hints',key:'Ctrl+H',t:'Hint and skip brushes'},
+ {m:C_HINT|C_VIS,l:'Hints',key:'Ctrl+H',t:'Hint, skip and vis brushes (the In-game look hides them; this shows them whatever the look)'},
  {m:C_MODEL,l:'Models',key:'Ctrl+M',t:'Every entity drawn with a model'},
  {m:C_TERRAIN,l:'Terrain',key:'Ctrl+R',t:'LOD terrain blocks'},
- {m:C_TRIGGER,l:'Triggers',key:'Ctrl+T',t:'trigger_* entities and common/trigger brushes'},
+ {m:C_TRIGGER,l:'Triggers',key:'Ctrl+U',t:'trigger_* entities and common/trigger brushes'},
  {m:C_PORTAL,l:'Areaportals',key:'Ctrl+P',t:'Areaportal brushes'},
  {m:C_SKY,l:'Sky',key:'Ctrl+K',t:'Sky brushes: show or hide them completely (with them hidden, whatever is behind shows, else the backdrop)'},
  {m:C_NODRAW,l:'Nodraw',key:'Ctrl+O',t:'Other editor-only surfaces: nodraw, ladders, patharea, and the flat tree pictures that only cast a tree\'s shadow (misc_outside/commontreeshadow)'},
@@ -8620,6 +8832,8 @@ function findEnt(ei,t){
   if(t.k==='org'){const o=ENTS[ei].origin;return !!o&&Math.abs(o[0]-t.v[0])<0.01&&Math.abs(o[1]-t.v[1])<0.01&&Math.abs(o[2]-t.v[2])<0.01;}
   const key=FIND_ALIAS[t.key]||t.key,ok=findGlob(t.v);
   if(key==='texture')return false;
+  // the world: $world, its entity number in the game (1022, ENTITYNUM_WORLD) and "world"
+  if(ei===0&&((key==='targetname'&&ok('world'))||((key==='entnum'||key==='entity')&&ok(String(WORLD_ENTNUM)))))return true;
   if(key==='entity')return ok(String(ei));
   if(key==='entnum'){const R=gameEnts()[ei];return !!R&&R.num>=0&&!R.gone&&ok(String(R.num));}
   if(key==='origin'){const v=parseVec(t.v,3),o=ENTS[ei].origin;return !!(v&&o)&&v.every((x,i)=>Math.abs(x-o[i])<0.01);}
@@ -8689,10 +8903,10 @@ function renderList(){
   // the targetname first, then the class; the tooltip has all of it (the row cuts it short)
   const entRow=(ei,sub)=>{const e=MAP.ents[ei],X=ENTS[ei],sel=SEL.has('e'+ei)||(ei===0),hid=!shown(ei),tn=e.kvl.targetname,cls=e.kvl.classname||'?';
     const where=X.anchor?fvec(X.anchor):'';
-    const tip=(tn?'$'+tn+'  ':'')+cls+'\nentity '+ei+(where?'\n'+where:'')+(hid?'\nhidden':'');
+    const tip=ei===0?'$world  worldspawn\nentity 0 in the .map, entity number '+WORLD_ENTNUM+' in the game\nclick: its keys (More info)':(tn?'$'+tn+'  ':'')+cls+'\nentity '+ei+(where?'\n'+where:'')+(hid?'\nhidden':'');
     return '<div class="li'+(sub?' sub':'')+(sel?' sel':'')+(hid?' hid':'')+'" data-e="'+ei+'" title="'+esc(tip)+'"><span class="sw" style="background:rgb('+X.col.map(v=>Math.round(v*255)).join(',')+')"'+
       (ei?' title="Shift+click: '+(hid?'show':'hide')+' this entity"':'')+'></span><span class="nm">'+
-      esc(sub?(tn?'$'+tn:'entity '+ei):(tn?'$'+tn+'  ':'')+cls)+'</span><span class="ct">'+esc(where)+'</span></div>';};
+      esc(ei===0?(sub?'$world':'$world  worldspawn'):sub?(tn?'$'+tn:'entity '+ei):(tn?'$'+tn+'  ':'')+cls)+'</span><span class="ct">'+esc(where)+'</span></div>';};
   // the Entities tab: the targetname, else "entity" and its entity number; the number on the
   // right when the name doesn't give it. The tooltip has its class, numbers and origin.
   const numRow=(ei,R)=>{const e=MAP.ents[ei],X=ENTS[ei],tn=e.kvl.targetname,sel=SEL.has('e'+ei),hid=!shown(ei);
@@ -8801,6 +9015,7 @@ $('listBox').addEventListener('click',e=>{
   // Shift+click a green (selected) row: deselect that entity, every entity of the class, or
   // everything that uses the texture; the rest of the selection stays
   if(e.shiftKey&&r.classList.contains('sel')&&!(r.hasAttribute('data-e')&&+r.getAttribute('data-e')===0)){deselectRow(r);return;}
+  if(r.hasAttribute('data-e')&&+r.getAttribute('data-e')===0){if(!e.shiftKey&&SEL.size){SEL.clear();selectionChanged();}showInfo('world');renderList();return;}
   if(r.hasAttribute('data-e')){const ei=+r.getAttribute('data-e');if(!e.shiftKey)SEL.clear();if(ei)SEL.add('e'+ei);selectionChanged();if(ei&&!e.shiftKey)focusSelection();renderList();}
   // a class row selects the class and opens (or closes) its list of entities; a
   // double-click leaves it open and flies to the class
@@ -9062,13 +9277,14 @@ function reportMapErrors(){
   try{if(window.chrome&&window.chrome.webview){const L=errorLines();
     window.chrome.webview.postMessage('mohaa-map-errors\n'+TITLE+'\n'+n+'\n'+MAP.errors.slice(0,100).map((x,i)=>errText(x,L[i])).join('\n'));}}catch(_e){}
 }
-$('stats').addEventListener('click',e=>{if(e.target.closest('[data-errs]'))showInfo('errs');if(e.target.closest('[data-scr]'))scrCard();
+$('stats').addEventListener('click',e=>{if(e.target.closest('[data-errs]'))showInfo('errs');if(e.target.closest('[data-world]'))showInfo('world');if(e.target.closest('[data-scr]'))scrCard();
   if(e.target.closest('[data-leak]')){if(!view.leak)toggleDisplay('leak');else leakCard();}});
 function showInfo(mode){
   infoMode=mode||'sel';
   if(infoMode==='errs')return infoErrors();
   if(infoMode==='leak')return leakCard();
   if(infoMode==='scr')return scrCard();
+  if(infoMode==='world')return infoWorld();
   if(infoMode==='face'){if(lastHit&&lastHit.face>=0)return infoFace(lastHit);}
   // a new entity of Modify's selected: its own card (it isn't in the .bsp yet)
   if(infoMode==='sel'&&MOD.ents[MOD.sel]&&!modIsMap(MOD.ents[MOD.sel]))return infoMod(MOD.sel);
@@ -9199,6 +9415,110 @@ function infoEntity(ei){
       '<div class="note">Its "target" as the script sets it while the game runs (the .map below has its own).</div>';}
   if(!e.scr)h+='<h4>.map source<span class="sp"></span>'+copyBtn(srcText(e.ts,e.te),'Copy')+openBtn(e.ts)+'</h4><pre>'+esc(clipText(srcText(e.ts,e.te)))+'</pre>';
   card(entName(ei),h);
+}
+// ---- $world: the worldspawn's keys ---------------------------------------------------------
+// The world is entity 0 in the .map and ENTITYNUM_WORLD (1022) in the game ($world in a
+// script). It has no marker to select, so its card opens from the stats line, its row in
+// the class list or Find ("world", "$world", "entnum: 1022"): its keys, what each does, and
+// a box to change them. The changes go with Save as .bsp / .map and with Compile, which
+// write the block's key lines only (its brushes, patches and terrain stay as they are).
+const WORLD_ENTNUM=1022;
+const WORLD_KEYS={
+  message:'The level\'s title (the loading screen, the console). World::SetMessage',
+  ambientlight:'r g b (0-255): light everywhere, added to every lightmap texel and the light grid (the compiler\'s light step)',
+  suncolor:'r g b (0-255): the sun, where it can be seen, by how far a surface faces it (light step); also the game\'s sun colour for models',
+  sundirection:'pitch yaw roll: the way to the sun (pitch -90, or 270, is straight up)',
+  sundiffuse:'How much light the whole sky gives, in parts of suncolor (light step; EA: "the fraction of the sunlight to use for diffuse sun"). 0: none',
+  sundiffusecolor:'r g b: the sky\'s colour for sundiffuse instead of suncolor',
+  sunlight:'Whether models get the sun\'s light in the game',
+  overbright:'EA\'s light step: "none", "world", "entities"... which lightmaps keep the overbright cutoff ("removes the overbright cutoff of lightmaps")',
+  lightmapdensity:'The default lightmap density for all world surfaces (units a texel)',
+  sunflarename:'The sun flare\'s shader ("none": no flare)',
+  sunflaredirection:'angles: where the sun flare is drawn',
+  farplane:'The fog\'s distance: past it nothing is drawn (0: no fog)',
+  farplane_color:'r g b (0-1): the fog\'s colour',
+  farplane_cull:'1: what is past the farplane isn\'t drawn at all; 0: only fogged',
+  farplane_bias:'The fog\'s distance bias',
+  skybox_farplane:'The skybox\'s own farplane',
+  skyalpha:'The sky portal\'s alpha',
+  skyportal:'Whether the sky portal is used at all',
+  render_terrain:'0: terrain isn\'t drawn',
+  vis_derived:'1: the vis groups also leave their portals out of the vis work (Compile\'s "Vis groups skip the work")',
+  soundtrack:'The level\'s music (.mus file)',
+  gravity:'The world\'s gravity (sv_gravity)',
+  northyaw:'The yaw the compass takes as north',
+  ai_visiondistance:'The AI\'s default vision distance',
+  nextmap:'The map to change to next',
+  watercolor:'r g b: the screen blend under water', wateralpha:'The water screen blend\'s alpha',
+  lavacolor:'r g b: the screen blend in lava', lavaalpha:'The lava screen blend\'s alpha',
+  numarenas:'The number of arenas',
+  map_time:'When the map was compiled: the game rebuilds the AI paths when the .pth has another time (Compile sets it)',
+  classname:'worldspawn: the world. Keep it'};
+const WED={kv:null};          // the world's keys as changed here; null: as the map has them
+function worldKv(){return WED.kv||MAP.ents[0].kv;}
+function worldEdited(){const a=WED.kv,b=MAP.ents[0].kv;if(!a)return false;if(a.length!==b.length)return true;
+  for(let i=0;i<a.length;i++)if(a[i][0]!==b[i][0]||a[i][1]!==b[i][1])return true;return false;}
+function worldKeysTip(){return '$world (worldspawn: entity 0 in the .map, '+WORLD_ENTNUM+' in the game)'+(worldEdited()?', changed here':'')+'\n\n'+
+  worldKv().map(kv=>'"'+kv[0]+'" "'+kv[1]+'"').join('\n')+'\n\nClick: More info, to see what each does and change them';}
+// Save as .bsp's change list: the world's new keys (the .bsp's entity lump gets them)
+function worldSets(){return worldEdited()?[{ei:0,cls:'worldspawn',origin:null,kv:WED.kv.map(x=>[x[0],x[1]]),del:false}]:[];}
+// The .map with the world's key lines written again: the block's own "key" "value" lines go,
+// the new ones go right after its "{"; its comments, brushes, patches and terrain stay.
+function worldMapText(t){
+  if(!worldEdited())return t;
+  const e=MAP.ents[0];if(!(e&&e.ts>=0))return t;
+  const ob=t.indexOf('{',e.ts);if(ob<0)return t;
+  let p=t.indexOf('\n',ob);if(p<0)return t;p++;
+  const keep=[];let q=p;
+  while(q<t.length){let n=t.indexOf('\n',q);if(n<0)n=t.length;const ln=t.slice(q,n),s0=ln.trim();
+    if(s0[0]==='{'||s0[0]==='}')break;
+    if(s0[0]!=='"')keep.push(ln);
+    q=n+1;}
+  const nl=t.indexOf('\r\n')>=0?'\r\n':'\n';
+  const lines=WED.kv.map(kv=>'"'+kv[0]+'" "'+kv[1]+'"').concat(keep.map(x=>x.replace(/\r$/,'')).filter(x=>x.trim()));
+  return t.slice(0,p)+lines.join(nl)+nl+t.slice(q);
+}
+let _cardWorldT=0;
+function infoWorld(){
+  infoMode='world';
+  const kv=worldKv(),txt=kv.map(x=>'"'+x[0]+'" "'+x[1]+'"').join('\n');
+  let h='<div><span class="sw" style="background:var(--accent)"></span><b>worldspawn</b>  <span style="color:var(--accent)">$world</span></div>';
+  h+='<div class="note">entity 0 in the .map · entity number '+WORLD_ENTNUM+' in the game (ENTITYNUM_WORLD; $world in a script) · '+
+    MAP.ents[0].prims.length+' world brushes and patches, '+MAP.ents[0].terrains.length+' terrain blocks</div>';
+  h+='<div id="cardWorldDyn">'+infoWorldKeys()+'</div>';
+  h+='<h4>Change them<span class="sp"></span>'+copyBtn(txt,'Copy')+' <button class="sm" id="cardWorldRevert"'+(worldEdited()?'':' disabled')+' title="The keys as the map has them">Revert</button></h4>';
+  h+='<textarea id="cardWorldTxt" spellcheck="false" style="width:100%;box-sizing:border-box;min-height:170px;resize:vertical;font:12px/1.4 Consolas,Menlo,monospace;background:var(--bg);color:var(--txt);border:1px solid var(--line);border-radius:6px;padding:6px 8px">'+esc(txt)+'</textarea>';
+  h+='<div class="note" id="cardWorldErr">"key" "value" lines, kept as you type. Save as .bsp / .map (Modify) and Compile write them; the lighting keys (ambientlight, suncolor, sundirection, sundiffuse...) only change the game\'s look once the map is compiled with light.</div>';
+  h+='<h4>.map source<span class="sp"></span>'+openBtn(MAP.ents[0].ts)+'</h4>';
+  card('$world (worldspawn)',h);
+  const ta=$('cardWorldTxt'),er=$('cardWorldErr');
+  const apply=()=>{try{const k=modParse(ta.value);
+      if(!k.some(x=>x[0].toLowerCase()==='classname'&&x[1].toLowerCase()==='worldspawn'))throw new Error('"classname" must stay "worldspawn"');
+      WED.kv=k;if(!worldEdited())WED.kv=null;
+      er.textContent='"key" "value" lines, kept as you type. Save as .bsp / .map (Modify) and Compile write them.';er.classList.remove('warn');
+      worldApplied();}
+    catch(err){er.textContent=err.message;er.classList.add('warn');}};
+  ta.addEventListener('input',()=>{clearTimeout(_cardWorldT);_cardWorldT=setTimeout(apply,250);});
+  ta.addEventListener('keydown',e=>{if(e.key==='Escape'){ta.blur();e.preventDefault();e.stopPropagation();}});
+  $('cardWorldRevert').onclick=()=>{WED.kv=null;worldApplied();infoWorld();flash('$world: its keys as the map has them');};
+}
+function infoWorldKeys(){
+  const kv=worldKv(),orig=new Map(MAP.ents[0].kv.map(x=>[x[0].toLowerCase(),x[1]]));
+  const rows=kv.map(([k,v])=>{const d=WORLD_KEYS[k.toLowerCase()],o=orig.get(k.toLowerCase());
+    return [k,esc(v)+(o!==v?' <span class="warn">'+(o==null?'(new)':'(was '+esc(o)+')')+'</span>':'')+(d?'<div class="co">'+esc(d)+'</div>':'')];});
+  for(const[k,o]of orig)if(!kv.some(x=>x[0].toLowerCase()===k))rows.push([k,'<span class="warn">removed (was '+esc(o)+')</span>']);
+  const miss=Object.keys(WORLD_KEYS).filter(k=>!kv.some(x=>x[0].toLowerCase()===k)&&k!=='classname');
+  return '<h4>Keys</h4>'+kvTable(rows)+'<div class="note">Not set (add a line to set one): '+esc(miss.join(', '))+'</div>';
+}
+// the world's keys changed: the card's table, the stats line, the fog, Save's state
+function worldApplied(){
+  const d=$('cardWorldDyn');if(d)d.innerHTML=infoWorldKeys();
+  const rv=$('cardWorldRevert');if(rv)rv.disabled=!worldEdited();
+  const a=document.querySelector('#stats [data-world]');if(a)a.title=worldKeysTip();
+  const k={};for(const[x,v]of worldKv()){const l=x.toLowerCase();if(!(l in k))k[l]=v;}
+  FOG.far=parseFloat(k.farplane)||0;FOG.col=parseVec(k.farplane_color,3)||[0.5,0.5,0.5];
+  try{modRender();}catch(_e){}
+  requestDraw();
 }
 // A path node's paths in the map's .pth (what ai_showroutes draws): node i is the map's
 // i-th info_pathnode.
@@ -10411,7 +10731,8 @@ function modRender(){
   $('bModDel').title=rest?'Put back the map\'s own keys for this entity and keep it in the saved map':cur&&modIsMap(cur)?'Delete this map entity: it is left out of the saved map (flagged DEL; Restore or Undo puts it back)\n\nHotkey: Delete':'Remove the entity (every selected one)\n\nHotkey: Delete';
   if(modSelEnts(false).length>1)$('bModDel').textContent='Delete ('+modSelEnts(false).length+')';
   const nw=MOD.ents.filter(m=>!modIsMap(m)),ch=MOD.ents.filter(m=>modIsMap(m)&&modEdited(m));
-  $('bModSaveBsp').disabled=$('bModSaveMap').disabled=$('bModCopy').disabled=!(nw.length||ch.length);
+  $('bModSaveBsp').disabled=$('bModSaveMap').disabled=!(nw.length||ch.length||worldEdited());
+  $('bModCopy').disabled=!(nw.length||ch.length);
   modStatSoon();
   sfRender();
   // a selected entity Modify can't take, and why: one the level script spawns (it isn't in the
@@ -10516,11 +10837,12 @@ function modEntsText(){return MOD.ents.filter(m=>!modIsMap(m)).map(modText).join
 // the map's entities changed here: by entity number (the decompiled .map keeps the entity
 // lump's order), with the class and origin they had, to check against the .bsp
 function modSets(){return MOD.ents.filter(m=>modIsMap(m)&&modEdited(m)).map(m=>({ei:m.ei,cls:MAP.ents[m.ei].cls,
-  origin:parseVec(edKey({kv:m.orig},'origin'),3),kv:m.del?m.orig:m.kv,del:!!m.del}));}
+  origin:parseVec(edKey({kv:m.orig},'origin'),3),kv:m.del?m.orig:m.kv,del:!!m.del})).concat(worldSets());}
 // the .map with the changes: each changed (point) entity's block written again, the new ones added
 function modMapText(){
   let t=D.srcText;const ch=MOD.ents.filter(m=>modIsMap(m)&&modEdited(m)).sort((a,b)=>MAP.ents[b.ei].ts-MAP.ents[a.ei].ts);
   for(const m of ch){const e=MAP.ents[m.ei];if(!(e.ts>=0&&e.te>e.ts))continue;t=t.slice(0,e.ts)+(m.del?'':modText(m))+t.slice(e.te);}
+  t=worldMapText(t);
   const add=MOD.ents.filter(m=>!modIsMap(m));
   if(add.length)t=t.replace(/\s*$/,'\n')+'// added in MOHAA Map Viewer\'s MODIFY\n'+add.map(modText).join('\n')+'\n';
   return t;
@@ -10533,7 +10855,7 @@ function modSaveKey(){return JSON.stringify([modEntsText(),modSets().map(x=>[x.e
 // MODIFY's changes not saved yet as a .bsp or .map: {nw new, ch changed}, else null
 function modUnsaved(){
   if(!MOD||!MOD.ents)return null;
-  const nw=MOD.ents.filter(m=>!modIsMap(m)).length,ch=MOD.ents.filter(m=>modIsMap(m)&&modEdited(m)).length;
+  const nw=MOD.ents.filter(m=>!modIsMap(m)).length,ch=MOD.ents.filter(m=>modIsMap(m)&&modEdited(m)).length+(worldEdited()?1:0);
   if(!nw&&!ch)return null;
   return modSaveKey()===MOD.savedKey?null:{nw:nw,ch:ch};
 }
@@ -10868,7 +11190,7 @@ function simSetPick(p){
 function simTexIndex(t,P){
   const e=TEXI.get(t.n);if(e&&!e.standin)return e.i;
   if(SIM.texi.has(t.n))return SIM.texi.get(t.n);
-  const i=TEX.length,te=Object.assign({},t,{i:i,sim:1});delete te.b;delete te.gb;
+  const i=TEX.length,te=Object.assign({},t,{i:i,sim:1});delete te.b;delete te.gb;delete te.fx;
   TEX.push(te);MAT.push(matOf(te));matFaces.push([]);
   GLT[i]=colourTex(te.c||[0.5,0.5,0.5]);
   if(t.b!=null)TEXURL[i]=blobTexture(t.b,t.m,x=>{GLT[i]=x;},P);
@@ -11907,7 +12229,7 @@ async function main(){
       '<span class="ek'+(K.real>=ENT_MAX?' over':'')+'" title="Real entities: the ones the game spawns as entities, each with an entity number (.entnum).\n\n'+esc(entLimitText(K))+'">'+K.real+' real</span> · '+
       '<span class="ek'+(K.nodes>=MAX_PATHNODES?' over':'')+'" title="Simple entities: path nodes, player starts, waypoints, vehicle points and grenade hints, which the game keeps without an entity number, and the lights, info_nulls and other editor-only entities it drops once the map is loaded.\n\n'+esc(nodeLimitText(K))+'">'+K.simple+' simple</span> · '+
       '<span class="ek" title="Static props (static_* classes): models the compiler turns into scenery the game draws without an entity.">'+K.stat+' static props</span>'+
-      (D.kind==='bsp'?'<br>decompiled from the .bsp (v'+(D.bsp&&D.bsp.version)+')':'')+
+      '<br><a class="ek" data-world title="'+esc(worldKeysTip())+'">'+(D.kind==='bsp'?'decompiled from the .bsp (v'+(D.bsp&&D.bsp.version)+')':'$world: '+MAP.ents[0].kv.length+' keys')+'</a>'+
       (wk.message?'<br>"'+esc(wk.message)+'"':'')+
       (D.scr?'<br><a class="scrlink" data-scr title="What the level script spawns and sets: its entities (placed, and those whose place the viewer can\'t follow), setcvar and $world lines">level script: '+scrSummary()+'</a>':'')+
       (leakHas()?'<br><a class="scrlink" data-leak title="The compiler\'s leak trail (the map\'s .lin): where the void gets in and how to fix it (Leak, P)">leak trail: the map isn\'t sealed</a>':'')+
@@ -11927,7 +12249,7 @@ if(window.__HOSTTHEME__==='light'||window.__HOSTTHEME__==='dark')setTheme(window
 else if(FORCETHEME==='light'||FORCETHEME==='dark')setTheme(FORCETHEME==='light');
 else if(LS.get('mohaaViewerTheme')==='light')setTheme(true);
 try{applyBackdrop(LS.get('mohaaMapViewerBg')||null,false);}catch(_e){}
-try{gridLoad();}catch(_e){}
+try{gridLoad();}catch(_e){}__EDITOR_JS__
 // saved slider values: this browser's copy first, then the launcher's config (which wins)
 try{window.MOHAA_SLIDERS(JSON.parse(LS.get('mohaaMapViewerSliders')||'null'),false);}catch(_e){}
 try{if(window.chrome&&window.chrome.webview){window.chrome.webview.postMessage('mohaa-sliders-get');setTimeout(()=>{SL_READY=true;},2500);}else SL_READY=true;}catch(_e){SL_READY=true;}

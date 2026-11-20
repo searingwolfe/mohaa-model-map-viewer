@@ -16,7 +16,7 @@ self-contained HTML pages that open in the launcher's embedded 3D pane or in any
 # Table of Contents
 
 ### [How To Install / Uninstall](https://github.com/searingwolfe/mohaa-model-viewer?tab=readme-ov-file#how-to-install--uninstall-1)<br>
-## [MOHAA .tik Model Viewer](https://github.com/searingwolfe/mohaa-model-viewer?tab=readme-ov-file#mohaa-tik-model-viewer)<br><br>[MOHAA .bsp Map Viewer](https://github.com/searingwolfe/mohaa-model-viewer?tab=readme-ov-file#mohaa-bsp-map-viewer)<br><br>
+## [MOHAA .tik Model Viewer](https://github.com/searingwolfe/mohaa-model-viewer?tab=readme-ov-file#mohaa-tik-model-viewer)<br><br>[MOHAA .bsp Map Viewer](https://github.com/searingwolfe/mohaa-model-viewer?tab=readme-ov-file#mohaa-bsp-map-viewer)<br><br>[Edit animations (in the Model Viewer)](https://github.com/searingwolfe/mohaa-model-viewer?tab=readme-ov-file#edit-animations-in-the-model-viewer)<br><br>[Edit map (in the Map Viewer)](https://github.com/searingwolfe/mohaa-model-viewer?tab=readme-ov-file#edit-map-in-the-map-viewer)<br><br>
 ### [Updating](https://github.com/searingwolfe/mohaa-model-viewer?tab=readme-ov-file#updating-1)<br>
 ### [Where Your Files Go](https://github.com/searingwolfe/mohaa-model-viewer?tab=readme-ov-file#where-your-files-go-1)<br>
 ### [Privacy & Security](https://github.com/searingwolfe/mohaa-model-viewer?tab=readme-ov-file#privacy--security-1)<br>
@@ -35,6 +35,10 @@ self-contained HTML pages that open in the launcher's embedded 3D pane or in any
 * Optional, Windows 8.1 and newer: allows for an embedded 3D pane instead of a browser tab
   (`pythonnet`, `pywebview==4.4.1`, `tkwebview2` and the Microsoft Edge WebView2 Runtime,
   which ships with Windows 10 and 11).
+* Optional, Linux: the same embedded pane, with Qt WebEngine (`PySide6-Essentials==6.11.1`
+  and `PySide6-Addons==6.11.1`, about 650 MB once installed, plus the system library
+  `libxcb-cursor0`). It needs an X11 desktop or Wayland with XWayland (KDE Plasma and GNOME
+  both have it), glibc 2.34 or newer and Python 3.10 to 3.14.
 * Without the embedded pane, HTML pages auto-open in your browser. The Map Viewer needs WebGL 2 to work,
   which every current browser has, but the Model Viewer falls back to a 2D renderer without WebGL.
 
@@ -49,10 +53,10 @@ program keeps working when other software updates Python's packages.
 * Click the green `<> Code` button and choose `Download ZIP`. <br>
 Extract the `mohaa-model-viewer-main` folder anywhere on your PC.
 
-* Start either program with **`MOH Model-Map Viewer (Windows x86-x64).bat`**. A menu asks which one:
+* Start any of the programs with **`MOH Model-Map Viewer (Windows x86-x64).bat`**. A menu asks which one:
   press **1** for the **Map Viewer** (`.bsp` / `.map` / `.bak`) or **2** for the **Model
-  Viewer** (`.skd` / `.tik`), or move with Up / Down and press Enter or Space (the Map
-  Viewer is selected at first); Q or Esc quits. Drag a file onto the `.bat` to skip the menu and
+  Viewer** (`.skd` / `.tik`), or move with Up / Down
+  and press Enter or Space (the Map Viewer is selected at first); Q or Esc quits. Drag a file onto the `.bat` to skip the menu and
   open it straight away in the program for its kind.
 
   Before opening the program, it:
@@ -95,7 +99,10 @@ Each viewer remembers its own list.
 
 ## macOS and Linux
 
-Python's Tk toolkit is often a separate package; install it once:
+Do these once, before the first start. Run the commands from a terminal opened in the
+program's folder (the one holding the `.sh` file).
+
+**1. Python's Tk toolkit** (often a separate package):
 
 ```sh
 sudo apt install python3-tk python3-pip   # Debian / Ubuntu / Kubuntu / Mint
@@ -104,10 +111,28 @@ sudo pacman -S tk                         # Arch
 brew install python-tk                    # macOS (or use the python.org installer, which bundles Tk)
 ```
 
+**2. Linux only: the library the embedded 3D pane needs.** pip can't install it, so
+without it the pane can't start and pages open in your browser instead (the RUN file
+warns when it's missing):
+
+```sh
+sudo apt install libxcb-cursor0           # Debian / Ubuntu / Kubuntu / Mint
+sudo dnf install xcb-util-cursor          # Fedora / RHEL
+sudo pacman -S xcb-util-cursor            # Arch
+```
+
+**3. Make the RUN file executable.** A downloaded zip doesn't keep the permission, and
+the file won't start without it:
+
+```sh
+chmod +x "MOH Model-Map Viewer (Linux - Mac OS).sh"
+```
+
 Then start either program with **`MOH Model-Map Viewer (Linux - Mac OS).sh`**, from a terminal
 (Konsole, GNOME Terminal, macOS Terminal ...) or a Linux file manager (it opens a terminal
 for itself if it has none). The same menu asks which one: **1** Map Viewer, **2** Model
-Viewer, or Up / Down and Enter (or Space). Give it a file to skip the menu:
+Viewer, or Up / Down and Enter (or Space). Give it a
+file to skip the menu:
 
 ```sh
 ./"MOH Model-Map Viewer (Linux - Mac OS).sh"                     # the menu
@@ -119,12 +144,19 @@ Like the `.bat`, it finds Python 3.8+ with tkinter and installs Pillow into
 `bin/libs-linux` (`bin/libs-mac` on macOS) with `python -m pip install --target`. That
 works on distributions that refuse system-wide `pip` installs (Ubuntu and Kubuntu 23.04
 and newer), and it avoids Ubuntu 24.04's packaged Pillow 10.2, which is below the 10.3
-security floor. If the `.sh` file won't start, make it executable:
-`chmod +x "MOH Model-Map Viewer (Linux - Mac OS).sh"`. On macOS, Finder opens a double-clicked
+security floor. If the `.sh` file won't start, check step 3 above. On macOS, Finder opens a double-clicked
 `.sh` in a text editor, so start it from Terminal.
 
-The embedded 3D pane is Windows-only. Everywhere else, pages open in your default
-browser: same viewer, same output.
+On Linux it also installs the **embedded 3D pane** (Qt WebEngine, PySide6 6.11.1) into
+`bin/libs-linux` (about 650 MB, downloaded once). It also needs the system library from
+step 2 above.
+
+The pane runs in its own process, inside the program's window. On Wayland (Kubuntu's
+default) both the program and the pane use XWayland. If the pane can't start, the Output
+pane says why and the page opens in your default browser instead. If the pane stays
+blank, start the program with `QT_QUICK_BACKEND=software` set, which draws the pane
+without the GPU. On macOS there is no embedded pane: pages open in your default browser,
+with the same viewer and the same output.
 
 ## Uninstall
 
@@ -273,7 +305,8 @@ click away: its targetname, origin, `setsize`, targets and ready-to-paste script
   (path nodes coloured by their targetname and spawnflags, facing arrows, stand-in cubes).
 * **Lit like the game:** a `.bsp` opens with its own lightmaps, vertex light, baked
   static-prop light, light-grid model colours and sky box (with its moving cloud
-  layers), so you see what a player sees. **Full Brightness** (`B`) switches to
+  layers), and its moving surfaces play as in game: water ripples and flows, and
+  scrolling, pulsing and animated textures move, so you see what a player sees. **Full Brightness** (`B`) switches to
   MOHRadiant's flat, fully bright look. The sky is drawn behind everything, as in game;
   **Simple Sky** (`K`) shows MOHRadiant's solid, tiled sky brushes instead, and the
   **Sun flare** (`J`) is drawn the way the game draws it.
@@ -370,6 +403,14 @@ click away: its targetname, origin, `setsize`, targets and ready-to-paste script
 * **Find** any class, targetname, key or texture (`Ctrl+F`), with `"exact"`, `$targetname`,
   `key: value`, `entity 25`, `( x y z )` and `-term` searches, or browse every class and
   texture the map uses; Shift+click a green (selected) row to deselect just that row.
+* **The world's keys** (`$world`, the worldspawn: entity 0 in the `.map`, entity number 1022
+  in the game): hold the mouse over the stats line under the map's name ("decompiled from
+  the .bsp", or "$world: N keys" for a `.map`) to see them all, and click it, its row in
+  the class list, or Find `world`, `$world` or `entnum: 1022`, for its card: what each key
+  does (`suncolor`, `sundiffuse`, `ambientlight`, `farplane`...) and a box to change, add
+  or remove them. Nothing is selected for it. The changes go with Save as `.bsp` / `.map`
+  and with Compile (only the key lines of its block: its brushes and terrain stay); the
+  lighting keys change the game's look once the map is compiled with light.
 
 It uses the same Python and packages as the Model Viewer, and both can be open at once.
 Press `H` in the viewer or `F1` in the launcher for every shortcut.
@@ -386,6 +427,210 @@ the map's own entities).
 ![Map Viewer: the legend of brushes/entities 1](screenshots/legend1.jpg)
 ![Map Viewer: the legend of brushes/entities 2](screenshots/legend2.jpg)
 ![Map Viewer: the legend of brushes/entities 3](screenshots/legend3.jpg)
+
+# Edit animations (in the Model Viewer)
+
+Make new animations for the game's human characters, or change the ones they have, and
+add them to the game.
+
+In the Model Viewer, turn on **View → Edit animations** (or the **✎ Edit animations**
+button beside Help, or `Ctrl+Shift+E`). An Animation Editor panel appears in the open
+page straight away (nothing is rebuilt or reloaded), and every model opens with it until
+you turn it off (the choice is kept with your settings). Load your `.pk3` archives, open a human `.tik`
+or `.skd`, and start an edit from the selected animation, the neutral A-pose or the pose
+the model opened in.
+
+Pose the frame shown with one of three tools (the hint under them says what a drag will do,
+and pointing at a joint shows it too):
+
+* **✋ Drag** (the default): drag any joint and it follows the mouse across the screen,
+  whichever way the camera faces (looking from the front it goes left / right and up /
+  down; from above, left / right and forward / back). What moves depends on the joint:
+  * the **hips, pelvis or lower spine** move the **whole body**. With **feet: stay
+    planted** the feet keep their place and the knees bend: crouch, kneel, lean, sit;
+  * a **foot** (or the knee or thigh) moves the foot, and the leg bends to reach it. The
+    game itself works the legs out from the feet, so a knee can't be posed on its own;
+  * a **hand, the head or any other joint** is pulled to the mouse by bending the bones
+    above it: a hand bends the forearm and upper arm, the head bends the neck and spine
+    (**pulling a joint bends** sets how many bones above it, or auto);
+  * **weapon tags** (tag_weapon_left / right) move.
+* **⟳ Rotate**: click a joint to select it, then drag inside the dashed circle round it
+  to turn it about the line you're looking along; hold **Shift** to tumble it instead.
+  Select **Bip01** (the hips) to turn the whole body: with **feet: move with the body**
+  it turns as one piece, for flips, falls, lying down or a hand-stand.
+* **⊕ Axes**: exact turns about the bone's own X / Y / Z (rings) or moves along the
+  model's X / Y / Z (arrows).
+
+Every tool works on **this frame** or on **every key** at once (each key from its own
+pose: lower or turn a whole animation). Pick a bone from the list as well as in the view;
+grey ones are posed by the game from the others. For the selected bone you can type its
+turn (degrees about X, Y, Z from its parent; a foot's facing) and its place, **Reset bone**
+to the pose the model opened in, or **Copy from other side**. **Mirror pose** swaps left
+and right for the whole body. Undo / Redo go back 60 steps.
+* **Timeline.** Set keys on frames; the frames between keys are filled in from the keys
+  either side. Copy and paste a pose or one bone's channels, and set the frame count and
+  frames per second.
+* **Save .skc...** writes a standard `.skc` animation file (default folder
+  `skc` in the Model Viewer's built-pages folder, at first `output/models/skc`), keeps the old file as `.bak`, then reads it back and checks
+  every value.
+* **Add to game...** gives a saved animation a name and puts it in
+  `output/models/mod/zzz_mohaa_custom_anims.pk3`. Copy that pak into the game's `main`
+  folder and every human in the game can play the animation by that name. The name must be
+  new (no human `.tik` may already use it). Adding the same name again replaces it.
+
+Limits: human (Bip01) animations only, and only files saved in the same session can be
+added to the game. Every model page carries the editor, so turning Edit animations off
+just hides the panel and the skeleton handles; an edit in progress is still there when you
+turn it back on.
+
+# Edit map (in the Map Viewer)
+
+Change a map, or start a new one.
+
+In the Map Viewer, turn on **View → Edit map** (or the **✎ Edit map** button beside Help,
+or `Ctrl+Shift+E`). The open page shows an **Editor** section at the top of the panel
+with **Modify** under it straight away (nothing is rebuilt or reloaded), and every map
+opens that way until you turn it off (the choice is kept with your settings): everything Modify does (add, move, trim, delete and change entities,
+path nodes and their AI routes, unlimited Undo, Save as `.bsp` / `.map`) works the same
+way here.
+
+* **New map...** (File menu, Ctrl+N, which turns Edit map on, or the button in the Editor section) writes a starter
+  `.map` where you choose (at first `output/my_maps/`): a sealed 512 x 512 x 256 room with
+  a concrete floor, stone walls, a plank ceiling, a player start, a deathmatch start and a
+  light. The file is read back and every brush is rebuilt from its planes to check it
+  closes, then it opens in the editor.
+* **Doors, triggers and other brush entities**: click one and it gets a row in Modify,
+  so you can change its keys or class, move it (Move, Trim origin, or an exact origin in
+  Edit parameters), delete it, and undo. Saved as a `.bsp` it moves the way the game moves
+  it (its origin); saved as a `.map` its brushes themselves move, with their textures kept
+  in place.
+* **Level script...** opens the map's `.scr` (beside the map file; a starting script when
+  there is none) in a box over the view. Save writes it (the old one kept as `.bak`) and
+  builds the page again, so what the script spawns is redrawn; the camera and Modify's
+  unsaved work come back with it. Maps opened from the paks: save a copy first, then open
+  the copy.
+* **Building in the view.** The Editor section's tools work with the mouse in the 3D view,
+  much as MOHRadiant's do in its 2D views. Everything snaps to the grid (the Grid slider,
+  8 at first), is shown as outlines while you drag, and is written on release as one
+  Undo step (Modify's Undo, Alt+Z):
+  * **▭ Draw brush**: drag on a floor, wall or ceiling to draw the outline on it, let go,
+    move the mouse to set the height, click to make it (Esc or right-click cancels).
+    **Shape**: a box, a 3- to 16-sided prism, or curved patches: a cylinder or pipe, a
+    cone, or a pipe bend (a quarter elbow). It gets the texture in the Texture box
+    (**Browse...** picks one from the map or your paks; the list beside it has the tool
+    textures: caulk, hint, vis, skip, clip, playerclip, nodraw, trigger, origin and more).
+  * **⇕ Resize**: drag a face of a brush to pull it out or push it in, along its own
+    direction. The brush's corners show as white crosses: drag a **corner** or an
+    **edge** to reshape the brush freely (it stays a closed, convex brush; the faces keep
+    their textures). On a patch, drag any **control point**. These drag across the floor;
+    hold Shift to drag them up and down.
+  * **✥ Move**: drag a brush, patch or terrain block across the floor; Shift+drag moves it
+    up and down, Alt+drag makes a moved copy. Texture lock keeps the textures in place.
+  * **✂ Clip**: click the brush, then two points: it is cut along the line between them
+    as you see it on screen (a third point tilts the cut). **Enter** cuts, **Shift+Enter**
+    splits it into two brushes, **Tab** keeps the other side. Cuts make any shape: bevels,
+    wedges, stairs, roofs. Ctrl+click picks another brush.
+  * **▦ Texture**: click a face to give it the Texture box's texture (Shift+click: every
+    face of the brush; patches and terrain patches too). **Alt+click** takes the texture
+    under the mouse into the box. **Ctrl+click** picks a face, then **Fit** (once across
+    the face), turn ⟲ ⟳, flip, shift, scale up or down, or **Natural** (reset).
+  * **▲ Terrain**: click a terrain triangle to cut it away (or click a cut one to fill it
+    back); drag across to do many. Each square of terrain is two triangles and the game
+    keeps either one on its own, as the original maps do where terrain meets a trench wall.
+    **Raise / lower** (press and drag up or down), **flatten** and **smooth** shape the
+    ground round the spot within the radius chosen. **Paint texture** gives a terrain
+    patch (512 x 512) the Texture box's texture. **Draw a new block**: drag out an area
+    (whole 512-unit patches on the 64-unit grid); with *meet the terrain round it* ticked,
+    its edges take the heights of the blocks next to it and its inside is blended between
+    them, to fill a gap in the ground. The Terrain tool reaches terrain behind clip and
+    other brushes.
+  * With a **terrain block** selected: **Join edges** gives its edges the heights of the
+    neighbouring blocks' edges (no gaps or steps), **Fit to neighbours** also blends its
+    inside.
+  * With a **patch** selected (Select or Resize): **+rows / −rows / +cols / −cols** add or
+    remove control points without changing the shape, **Cap ends** closes the open ends
+    of a pipe, cylinder or cone, and **Thicken** adds a copy pushed back by the amount
+    given, facing the other way, with strips joining their edges (a slab, wall or tube).
+  * **Region** (in the Editor section): select something, then Region draws only what lies
+    within the margin chosen round it, as MOHRadiant's Region does, so a corner of a big
+    map is quick to work in. Click it again to see the whole map.
+  * **Exact values** (folded under the tools) still types every number: sizes, corners,
+    face planes and textures, patch control points, terrain heights, holes over a range.
+* **New and changed geometry stays in sight until it is saved**, as Modify's new entities
+  do: a brush, patch or terrain block you add, move or resize is outlined in amber, drawn
+  and clickable even when a Show button hides its kind (a caulk cube with Caulk off), and
+  its More info card says it is new and not in the map's file yet. Once Save as `.map` or
+  Compile writes it, it is one of the map's own again (and follows the Show buttons).
+* **Changed geometry shows without the baked light** (the view draws the map as a `.map`
+  until it is compiled again), and Save as `.bsp` stays greyed after a brush, patch or
+  terrain change (a `.bsp` holds its brushes compiled). The changes are kept by Modify's
+  recovery file, and Save as `.map` keeps them to carry on later.
+* **Compile...** (on the page, File > Compile map..., or F9) builds a `.bsp` from the map
+  **as you see it, changes included**, whether you opened a `.bsp` or a `.map`. Its window
+  has what MBuilder offers:
+  1. **Full: bsp + vis + light** (for playing), **Quick test: bsp + fast vis + light**,
+     **bsp only** (for the viewer only) or **map file only** (the `.map` written, nothing
+     compiled). Hold the mouse over each for what it does, roughly how long it takes, and
+     how long it took last time. What a choice doesn't use is greyed out (Quick test: the
+     vis switches fast vis ignores), and a box with nothing left that applies is hidden:
+     bsp only shows BSP (and MAP), map file only MAP alone.
+  2. Each step's switches (hold the mouse over one for what it does). **BSP**: verbose, no
+     curves, no detail brushes, no hint brushes, entities only (the entities written into
+     the `.bsp` compiled before: seconds, for lights, spawns or triggers changed), detail as
+     structural. **VIS**: verbose, passage vis only, merge leafs, vis groups skip the work,
+     ignore the farplane, **Vis groups** (on) and **Cap the work per portal** (on).
+     **LIGHT**: verbose, extra detail, no shadows, and **Sun scale** (ticked, 0.77: the game's own
+     maps were lit darker than MOHTools' light step lights them, and 0.77 comes closest to
+     them; unticked or 1 lights as MOHTools does). Each step also has a box for more
+     switches (hold the mouse over it for the compiler's others: `-threads`, `-samplesize`,
+     `-point`, `-nogrid`...). **MAP** (scroll right, or on its own with map file only): the
+     world's keys as `"key" "value"` lines to change, delete or add (its list adds a key),
+     written into the `.map` the `.bsp` is built from; `"sundiffuse" "1"`, say.
+  3. Where the `.bsp` goes: a folder you choose (one you will pack into a `.pk3`, say), or
+     straight into the game's maps folder for its gametype: `maps` (single player),
+     `maps/dm` (deathmatch, team, round based) or `maps/obj` (objective). The `.map` it is
+     built from is written beside it with the same name, so you can open it later and carry
+     on. Nothing is written over the map you opened, over a `.map` or a `.bsp` that Compile
+     didn't write, without asking (the old one is kept as `.bak`).
+  4. **Start the game with the map when it's done**, as MBuilder does: the game in the
+     folder the paks were loaded from (asked for once, if it isn't found there) starts with
+     the command line given (developer, cheats, the console and `logfile 2` by default:
+     `qconsole.log` written line by line, so a crash doesn't lose its end), the gametype
+     and `+devmap` with the map, exactly as a shortcut's target or a command prompt would
+     pass them (`"quotes"` for a value with spaces), in the game's own folder. The window
+     shows the program it will start; **Browse...** picks another (or the one it couldn't
+     find), kept for next time. Off Windows, `MOHAA.exe` is started through Wine.
+
+  The compile runs in the background (its lines and each step's time in the Output pane;
+  F9 offers to stop it), then offers to open the new `.bsp`, with its baked light.
+
+  **Full vis in minutes, not hours.** On an open map (a beach, a town) full vis has to
+  follow every path each portal might see through, which is why MBuilder can sit at 99% all
+  night. Two things keep it short here:
+  * **Vis groups**: the game's own maps mark areas that never see each other with
+    `vis_leafgroup` entities. A `.bsp` keeps only their brushes, so a decompiled map has
+    lost them; Compile puts them back on its copy of the map from the original `.bsp`'s
+    vis, and the compiler leaves those areas out of what the game draws, as EA's does.
+  * **Cap the work per portal** (100,000 steps by default): a portal that has used up its
+    steps counts everything its paths might still see as seen, so it can only see more than
+    it would have, never less: the game draws a little more (on m3l1b, 12% more than a full
+    vis run to the end). On m3l1b (Omaha's bunker) full vis took under 3 minutes on two CPU
+    cores, against more than 9 hours in MBuilder without finishing. Untick it to run vis to
+    the end, as EA's compiler does.
+
+  The compiler is built in (ommap, from OpenMoHAA's code, made to write `.bsp` files as the
+  game's own compiler does, checked against it on the same maps): static props get their
+  models' collision brushes from the paks so they are solid in the game, light bakes the
+  map's lights and the sun and sky into lightmaps and the light grid, lights the static
+  props vertex by vertex, and terrain is compiled with its holes. If the map leaks, the Output pane says so and a red line on the
+  page runs from the void to the entity it reached.
+* Saving works as in Modify: Save as `.map` and Save as `.bsp` always write a new file,
+  never over the map you opened.
+
+Every map page carries the editor, so turning Edit map off just hides the Editor section
+(Modify goes back to its place) and stops brushes, patches and terrain being picked for
+editing; changes already made stay and still save and undo. A `.bsp` / `.map` dropped on
+the RUN file opens with Edit map as you last left it.
 
 # Updating
 
@@ -407,6 +652,10 @@ removed, and the folder holding the previous copies; **Restart now** loads them 
 use when it was written finishes installing on a restart, which happens by itself). A file
 you changed yourself after an update is told apart from one changed on GitHub
 (`output/update_manifest.json` keeps each file's fingerprint as installed) and is kept.
+When that record can't tell (the file was changed here before any check saw it, as with
+work not pushed to GitHub yet), the file's time here is compared with when GitHub last
+committed it: a file saved here after that is yours and newer, so it isn't offered (the
+update window and the Output pane say how many, and the log names them).
 
 The update is checked before anything changes: the download (a zip of exactly the commit
 that was checked) must be undamaged, and every file must match GitHub's fingerprint for it.
@@ -432,6 +681,9 @@ copy a numbered folder's contents over the program folder.
 | Previous versions | `output/previous-versions/<n>/` (written by an update, shared) | (same) |
 | Update record | `output/update_manifest.json` (each program file's GitHub fingerprint as installed, and the check-at-startup choice; shared) | (same) |
 | Python packages | `bin/libs` (Windows), `bin/libs-linux` (Linux), `bin/libs-mac` (macOS), shared | (same) |
+
+Edit animations and Edit map use their viewer's settings, logs and folders; what they add
+(saved `.skc` files, the mod pak, New map's `output/my_maps/`) is in their sections above.
 
 `output/` is the folder next to `bin/` (in a flat / portable install, the scripts' own
 folder). The built-pages folder can be changed under Options. On Windows, the embedded
@@ -521,6 +773,9 @@ python tests/check_privacy_sync.py  # PRIVACY.md = PRIVACY_TEXT = _PRIVACY_SWAPS
 python tests/check_init_attrs.py    # MapApp.__init__ keeps up with App.__init__
 python tests/test_map_actor.py      # Simulate's actors (set MOHAA_GAMEFOLDER for real-data tests)
 python tests/fuzz_parsers.py bin 1  # corrupted-input fuzz of every file parser
+python tests/test_skc_write.py      # the .skc writer (also takes .skc / .pk3 files to round-trip)
+python tests/test_map_editor.py     # Edit map: New map's room and check, the editor in every page
+python tests/anim_solver_parity.py --models <folder holding models/>   # the page's pose solver vs Python's
 ```
 
 # Contact & Credits

@@ -55,7 +55,7 @@ MAP_LOG = os.path.join(ML.DATADIR, "output_console_map.log")
 TEMP_PREFIX = "mohaamap_"
 # Oldest page format a cached map page may have; keep equal to MAP_VIEWER_REV in
 # mohaa_map_view.py. Older pages are rebuilt so new viewer features show up.
-MAP_VIEWER_REV_REQUIRED = 108
+MAP_VIEWER_REV_REQUIRED = 110
 # Files the map tree lists, and what each kind is.
 MAP_KINDS = {".bsp": "bsp", ".map": "map", ".bak": "map", ".scr": "scr", ".txt": "scr", ".pth": "bin",
              ".min": "bin", ".dcl": "bin", ".vis": "bin", ".lin": "bin", ".cfg": "scr"}
@@ -79,6 +79,9 @@ MAP_KEYS_LAUNCHER = {
             ML._kx("F5", "reload all loaded paks", ("F5", "reload")),
             ML._kx("Ctrl+T", "dark / light theme", ("Ctrl+T", "theme")),
             ML._kx("Ctrl+Shift+T", "old (OS-default) popup windows on / off", ("Ctrl+Shift+T", "old pop")),
+            ML._kx("Ctrl+Shift+E", "Edit map on / off (the map editor)", ("Ctrl+Shift+E", "edit")),
+            ML._kx("Ctrl+N", "New map: a starter room, opened in the map editor", ("Ctrl+N", "new map")),
+            ML._kx("F9", "Compile map: the open .map into a .bsp (again: stop it)", ("F9", "compile")),
             ML._kx("F1", "this window", ("F1", "keys", "the keyboard shortcuts (this window)")),
             ML._kx("F2", "the legend: colours, markers and editor surfaces", ("F2", "legend")),
             ML._kx("right-click", "on the Output console or the details panel: copy menu",
@@ -114,16 +117,26 @@ _PRIVACY_SWAPS = (
     ("theme, window layout, view angles,", "theme, window layout, map options,"),
     ("(mohaaview_*), and\n"
      "        the generated .html viewers in your chosen output folder. Both are\n"
-     "        removable from File --> Clear built models / Clear %temp% files. On\n"
-     "        Windows, the embedded 3D pane (Microsoft Edge WebView2) also keeps its\n"
-     "        browser files in a \"webview2\" folder beside (a).",
+     "        removable from File --> Clear built models / Clear %temp% files. With\n"
+     "        Edit animations on, the .skc files you save go where you choose (at\n"
+     "        first the \"skc\" folder in the output folder), and Add to game keeps its\n"
+     "        mod pak, a list of your animations and copies of them in the \"mod\"\n"
+     "        folder there; delete them whenever you like. On Windows, the embedded\n"
+     "        3D pane (Microsoft Edge WebView2) also keeps its browser files in a\n"
+     "        \"webview2\" folder beside (a).",
      "(mohaamap_*), and\n"
      "        the generated .html viewers and decompiled .map files in your chosen\n"
      "        output folder. Both are removable from File --> Clear built maps /\n"
-     "        Clear %temp% files. On Windows, the embedded 3D pane (Microsoft Edge\n"
-     "        WebView2) also keeps its browser files in a \"webview2\" folder beside (a),\n"
-     "        and MODIFY's unsaved work is kept in a \"modify_recovery\" folder there\n"
-     "        until it is saved or discarded."),
+     "        Clear %temp% files. The maps you start with New map go where you\n"
+     "        choose (at first the \"my_maps\" folder beside (a)); Save as writes its\n"
+     "        copies where you choose, Compile map its .bsp where you choose or in\n"
+     "        the game's maps folder, with the .map it was built from (and a leak's\n"
+     "        .lin) beside it, and the level script is saved beside the map, each\n"
+     "        keeping the file it replaces as .bak; delete them whenever you like.\n"
+     "        On Windows, the embedded 3D pane (Microsoft Edge WebView2) also keeps\n"
+     "        its browser files in a \"webview2\" folder beside (a), and MODIFY's\n"
+     "        unsaved work is kept in a \"modify_recovery\" folder there until it is\n"
+     "        saved or discarded."),
     ("(theme, backdrop colour,\n"
      "        renderer, placement angles, game cvars) in the browser's local storage.\n"
      "        The embedded pane runs in private mode and forgets them when the program\n"
@@ -158,6 +171,14 @@ def _privacy_text():
 
 class MapApp(ML.App):
     """The Model Viewer's launcher window, set up for maps."""
+    # This window's identity (as App's). The map editor (mohaa_map_edit.EditApp, which
+    # mohaa_map_launcher.py runs) is this same window with Edit map built in.
+    RUNTIME_NAME = "mohaa_map_launcher"         # init_runtime: logs/mohaa_map_launcher.log
+    WINDOW_TITLE = APP_NAME
+    CONFIG_PATH = MAP_CONFIG                    # settings file
+    CONSOLE_LOG = os.path.basename(MAP_LOG)     # Output-pane mirror in DATADIR
+    OUTDIR_NAME = "maps"                        # default output folder in DATADIR
+    STANDALONE_NAME = "maps_standalone"         # pages of maps opened from disk, beside it
 
     # The only kinds of pak file ever extracted to the workspace: maps to build and text
     # files to open in the text editor.
@@ -168,12 +189,12 @@ class MapApp(ML.App):
         # this program's own title, settings file, console log and folders. NOTE: this
         # repeats App.__init__ rather than calling it; an attribute added there must be
         # added here too (tests/check_init_attrs.py compares the two).
-        ML.init_runtime("mohaa_map_launcher")
+        ML.init_runtime(self.RUNTIME_NAME)
         tk.Tk.__init__(self)
         ML.init_fonts()
-        self.title(APP_NAME)
+        self.title(self.WINDOW_TITLE)
         self.geometry("1380x820"); self.minsize(1000, 600)
-        self._config_path = MAP_CONFIG
+        self._config_path = self.CONFIG_PATH
         self._cfg = self._load_config(); self._pyexe = ML.find_python()
         self._attach_busy = set(); self._attach_parts = []
         self._attach_lock = threading.Lock()
@@ -186,7 +207,11 @@ class MapApp(ML.App):
         self._status_base = "Ready"; self._pak_suffix = ""
         self._upd_win = None; self._upd_busy = False
         self._upd_startup = tk.BooleanVar(value=ML.update_check_at_startup())   # shared with the Model Viewer
-        self._logfile = ML.open_console_mirror(MAP_LOG)
+        # the map editor (Edit map, mohaa_map_edit.EditApp): on or off; the animation
+        # editor's state is the Model Viewer's alone, set here as App.__init__ sets it
+        self._editor_on = tk.BooleanVar(value=bool(self._cfg.get("editor_mode", False)))
+        self._anim_q = queue.Queue(); self._anim_saved = set()
+        self._logfile = ML.open_console_mirror(os.path.join(ML.DATADIR, self.CONSOLE_LOG))
         self._startup_extras()       # the RUN window's text, "saved <file>" lines, window-open signal
         self._pk3_paths = []; self._tmp = None; self._animroot = None
         self._vfs = None; self._SH = None; self._TI = None; self._GS = None; self._PROPS = None; self._ED = None
@@ -200,7 +225,7 @@ class MapApp(ML.App):
         self._remember = tk.BooleanVar(value=bool(self._cfg.get("remember_paks", True)))
         self._renderer_var = tk.StringVar(value="gl")
         self._outdir_on = tk.BooleanVar(value=bool(self._cfg.get("outdir_enabled", True)))
-        self._outdir = self._cfg.get("outdir") or os.path.join(ML.DATADIR, "maps")
+        self._outdir = self._cfg.get("outdir") or os.path.join(ML.DATADIR, self.OUTDIR_NAME)
         self._run_opts = {}
         self._last_build = None; self._last_info = None; self._last_subdir = None
         self._reuse_html = tk.BooleanVar(value=bool(self._cfg.get("reuse_html", True)))
@@ -257,13 +282,13 @@ class MapApp(ML.App):
 
     # ------------------------------------------------------------- config ---
     def _load_config(self, path=None):
-        """This program's own settings (MAP_CONFIG), or {} on first run (damage handled
+        """This program's own settings (CONFIG_PATH), or {} on first run (damage handled
         as in the Model Viewer: see mohaa_launcher.App._load_config)."""
-        return ML.App._load_config(self, path or MAP_CONFIG)
+        return ML.App._load_config(self, path or self.CONFIG_PATH)
 
     def _save_config(self, path=None):
-        """Save MAP_CONFIG atomically with a .bak (see mohaa_launcher.App._save_config)."""
-        return ML.App._save_config(self, path or MAP_CONFIG)
+        """Save CONFIG_PATH atomically with a .bak (see mohaa_launcher.App._save_config)."""
+        return ML.App._save_config(self, path or self.CONFIG_PATH)
 
     def _save_opts(self):
         """Copy the Options menu's choices into the config and save it."""
@@ -304,7 +329,7 @@ class MapApp(ML.App):
     def _menu_items_options(self):
         return [{"type": "check", "label": "Remember loaded paks between sessions", "variable": self._remember, "command": self._save_opts},
                 {"type": "check", "label": "Auto-open viewer after build", "variable": self._auto_open, "command": self._save_opts},
-                {"type": "check", "label": "Embed 3D viewer in this window (needs tkwebview2)", "variable": self._embed_on, "command": self._toggle_embed},
+                {"type": "check", "label": "Embed 3D viewer in this window" + ("" if sys.platform.startswith("linux") else " (needs tkwebview2)"), "variable": self._embed_on, "command": self._toggle_embed},
                 {"type": "check", "label": "Don't save recent files (empty all)", "variable": self._no_recent, "command": self._toggle_no_recent},
                 _MSEP,
                 {"type": "check", "label": "Draw placed models (static props, script models, turrets)",
@@ -326,7 +351,7 @@ class MapApp(ML.App):
                 _mi("Reset settings...", self._reset_settings)]
 
     def _menu_items_view(self):
-        return [_mi("Expand all folders", lambda: self._expand_all(True)),
+        return self._menu_items_editor() + [_mi("Expand all folders", lambda: self._expand_all(True)),
                 _mi("Collapse all folders", lambda: self._expand_all(False)),
                 _MSEP,
                 _mi("Toggle Dark / Light", self._toggle_theme, "Ctrl+T"),
@@ -361,13 +386,14 @@ class MapApp(ML.App):
         # Same layout as the Model Viewer: title and path bar on top, the pak tree on the
         # left, the 3D pane in the middle, the Output console and the details panel below.
         top = ttk.Frame(self); top.pack(fill="x", padx=10, pady=(8, 6))
-        ttk.Label(top, text=APP_NAME, style="Title.TLabel").pack(side="left")
+        ttk.Label(top, text=self.WINDOW_TITLE, style="Title.TLabel").pack(side="left")
         self._theme_btn = self._mkbtn(top, text="◐ Theme", style="Tool.TButton", command=self._toggle_theme,
                                       tip="Toggle Dark / Light theme.\n(Ctrl+T)")
         self._theme_btn.pack(side="right")
         self._help_btn = self._mkbtn(top, text="? Shortcuts", style="Tool.TButton", command=self._show_hotkeys,
                                      tip="Show all keyboard shortcuts.\n(F1)")
         self._help_btn.pack(side="right", padx=(0, 6))
+        self._editor_button(top)
         self._path_var = tk.StringVar()
         self._path_entry = tk.Entry(top, textvariable=self._path_var, bg=ML.PANEL, fg=ML.TXT, insertbackground=ML.TXT,
                                     highlightbackground=ML.LINE, highlightcolor=ML.ACCENT, highlightthickness=1,
@@ -428,7 +454,7 @@ class MapApp(ML.App):
         if ML.WEBVIEW2 is None:
             _ph += ("\n\nembedded view unavailable - maps open in your browser."
                     + (("\n(" + ML._WEBVIEW_ERR[:80] + ")") if ML._WEBVIEW_ERR else "")
-                    + "\nto enable:  pip install pythonnet pywebview==4.4.1 tkwebview2")
+                    + ("\n" + ML.WEBVIEW_HINT if ML.WEBVIEW_HINT else ""))
         self._view_placeholder = ttk.Label(self._viewpane, text=_ph, style="PanelDim.TLabel",
                                            justify="center", anchor="center")
         self._view_placeholder.pack(fill="both", expand=True)
@@ -526,9 +552,9 @@ class MapApp(ML.App):
         return os.path.join(*parts) if parts else ""
 
     def _standalone_dir(self):
-        """Pages for files opened from disk: a 'maps_standalone' folder next to the maps
-        output folder (the Model Viewer's 'standalone' folder stays its own)."""
-        return os.path.join(os.path.dirname(os.path.abspath(self._outdir)), "maps_standalone")
+        """Pages for files opened from disk: a 'maps_standalone' folder (STANDALONE_NAME)
+        next to the maps output folder (the Model Viewer's 'standalone' folder stays its own)."""
+        return os.path.join(os.path.dirname(os.path.abspath(self._outdir)), self.STANDALONE_NAME)
 
     def _unsafe_to_wipe(self, d):
         """Why folder d must not be cleared (a drive root, the home folder, or not one of
@@ -539,17 +565,19 @@ class MapApp(ML.App):
         if not leaf or os.path.dirname(d.rstrip(os.sep)) == d.rstrip(os.sep): return "a drive/filesystem root"
         home = os.path.abspath(os.path.expanduser("~"))
         if os.path.normcase(d) == os.path.normcase(home): return "your home folder"
-        if os.path.normcase(leaf) not in ("maps", "maps_standalone"):
-            return "not a 'maps' or 'maps_standalone' folder built by this program"
+        if os.path.normcase(leaf) not in (self.OUTDIR_NAME, self.STANDALONE_NAME):
+            return "not a '%s' or '%s' folder built by this program" % (self.OUTDIR_NAME, self.STANDALONE_NAME)
         return None
 
     @staticmethod
     def _is_built_file(path):
         """Only files this program wrote: <stem>_bsp_view.html / <stem>_map_view.html pages
-        and .map files that start with the decompiler's own first line. A 'maps' folder is
-        a common name in a game install, so anything else in it is never touched."""
+        (and the older Map Editor's <stem>_bsp_edit_view.html ...) and .map files that start with the
+        decompiler's own first line. A 'maps' folder is a common name in a game install, so
+        anything else in it is never touched."""
         fl = os.path.basename(path).lower()
-        if fl.endswith(("_bsp_view.html", "_map_view.html", "_bak_view.html")): return True
+        if fl.endswith(("_bsp_view.html", "_map_view.html", "_bak_view.html",
+                        "_bsp_edit_view.html", "_map_edit_view.html", "_bak_edit_view.html")): return True
         return fl.endswith(".map") and MB is not None and MB.is_decompiled_map(path)
 
     def _built_scan(self):
@@ -629,6 +657,7 @@ class MapApp(ML.App):
         try: names = os.listdir(pc)
         except OSError: MC.swallowed(); return None
         ours = ("mohaa_map_view", "mohaa_map_page", "mohaa_map_actor", "mohaa_bsp", "mohaa_entdefs", "mohaa_map_launcher",
+                "mohaa_map_edit", "mohaa_compile",
                 "mohaa_view", "mohaa_textures", "mohaa_launcher")
         return pc if any(any(nm.startswith(o + ".") for o in ours) for nm in names) else None
 
@@ -998,6 +1027,7 @@ class MapApp(ML.App):
         try: cmd.append("--texsize=%d" % int(self._texsize.get()))
         except (TypeError, ValueError): pass
         if not self._models_on.get(): cmd.append("--no-models")
+        cmd += self._builder_extra_args()       # a subclass's own builder options
         return cmd
 
     def _worker(self, path, subdir=None, bgen=None):
@@ -1089,6 +1119,7 @@ class MapApp(ML.App):
         if self._ensure_webview():
             try:
                 url = base + "#embed&theme=" + ("light" if self._theme == "light" else "dark")
+                url += self._editor_hash()
                 self._webview.load_url(url); self._embed_url = url
                 self._set_status(f"Viewing {os.path.basename(path)}")
                 self.after(700, self._embed_merge_ui); self.after(2200, self._embed_merge_ui)
@@ -1265,6 +1296,9 @@ class MapApp(ML.App):
                 MC.atomic_write_text(out, text, encoding="latin-1", errors="replace", newline="\n",
                                      backup=os.path.exists(out))
                 msg = f"saved {os.path.basename(out)} with {added.count('{')} new and {len(req.get('set') or [])} changed entities"
+                try: nbr = max(0, int(req.get("brushes") or 0))       # the Map Editor's brush changes
+                except (TypeError, ValueError): nbr = 0
+                if nbr: msg += f" and {nbr} geometry change{'' if nbr == 1 else 's'}"
         except Exception as e:
             MC.swallowed()
             tell(False, f"not saved: {e}"); return
@@ -1835,6 +1869,8 @@ class MapApp(ML.App):
                             self._log_q.put(("warn", "    " + r))
                         if total > len(rows):
                             self._log_q.put(("warn", f"    ... and {total - len(rows)} more (the red line in the viewer's panel opens the list)"))
+                    else:
+                        self._page_message(m)       # a subclass's own page messages
                 except Exception as e:
                     MC.swallowed()
                     self._log_q.put(("dim", f"(viewer message: {e})"))
@@ -2106,7 +2142,7 @@ class MapApp(ML.App):
         if not old: w.configure(bg=ML.BG)
         frm = tk.Frame(w) if old else ttk.Frame(w, style="Panel.TFrame")
         frm.pack(fill="both", expand=True, padx=10, pady=10)
-        rows = [(APP_NAME + " launcher", "title"), ("made by: Searingwolfe", "body"), (ML.VERSION_LABEL, "dim"),
+        rows = [(self.WINDOW_TITLE + " launcher", "title"), ("made by: Searingwolfe", "body"), (ML.VERSION_LABEL, "dim"),
                 ("Browses MOHAA .pk3 paks and opens .bsp / .map maps in a\n"
                  "self-contained browser-based 3D viewer. A .bsp is decompiled\n"
                  "back to .map source by its own built-in decompiler.", "dim"),
@@ -2140,7 +2176,11 @@ if __name__ == "__main__":
     init = None
     for a in sys.argv[1:]:
         if a.lower().endswith(MAP_EXTS) and os.path.exists(a): init = a; break
-    _code = ML.run_gui(lambda: MapApp(initial_file=init), "mohaa_map_launcher")
-    if ML.WEBVIEW2 is not None:
+    # The window is the map editor's (Edit map), which builds on this module: it is imported
+    # as mohaa_map_launcher, so it must find this one, not load a second copy.
+    sys.modules.setdefault("mohaa_map_launcher", sys.modules[__name__])
+    import mohaa_map_edit as _ME
+    _code = ML.run_gui(lambda: _ME.EditApp(initial_file=init), "mohaa_map_launcher")
+    if ML.WEBVIEW_DOTNET:
         os._exit(_code)       # pythonnet + WebView2 crash in normal interpreter shutdown
     sys.exit(_code)

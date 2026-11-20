@@ -66,10 +66,10 @@ import mohaa_map_actor as MA              # SIMULATE's actors: skin weights, cli
 # Page format revision, baked into each page as <!--mohaa-map-viewer-rev:N-->. Raise it
 # (and MAP_VIEWER_REV_REQUIRED in mohaa_map_launcher.py) when the page changes in a way
 # that a cached page must pick up.
-MAP_VIEWER_REV = 108
+MAP_VIEWER_REV = 110
 
 # Bumped when the cached shader / entity index format changes, so old caches are ignored.
-INDEX_VERSION = 10
+INDEX_VERSION = 11
 
 # Default longest side of the textures embedded in the page. 256 keeps a large map's
 # page around 10-20 MB; the launcher can ask for 128 or 512.
@@ -85,7 +85,8 @@ TEX_CACHE_FORMAT = 2
 
 USAGE = ("usage: python mohaa_map_view.py <map.bsp|map.map|map.bak> [--pak=<file.pk3> ...] [--paks=<list.txt>]\n"
          "         [--vfs=<path inside the paks>] [--outdir=<folder>] [--cache=<folder>]\n"
-         "         [--texsize=256] [--theme=light|dark] [--no-models] [--decompile-only] [--no-open]")
+         "         [--texsize=256] [--theme=light|dark] [--no-models] [--decompile-only] [--no-open]\n"
+         "         (every page carries Edit map's code, mohaa_map_editor.js; --editor is accepted and changes nothing)")
 
 
 def log(*a):
@@ -159,7 +160,11 @@ def _parse_stage(text):
     rgbGen / alphaGen, depthWrite, and the tcMods of the first bundle."""
     st = {"map0": None, "b": [None, None], "env": False, "blend": None, "cut": False,
           "afunc": None, "rgb": None, "rgbx": None, "agen": None, "tcmod": [], "dw": False,
-          "lm": False, "anim": None}
+          "lm": False, "anim": None,
+          # each bundle's tcMods, tcGen and animMap ([kind, frequency, frames]) as written,
+          # the second bundle's mode ("add" or "modulate") and the depthFunc, for the
+          # stages the game's lighting draws one by one (fx_stage)
+          "tms": [[], []], "tcg": [None, None], "anb": [None, None], "menv": None, "dfn": None}
     bundle = 0
     for line in text.splitlines():
         tok = line.split()
@@ -168,6 +173,7 @@ def _parse_stage(text):
         kw = tok[0].lower()
         if kw == "nextbundle":
             bundle = 1
+            st["menv"] = "add" if len(tok) > 1 and tok[1].lower() == "add" else "modulate"
         elif kw in ("map", "clampmap", "clampmapx", "clampmapy") and len(tok) > 1:
             if tok[1].lower() == "$lightmap":
                 st["lm"] = True
@@ -179,6 +185,9 @@ def _parse_stage(text):
             frames = [x for x in tok[2:] if not x.startswith(("$", "*"))]
             if kw == "animmapphase" and frames:
                 frames = frames[1:]
+            if frames and st["anb"][bundle] is None:
+                st["anb"][bundle] = [kw, _atof(tok[1]), frames,
+                                     _atof(tok[2]) if kw == "animmapphase" else 0.0]
             if frames:
                 if st["map0"] is None:
                     st["map0"] = frames[0]
@@ -197,12 +206,18 @@ def _parse_stage(text):
             st["rgbx"] = [tok[1].lower()] + tok[2:]        # the whole rgbGen; the last one wins
         elif kw == "alphagen" and len(tok) > 1:
             st["agen"] = [tok[1].lower()] + tok[2:]
-        elif kw in ("tcgen", "texgen") and len(tok) > 1 and bundle == 0:
-            st["env"] = tok[1].lower().startswith(("environment", "sunreflection"))
-        elif kw == "tcmod" and len(tok) > 1 and bundle == 0:
-            st["tcmod"].append([tok[1].lower()] + tok[2:])
+        elif kw in ("tcgen", "texgen") and len(tok) > 1:
+            if bundle == 0:
+                st["env"] = tok[1].lower().startswith(("environment", "sunreflection"))
+            st["tcg"][bundle] = [tok[1].lower()] + tok[2:]
+        elif kw == "tcmod" and len(tok) > 1:
+            if bundle == 0:
+                st["tcmod"].append([tok[1].lower()] + tok[2:])
+            st["tms"][bundle].append([tok[1].lower()] + tok[2:])
         elif kw in ("depthwrite", "depthmask"):
             st["dw"] = True
+        elif kw == "depthfunc" and len(tok) > 1:
+            st["dfn"] = tok[1].lower()
     pic = st["b"][0]
     st["pic"] = pic if pic and not pic.startswith(("$", "*")) and not _HELPER_PIC.search(pic) else None
     return st
@@ -542,12 +557,18 @@ def parse_shaders(txt, out):
             elif (kw == "deformvertexes" and len(tok) > 1 and tok[1].lower().startswith("autosprite")) \
                     or kw == "spritegen":
                 info["sprite"] = True
-            elif kw == "deformvertexes" and len(tok) > 1 and "dv" not in info:
-                dv = _deform(tok[1:])
-                if dv:
-                    info["dv"] = dv
+            elif kw == "deformvertexes" and len(tok) > 1:
+                info.setdefault("dvs", []).append(tok[1:])
+                if "dv" not in info:
+                    dv = _deform(tok[1:])
+                    if dv:
+                        info["dv"] = dv
         info["nst"] = len(stages)
         sts = [_parse_stage(st) for st in stages]
+        # a shader whose surface moves in game (water, flowing slime, pulsing lights...):
+        # its stages go to the page as they are, drawn one by one (fx_payload)
+        if _moves(info.get("dvs") or (), sts):
+            info["fxst"] = sts
         info["lmr"] = _lightmap_replaces(stages)
         # A sky shader's stages are its cloud layers, drawn over the far box
         # (tr_sky.c R_BuildCloudData). Kept as written; sky_clouds() turns them into what
@@ -808,7 +829,7 @@ LEGEND = [
          {"sw": "tex", "tex": "textures/common/foliageclip", "name": "foliageclip", "key": "Ctrl+G",
           "desc": "Walk-through; bullets hitting it make foliage effects. Shown and hidden apart from "
                   "the other clips."},
-         {"sw": "tex", "tex": "textures/common/trigger", "name": "trigger", "key": "Ctrl+T",
+         {"sw": "tex", "tex": "textures/common/trigger", "name": "trigger", "key": "Ctrl+U",
           "desc": "The volume of a trigger_* entity: walking into it (or using it) fires the trigger."},
          {"sw": "tex", "tex": "textures/common/hint", "name": "hint", "key": "Ctrl+H",
           "desc": "Tells the compiler where to split the map for visibility. Not drawn, not solid."},
@@ -973,7 +994,7 @@ MAP_VIEWER_KEYS = {
             _kx("H or ?", "show / hide this window", ("H", "keys", "show / hide the keyboard shortcuts"),
                 ("Shift+/", "keys", "show / hide the keyboard shortcuts")),
             _kx("L", "the legend: what the colours, markers and editor surfaces mean", ("L", "legend")),
-            _kx("T", "light / dark theme", ("T", "theme")),
+            _kx("Ctrl+T", "light / dark theme (the launcher's and the page's)", ("Ctrl+T", "theme")),
             _kx("\\", "collapse / expand the control panel", ("\\", "panel")),
             _kx("Esc", "close a card / clear the selection (Modify's too) / close the map (one a press)", ("Esc", "back")),
         ]},
@@ -995,9 +1016,9 @@ MAP_VIEWER_KEYS = {
                 ("Ctrl+D", "Details", "show / hide the detail brushes"),
                 ("Ctrl+H", "Hints", "show / hide hint and skip brushes"),
                 ("Ctrl+M", "Models", "show / hide every entity drawn with a model")),
-            _kx("Ctrl+R|T|P|K", "Terrain · Triggers · Areaportals · Sky",
+            _kx("Ctrl+R|U|P|K", "Terrain · Triggers · Areaportals · Sky",
                 ("Ctrl+R", "Terrain", "show / hide the LOD terrain"),
-                ("Ctrl+T", "Triggers", "show / hide triggers"),
+                ("Ctrl+U", "Triggers", "show / hide triggers"),
                 ("Ctrl+P", "Portals", "show / hide areaportals"),
                 ("Ctrl+K", "Sky", "show / hide the sky brushes")),
             _kx("Ctrl+O|I|G", "Nodraw · Rain (hidden at first) · Foliage clips",
@@ -1777,6 +1798,45 @@ class ModelBuilder:
     def _build(self, path):
         """Load a .tik (or a bare .skd/.skb), pose it at frame 0 of its idle animation,
         and pack its vertices, texture coordinates, triangles and surfaces as blobs."""
+        (skd, wR, wT, scale, shader_map, setsize, tbounds, classname, channels,
+         hidden) = self._posed(path)
+        return self._pack(path, skd, wR, wT, scale, shader_map, setsize, tbounds, classname,
+                          channels, hidden)
+
+    def engine_vertices(self, path):
+        """Every vertex of the model in the game's own order (each surface of each mesh,
+        hidden ones included: tr_staticmodels.cpp), posed as a static model is drawn and
+        times the .tik's scale: a list of ((x, y, z), (nx, ny, nz)) in the model's frame,
+        the normal turned by the vertex's first bone as R_InitStaticModels turns it."""
+        skd, wR, wT, scale, _sm, _ss, _tb, _cn, _ch, _hid = self._posed(path)
+        out = []
+        for s in skd["surfaces"]:
+            ns = s.get("normals") or []
+            for vi, (weights, _uv) in enumerate(zip(s["verts"], s["uvs"])):
+                X = Y = Z = 0.0
+                for bi, wv, off in weights:
+                    if not (0 <= bi < len(wR)):
+                        continue
+                    R = wR[bi]
+                    T = wT[bi]
+                    X += wv * (R[0][0] * off[0] + R[0][1] * off[1] + R[0][2] * off[2] + T[0])
+                    Y += wv * (R[1][0] * off[0] + R[1][1] * off[1] + R[1][2] * off[2] + T[1])
+                    Z += wv * (R[2][0] * off[0] + R[2][1] * off[1] + R[2][2] * off[2] + T[2])
+                b0 = weights[0][0] if weights else -1
+                if vi < len(ns) and 0 <= b0 < len(wR):
+                    R, n = wR[b0], ns[vi]
+                    nrm = (R[0][0] * n[0] + R[0][1] * n[1] + R[0][2] * n[2],
+                           R[1][0] * n[0] + R[1][1] * n[1] + R[1][2] * n[2],
+                           R[2][0] * n[0] + R[2][1] * n[1] + R[2][2] * n[2])
+                else:
+                    nrm = (0.0, 0.0, 1.0)
+                out.append(((X * scale, Y * scale, Z * scale), nrm))
+        return out
+
+    def _posed(self, path):
+        """The model loaded and posed: (skd, bone rotations, bone positions, the .tik's
+        scale, its surface shaders, setsize, bounds, classname, pose channels, and
+        hidden(surface name): whether the .tik switches that surface off)."""
         if MV is None:
             raise ValueError("mohaa_view.py is missing")
         low = path.lower()
@@ -1847,6 +1907,11 @@ class ModelBuilder:
         except Exception:
             MC.swallowed()
             wR, wT = MV.compute_world(skd["bones"], {})
+        return skd, wR, wT, scale, shader_map, setsize, tbounds, classname, channels, hidden
+
+    def _pack(self, path, skd, wR, wT, scale, shader_map, setsize, tbounds, classname, channels,
+              hidden):
+        """_build's second half: the posed model as the page's blobs."""
         pos = []
         uvs = []
         idx = []
@@ -2084,6 +2149,242 @@ def sky_boxes(texs, blobs, vfs):
             te["cl"] = len(clouds)
             clouds.append(layers)
     return skies, clouds
+
+
+# ==============================================================================
+#  Moving surfaces: water, flowing slime, pulsing lights (a .bsp's game lighting)
+# ==============================================================================
+# A shader that moves in game (deformVertexes, a moving tcMod, an animMap, a wave on its
+# rgbGen or alphaGen) goes to the page stage by stage, and the page draws its surfaces
+# the way tr_shade.c RB_IterateStagesGeneric does: one pass per stage, each with its own
+# pictures, texture coordinates, colour and blendFunc (FX in mohaa_map_page.py).
+FX_MAX_STAGES = 8           # MAX_SHADER_STAGES
+FX_MAX_FRAMES = 8           # animMap pictures kept per bundle
+_FX_MOVING_TCMODS = ("scroll", "rotate", "stretch", "turb", "wavetrans", "wavetrant", "parallax")
+_FX_DEFORMS = ("wave", "bulge", "move", "normal", "flap")
+
+
+def _moves(dvs, sts):
+    """True if a shader's surface moves in game: a vertex deform the page can draw, or a
+    stage with a moving tcMod, an animMap of more than one picture or a waving colour."""
+    if any(d and d[0].lower() in _FX_DEFORMS for d in dvs):
+        return True
+    for st in sts:
+        for mods in st["tms"]:
+            for m in mods:
+                if m[0] in _FX_MOVING_TCMODS and any(_atof(w) for w in m[1:]):
+                    return True
+        if any(a and len(a[2]) > 1 and a[1] for a in st["anb"]):
+            return True
+        if (st["rgbx"] or [""])[0] in ("wave", "colorwave") or (st["agen"] or [""])[0] == "wave":
+            return True
+    return False
+
+
+def _nums(words):
+    """The numbers among a keyword's words, brackets left out ("( 1 .5 0 )")."""
+    return [_atof(w) for w in words if w not in ("(", ")")]
+
+
+def _fx_deform(words):
+    """One deformVertexes (tr_shader.c ParseDeform) as the page's FX program takes it:
+    [kind, wave function, base, amplitude, phase, frequency, x, y, z], kind 1 wave (x the
+    spread, 1 / div), 2 bulge (width, height, speed), 3 move (the vector), 4 / 5 flap
+    along s / t (min, max), 6 normal (amplitude, frequency). None for the rest."""
+    w = [x.lower() for x in words]
+    k = w[0] if w else ""
+    if k == "wave" and len(w) >= 7:
+        div = _atof(w[1])
+        return [1] + _wave(w[2:7]) + [1.0 / div if div else 100.0, 0.0, 0.0]
+    if k == "bulge" and len(w) >= 4:
+        return [2, "sin", 0.0, 0.0, 0.0, 0.0, _atof(w[1]), _atof(w[2]), _atof(w[3])]
+    if k == "move" and len(w) >= 9:
+        return [3] + _wave(w[4:9]) + [_atof(w[1]), _atof(w[2]), _atof(w[3])]
+    if k == "flap" and len(w) >= 8 and w[1][:1] in ("s", "t"):
+        mn, mx = (_atof(w[8]), _atof(w[9])) if len(w) >= 10 else (0.0, 1.0)
+        return [4 if w[1][0] == "s" else 5] + _wave(w[3:8]) + [mn, mx, 0.0]
+    if k == "normal" and len(w) >= 3:
+        return [6, "sin", 0.0, _atof(w[1]), 0.0, _atof(w[2]), 0.0, 0.0, 0.0]
+    return None
+
+
+def _fx_rgb(rg, lit_default):
+    """A stage's rgbGen for the page (tr_shade.c ComputeColors): ["c", r, g, b],
+    ["v"] / ["1v"] the vertex colour (or one minus it), ["w", wave], ["cw", r, g, b, wave],
+    ["dot", min, max] / ["1dot", min, max] from the view's angle to the surface.
+    identityLight is 1 in MOHAA, so identity and identityLighting are both white."""
+    kind, args = (rg[0], rg[1:]) if rg else ("", [])
+    n = _nums(args)
+    if kind in ("const", "constant"):
+        return ["c"] + [max(0.0, min(1.0, x)) for x in (n + [0.0, 0.0, 0.0])[:3]]
+    if kind == "colorwave":
+        words = [w for w in args if w not in ("(", ")")]
+        return ["cw"] + [max(0.0, min(1.0, _atof(x))) for x in (words + ["0", "0", "0"])[:3]] + _wave(words[3:])
+    if kind == "wave":
+        return ["w"] + _wave(args)
+    if kind in ("vertex", "exactvertex", "lightingspherical", "static", "lightinggrid", "lightingdiffuse"):
+        return ["v"]
+    if kind == "oneminusvertex":
+        return ["1v"]
+    if kind in ("dot", "oneminusdot"):
+        lo, hi = (n + [0.0, 1.0])[:2] if n else (0.0, 1.0)
+        return ["dot" if kind == "dot" else "1dot", lo, hi]
+    return ["c", 1.0, 1.0, 1.0]
+
+
+def _fx_alpha(ag, rg):
+    """A stage's alphaGen for the page: ["c", a], ["v"] / ["1v"], ["w", wave],
+    ["dot" | "1dot", min, max] (as the engine does it, these set the colour, not the
+    alpha: RB_CalcAlphaFromDot), ["df" | "1df", near, range] (distFade), ["hf", min, max]
+    (heightFade), ["sky"] / ["1sky"]. With none, a vertex-coloured stage keeps the
+    vertex alpha and the others are opaque (AGEN_IDENTITY)."""
+    kind, args = (ag[0], ag[1:]) if ag else ("", [])
+    n = _nums(args)
+    if not kind:
+        return ["v"] if rg[0] == "v" else ["c", 1.0]
+    if kind in ("const", "constant"):
+        return ["c", max(0.0, min(1.0, n[0] if n else 0.0))]
+    if kind == "wave":
+        return ["w"] + _wave(args)
+    if kind in ("vertex", "oneminusvertex"):
+        return ["v"] if kind == "vertex" else ["1v"]
+    if kind in ("dot", "oneminusdot"):
+        lo, hi = (n + [0.0, 1.0])[:2] if n else (0.0, 1.0)
+        return ["dot" if kind == "dot" else "1dot", lo, hi]
+    if kind in ("distfade", "oneminusdistfade", "tikidistfade", "oneminustikidistfade"):
+        near, rng = (n + [256.0, 256.0])[:2] if n else (256.0, 256.0)
+        return ["1df" if "minus" in kind else "df", near, rng or 1.0]
+    if kind == "heightfade":
+        lo, hi = (n + [256.0, 512.0])[:2] if n else (256.0, 512.0)
+        return ["hf", lo, hi]
+    if kind == "skyalpha":
+        return ["sky"]
+    if kind == "oneminusskyalpha":
+        return ["1sky"]
+    return ["c", 1.0]
+
+
+def _fx_tcmods(mods):
+    """A bundle's tcMods for the page: the sky's (_cloud_tcmods), with turb ["turb",
+    amplitude, phase, frequency] and parallax ["par", rate s, rate t] kept, in order."""
+    out = []
+    for m in mods:
+        kind, args = m[0], [_atof(w) for w in m[1:]]
+        if kind == "turb" and len(args) >= 4:
+            out.append(["turb", args[1], args[2], args[3]])
+        elif kind == "parallax" and len(args) >= 2:
+            out.append(["par", args[0], args[1]])
+        else:
+            out.extend(_cloud_tcmods([m]))
+    return out
+
+
+def _fx_tcgen(words, lightmap):
+    """A bundle's tcGen: ["t"] its texture coordinates, ["l"] the lightmap's, ["e"]
+    environment (environment2 and sunReflection drawn the same way), ["v", s, t] vector."""
+    if lightmap and not words:
+        return ["l"]
+    kind = (words or [""])[0]
+    if kind.startswith(("environment", "sunreflection")):
+        return ["e"]
+    if kind == "lightmap":
+        return ["l"]
+    if kind == "vector":
+        n = _nums(words[1:])
+        if len(n) >= 6:
+            return ["v", n[:3], n[3:6]]
+    if kind == "identity":
+        return ["i"]
+    return ["t"]
+
+
+class _FxPictures:
+    """Stage pictures packed once each, whatever the number of stages using them."""
+
+    def __init__(self, texs, blobs):
+        self.texs, self.blobs, self.seen = texs, blobs, {}
+
+    def get(self, path, alpha):
+        key = (path.lower(), alpha)
+        if key not in self.seen:
+            img = self.texs._find(path)
+            if img is None and self.texs.vfs is not None:
+                img = self.texs.vfs.find_texture_by_name(path)
+            val = self.texs._encode(img, alpha) if img else None
+            self.seen[key] = [self.blobs.add(val[1]), val[0]] if val else None
+        return self.seen[key]
+
+
+def _fx_bundle(st, b, pics, alpha):
+    """One texture bundle's picture: "lm" ($lightmap), "w" ($whiteimage) or
+    {"b": [blob, ...], "m": [mime, ...], "f": frames a second, "o": play once, "ph": phase}
+    (more than one picture for an animMap), or None when it has none or it isn't in the
+    paks."""
+    an = st["anb"][b]
+    name = st["b"][b]
+    if not name and not an:
+        return None
+    if name and name.lower() == "$lightmap":
+        return "lm"
+    if name and name.lower() in ("$whiteimage", "*white"):
+        return "w"
+    frames = an[2][:FX_MAX_FRAMES] if an else [name]
+    got = [pics.get(f, alpha) for f in frames if f and not f.startswith(("$", "*"))]
+    got = [g for g in got if g]
+    if not got:
+        return None
+    out = {"b": [g[0] for g in got], "m": [g[1] for g in got]}
+    if an and len(got) > 1:
+        out.update(f=an[1], o=1 if an[0] == "animmaponce" else 0, ph=an[3])
+    return out
+
+
+def fx_stage(st, pics):
+    """One stage of a moving shader for the page (see _fx_rgb, _fx_alpha, _fx_tcmods,
+    _fx_tcgen, _fx_bundle): {"p": [bundle 0, bundle 1], "e": 1 when the second bundle is
+    added (nextBundle add) rather than multiplied, "f": [source, destination, alphaFunc],
+    "rg", "ag", "tm": [tcMods 0, tcMods 1], "tg": [tcGen 0, tcGen 1], "dw": writes depth,
+    "df": depthFunc (0 lequal, 1 equal, 2 none)}. None when it draws nothing."""
+    src, dst = _blend_factors(st["blend"])
+    af = {"gt0": 1, "ge128": 2, "lt128": 3}.get(st["afunc"] or "", 0)
+    alpha = bool(af) or src in (6, 7, 10) or dst in (6, 7)
+    p = [_fx_bundle(st, 0, pics, alpha), _fx_bundle(st, 1, pics, alpha)]
+    if p[0] is None:
+        return None
+    tms = [_fx_tcmods(st["tms"][0]), _fx_tcmods(st["tms"][1])]
+    tg = [_fx_tcgen(st["tcg"][0], p[0] == "lm"), _fx_tcgen(st["tcg"][1], p[1] == "lm")]
+    # a lightmap first with a second bundle swaps the two (tr_shader.c FinishShader)
+    if st["menv"] and p[0] == "lm" and p[1] is not None:
+        p.reverse(); tms.reverse(); tg.reverse()
+    two = p[1] is not None
+    # an unset rgbGen is identity or identityLighting (ParseStage), white either way
+    rg = _fx_rgb(st["rgbx"], two or p[0] == "lm")
+    solid = (src, dst) == (1, 0)
+    df = {"equal": 1, "disable": 2}.get(st["dfn"] or "", 0)
+    return {"p": p, "e": 1 if two and st["menv"] == "add" else 0, "f": [src, dst, af],
+            "rg": rg, "ag": _fx_alpha(st["agen"], rg), "tm": tms, "tg": tg,
+            "dw": 1 if (solid or st["dw"]) and df != 2 else 0, "df": df}
+
+
+def fx_payload(texs, blobs):
+    """Give each moving shader's texture entry its stages ("fx": {"d": deforms, "s":
+    stages}) for the page. Skies (their clouds move already), sprites and surfaces the
+    game doesn't draw are left out. Returns the number of shaders given stages."""
+    pics = _FxPictures(texs, blobs)
+    n = 0
+    for te in texs.entries:
+        if te.get("f", 0) & (TF_SKY | TF_NODRAW | TF_SPRITE):
+            continue
+        info = texs.info(te["n"])
+        if not info or not info.get("fxst") or info.get("sprite"):
+            continue
+        stages = [s for s in (fx_stage(st, pics) for st in info["fxst"][:FX_MAX_STAGES]) if s]
+        if not stages:
+            continue
+        te["fx"] = {"d": [d for d in (_fx_deform(w) for w in info.get("dvs") or ()) if d][:3],
+                    "s": stages}
+        n += 1
+    return n
 
 
 # ==============================================================================
@@ -4241,25 +4542,45 @@ def _keys_parts():
     return _KEYS_CSS_PLAIN, _KEYS_JS_PLAIN, {"cats": [], "layout": [], "t": MAP_VIEWER_KEYS}
 
 
-def write_html(path, title, b64, info, theme=None):
+# Edit map's page code (mohaa_map_editor.js). Every map page carries it, dormant: the
+# page's Edit map mode (the launcher's View > Edit map, or #edit in the page's URL) turns
+# its Editor section and picking on and off in place, with no rebuild. --editor is still
+# accepted and changes nothing. A page whose file is missing is built without it.
+EDITOR_JS_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "mohaa_map_editor.js")
+
+
+def editor_js():
+    """mohaa_map_editor.js, made safe inside the page's inline <script>; empty (with a
+    warning in the log) when the file can't be read, so the page is a viewer page."""
+    try:
+        with open(EDITOR_JS_FILE, "r", encoding="utf-8") as f:
+            return "\n" + f.read().replace("</", "<\\/")
+    except OSError as e:
+        log("! Edit map's page code can't be read (%s): the page is built without it" % e)
+        return ""
+
+
+def write_html(path, title, b64, info, theme=None, editor=False):
     """Fill the page template (mohaa_map_page.py) and write it, via a temporary file so
-    a half-written page is never left behind."""
+    a half-written page is never left behind. Every page carries Edit map's page code (editor is kept
+    for callers and changes nothing)."""
     from mohaa_map_page import HTML_TEMPLATE
     kcss, kjs, kdata = _keys_parts()
     repl = {"__TITLE__": _html_esc(title), "__TITLE_JS__": _js_lit(title),
             "__DATA__": b64, "__REV__": str(MAP_VIEWER_REV),
             "__INFO__": _json_script(info),
             "__THEME__": theme if theme in ("light", "dark") else "",
-            "__KEYS_CSS__": kcss, "__KEYS_JS__": kjs, "__KEYS__": _json_script(kdata)}
+            "__KEYS_CSS__": kcss, "__KEYS_JS__": kjs, "__KEYS__": _json_script(kdata),
+            "__EDITOR_JS__": editor_js()}
     # One pass, so a substituted value is never scanned again for another token.
-    html = re.sub(r"__(?:TITLE_JS|TITLE|DATA|REV|INFO|THEME|KEYS_CSS|KEYS_JS|KEYS)__",
+    html = re.sub(r"__(?:TITLE_JS|TITLE|DATA|REV|INFO|THEME|KEYS_CSS|KEYS_JS|KEYS|EDITOR_JS)__",
                   lambda m: repl[m.group(0)], HTML_TEMPLATE)
     MC.atomic_write_text(path, html, newline="\n")
 
 
-def page_name(src_name):
+def page_name(src_name, editor=False):
     """mohdm6.bsp -> mohdm6_bsp_view.html, obj_team2.map -> obj_team2_map_view.html,
-    obj_team2.bak -> obj_team2_bak_view.html."""
+    obj_team2.bak -> obj_team2_bak_view.html (one page whether Edit map is on or off)."""
     stem, ext = os.path.splitext(os.path.basename(src_name))
     return "%s_%s_view.html" % (stem, (ext[1:] or "map").lower())
 
@@ -4526,6 +4847,16 @@ def build(src, args):
                else "from everywhere (no leaf lists the sun)" if bsp is not None else "from everywhere (a .map)"))
     else:
         log("sun flare: none - %s" % sun["none"])
+    # ---- moving surfaces (water...): their shaders' stages, for the game's lighting -------
+    nfx = 0
+    if lit:
+        try:
+            nfx = fx_payload(texs, blobs)
+        except Exception as e:           # a shader the page can't take only costs its motion
+            MC.swallowed()
+            log("! moving surfaces left out: %s" % e)
+        if nfx:
+            log("moving surfaces: %d shader%s (water, scrolling and pulsing textures)" % (nfx, "" if nfx == 1 else "s"))
     world = ents[0]["kvd"] if ents else {}
     title = vpath
     header = {"v": 1, "name": stem, "path": vpath, "kind": kind, "built": time.strftime("%Y-%m-%d %H:%M"),
@@ -4559,8 +4890,8 @@ def build(src, args):
     for d in scr_deps:
         deps[os.path.abspath(d)] = None
     info["deps"] = [[p, round(os.path.getmtime(p), 3) if os.path.isfile(p) else 0] for p in deps]
-    out_html = os.path.join(outdir, page_name(name))
-    write_html(out_html, title, b64, info, args.get("theme"))
+    out_html = os.path.join(outdir, page_name(name, args.get("editor")))
+    write_html(out_html, title, b64, info, args.get("theme"), args.get("editor"))
     log("page data: %.1f MB (%.1f MB before compression) packed in %.1f s"
         % (gz_len / 1048576.0, raw_len / 1048576.0, time.time() - t0))
     log("wrote %s" % out_html)
@@ -4571,7 +4902,8 @@ def build(src, args):
 def parse_args(argv):
     """(input files, options) from the command line (see USAGE)."""
     a = {"pak": [], "paks": [], "vfs": None, "outdir": None, "cache": None, "texsize": None,
-         "theme": None, "no_models": False, "decompile_only": False, "no_open": False}
+         "theme": None, "no_models": False, "decompile_only": False, "no_open": False,
+         "editor": False}
     files = []
     for x in argv:
         if x.startswith("--pak="):
@@ -4597,6 +4929,8 @@ def parse_args(argv):
             a["decompile_only"] = True
         elif x == "--no-open":
             a["no_open"] = True
+        elif x == "--editor":
+            a["editor"] = True
         elif not x.startswith("--"):
             files.append(x)
     return files, a

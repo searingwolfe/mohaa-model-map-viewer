@@ -12,7 +12,8 @@
 #    3. Packages vendored into bin/libs-linux (bin/libs-mac on macOS) by
 #       bin/mohaa_envcheck.py with "python -m pip install --target". This works on
 #       distributions that block pip system-wide (Ubuntu / Kubuntu 23.04+, PEP 668):
-#       nothing is installed into the system Python.
+#       nothing is installed into the system Python. On Linux this includes the
+#       optional embedded 3D pane (Qt WebEngine); without it pages open in the browser.
 #    4. Starts the program and waits for it to close. Logs: output/logs/.
 #  Started without a terminal (double-clicked in a Linux file manager), it reopens
 #  itself in one so the menu can be answered. Written for bash 3.2, the one macOS
@@ -112,11 +113,11 @@ fi
 if [ "$MODE" = "map" ]; then
     NAME="Map Viewer"
     LAUNCHER="mohaa_map_launcher.py"
-    FILES="mohaa_map_launcher.py mohaa_map_view.py mohaa_map_page.py mohaa_bsp.py mohaa_entdefs.py mohaa_map_actor.py mohaa_launcher.py mohaa_view.py mohaa_textures.py"
+    FILES="mohaa_map_launcher.py mohaa_map_view.py mohaa_map_page.py mohaa_bsp.py mohaa_entdefs.py mohaa_map_actor.py mohaa_launcher.py mohaa_view.py mohaa_textures.py mohaa_map_edit.py mohaa_map_editor.js mohaa_compile.py"
 else
     NAME="Model Viewer"
     LAUNCHER="mohaa_launcher.py"
-    FILES="mohaa_launcher.py mohaa_view.py mohaa_textures.py"
+    FILES="mohaa_launcher.py mohaa_view.py mohaa_textures.py mohaa_anim_edit.py mohaa_anim_solver.js mohaa_skc_write.py"
 fi
 printf '\033]0;MOHAA %s\007' "$NAME"
 echo "[OK] $("$PY" -c 'import sys; print("Python %d.%d" % sys.version_info[:2])'): $PY"
@@ -131,7 +132,7 @@ for f in $FILES; do
 done
 
 # 3. Packages into the vendored libs folder.
-if ! "$PY" "$BIN/mohaa_envcheck.py" deps "$LIBS"; then
+if ! "$PY" "$BIN/mohaa_envcheck.py" deps "$LIBS" --embed; then
     echo >&2
     echo "[ERROR] A required package could not be installed (see the lines above)." >&2
     EXIT_CODE=1; finish

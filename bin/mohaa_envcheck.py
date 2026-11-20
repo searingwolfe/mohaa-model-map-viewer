@@ -6,13 +6,14 @@
 #  The .bat / .sh launchers only orchestrate (find Python, call this, start the
 #  program, pause). Everything with real logic lives here: version comparison,
 #  installing into the vendored libs folder, verifying the install in a fresh
-#  process, the Windows checks for the optional embedded 3D pane.
+#  process, the checks for the optional embedded 3D pane (Windows and Linux).
 #
 #  Usage:
 #    python mohaa_envcheck.py deps <libs folder> [--embed] [--upgrade]
 #        Make sure every package is in <libs folder> at its minimum version, installing
 #        or upgrading with "python -m pip install --target" when needed.
-#        --embed    also the optional embedded-pane packages (Windows 8.1+ only)
+#        --embed    also the optional embedded-pane packages (Windows 8.1+, or Linux
+#                   with an X11 or XWayland display)
 #        --upgrade  refresh every package even if it is already current
 #        --log NAME also save everything this prints (pip's output too) in
 #                   output/logs/run_NAME.log, which the program then shows at the
@@ -55,7 +56,7 @@ except Exception:                               # a damaged install: no log file
 # ==============================================================================
 #  Constants
 # ==============================================================================
-VERSION = "1.0.003"
+VERSION = "1.0.010"
 # (pip requirement, distribution name, minimum version, import check run in a NEW process)
 # Pillow's floor is a SECURITY floor (see docs/SECURITY.md); importing PIL._imaging catches
 # a compiled extension built for a different Python (the libs folder outlived a Python update).
@@ -80,6 +81,16 @@ OPTIONAL_EMBED = [
     ("pywebview==4.4.1", "pywebview", (4, 4, 1), PYWEBVIEW_CHECK, {}),
     ("tkwebview2", "tkwebview2", (0, 0, 0), "import tkwebview2", {"no_deps": True}),
 ]
+# Embedded 3D pane on Linux: Qt WebEngine, run as a helper process (bin/mohaa_webpane_qt.py).
+# PINNED to 6.11.1: 6.12 has no Qt WebEngine for Python, and the two wheels must be the same
+# version. About 650 MB once installed. The wheels need glibc 2.34+ and Python 3.10 to 3.14.
+OPTIONAL_EMBED_LINUX = [
+    ("PySide6-Essentials==6.11.1", "pyside6-essentials", (6, 11, 1), "import PySide6.QtWidgets", {}),
+    ("PySide6-Addons==6.11.1", "pyside6-addons", (6, 11, 1), "import PySide6.QtWebEngineWidgets", {}),
+]
+LINUX_EMBED_MIN_GLIBC = (2, 34)
+LINUX_EMBED_MIN_PYTHON = (3, 10)            # the 6.11.1 wheels are cp310-abi3
+LINUX_EMBED_MAX_PYTHON = (3, 15)            # first Python the 6.11.1 wheels don't support
 EMBED_MIN_WINDOWS = (6, 3)                  # Windows 8.1
 WEBVIEW2_CLIENT = "{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
 PIP_TIMEOUT = 600                           # seconds per pip run
@@ -114,7 +125,7 @@ def warn(msg):
 
 
 def run_log_path(name):
-    """output/logs/run_<name>.log for program `name` ("map" / "model"), or None."""
+    """output/logs/run_<name>.log for program `name` ("map", "model"), or None."""
     name = re.sub(r"[^A-Za-z0-9_-]", "", str(name or "").strip())
     if not name or MC is None:
         return None
@@ -375,6 +386,46 @@ def webview2_runtime():
     return None
 
 
+def linux_embed_blocker():
+    """Why the Linux embedded pane can't be installed here, or None when it can."""
+    import platform
+    if sys.version_info[:2] < LINUX_EMBED_MIN_PYTHON:
+        return "the pane's Qt needs Python %d.%d or newer" % LINUX_EMBED_MIN_PYTHON
+    if sys.version_info[:2] >= LINUX_EMBED_MAX_PYTHON:
+        return "Python %d.%d is newer than the pane's Qt supports (below %d.%d)" % (
+            sys.version_info[0], sys.version_info[1], LINUX_EMBED_MAX_PYTHON[0], LINUX_EMBED_MAX_PYTHON[1])
+    lib, ver = platform.libc_ver()
+    if lib != "glibc":
+        return "the pane's Qt needs glibc (this system's C library is %s)" % (lib or "unknown")
+    if version_tuple(ver) < LINUX_EMBED_MIN_GLIBC:
+        return "the pane's Qt needs glibc %d.%d or newer (this system has %s)" % (
+            LINUX_EMBED_MIN_GLIBC[0], LINUX_EMBED_MIN_GLIBC[1], ver)
+    if platform.machine().lower() not in ("x86_64", "amd64", "aarch64", "arm64"):
+        return "the pane's Qt has no build for %s" % platform.machine()
+    return None
+
+
+def linux_embed_deps(libs, upgrade):
+    """--embed on Linux: the Qt packages, then the system library Qt's X11 plugin needs."""
+    why = linux_embed_blocker()
+    if why:
+        say("[INFO] The embedded 3D pane can't be used here (%s); pages open in your default browser." % why)
+        return
+    say("[INFO] The embedded 3D pane on Linux uses Qt WebEngine (PySide6 6.11.1, about 650 MB once installed).")
+    for req, dist, minimum, check, opts in OPTIONAL_EMBED_LINUX:
+        if not ensure(libs, req, dist, minimum, check, upgrade, opts):
+            warn("[WARN] The embedded pane packages could not be installed; pages open in your default browser.")
+            return
+    import ctypes.util
+    if not ctypes.util.find_library("xcb-cursor"):
+        warn("[WARN] The embedded pane also needs the system library libxcb-cursor0, which isn't installed.")
+        warn("       Install it with:  sudo apt install libxcb-cursor0   (Debian/Ubuntu/Kubuntu)")
+    else:
+        say("[OK] libxcb-cursor0")
+    if not os.environ.get("DISPLAY"):
+        say("[INFO] No X11 display is set (DISPLAY); the pane needs X11 or XWayland, or pages open in your browser.")
+
+
 def cmd_deps(argv):
     """The "deps" command (see the module header). Returns the exit code."""
     if not argv:
@@ -405,10 +456,12 @@ def cmd_deps(argv):
         if not ensure(libs, req, dist, minimum, check, upgrade, opts):
             warn("[ERROR] %s is required (it decodes the game's textures). The program can't start without it." % dist)
             return 1
-    if "--embed" in flags:
+    if "--embed" in flags and sys.platform.startswith("linux"):
+        linux_embed_deps(libs, upgrade)
+    elif "--embed" in flags:
         wv = windows_version()
         if wv is None:
-            say("[INFO] The embedded 3D pane is Windows-only; pages open in your default browser.")
+            say("[INFO] The embedded 3D pane isn't available on this system; pages open in your default browser.")
         elif wv < EMBED_MIN_WINDOWS:
             say("[INFO] The embedded 3D pane needs Windows 8.1 or newer; pages open in your default browser.")
         else:
@@ -514,9 +567,9 @@ MENU_QUIT, MENU_MAP, MENU_MODEL = 10, 11, 12
 # (key, exit code, name, what it opens, one line on it); the first is selected at start
 MENU_ITEMS = [
     ("1", MENU_MAP, "Map Viewer", ".bsp / .map / .bak",
-     "Fly through a level: brushes, textures, entities, AI paths, leaks."),
+     "Fly through levels; Edit map changes or makes one, and compiles it."),
     ("2", MENU_MODEL, "Model Viewer", ".skd / .tik",
-     "Models with their animations, skins, tags and bones, and effects."),
+     "Models, animations, effects; Edit animations makes new .skc files."),
 ]
 MENU_HEAD = [
     "=" * 68,
@@ -599,14 +652,14 @@ def cmd_menu(argv):
     if not sys.stdin.isatty():
         # no keyboard to read keys from (input piped in): a plain numbered prompt
         for key, _code, name, exts, about in MENU_ITEMS:
-            out.write("  %s  %-13s (%s)\n       %s\n\n" % (key, name, exts, about))
+            out.write("  %s  %-16s (%s)\n       %s\n\n" % (key, name, exts, about))
         out.write("  Q  Quit\n\n")
         out.flush()
         try:
-            ans = input(" Select [1,2,Q] (Enter = 1): ").strip().lower()
+            ans = input(" Select [1,2,3,4,Q] (Enter = 1): ").strip().lower()
         except (EOFError, KeyboardInterrupt):
             return MENU_QUIT
-        if ans in ("", "1", "2"):
+        if ans in ("", "1", "2", "3", "4"):
             return MENU_ITEMS[keys.get(ans or "1", 0)][1]
         return MENU_QUIT
     vt = _vt_on()
@@ -615,7 +668,7 @@ def cmd_menu(argv):
     def item_lines(i):
         key, _code, name, exts, about = MENU_ITEMS[i]
         mark = ">" if i == sel else " "
-        top = " %s %s  %-13s (%s)" % (mark, key, name, exts)
+        top = " %s %s  %-16s (%s)" % (mark, key, name, exts)
         if vt and i == sel:
             top = "\x1b[7m" + top + " \x1b[0m"           # reverse video on the selected one
         return [top, "        " + about, ""]       # a blank line after each option
@@ -639,7 +692,7 @@ def cmd_menu(argv):
                 for line in block():
                     out.write(line.replace(">", " ") + "\n")
             key, _code, name, _exts, _about = MENU_ITEMS[sel]
-            out.write("\r Selected: %s  %-13s" % (key, name))
+            out.write("\r Selected: %s  %-16s" % (key, name))
         out.flush()
 
     try:

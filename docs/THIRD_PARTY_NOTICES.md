@@ -29,6 +29,13 @@ entity classes is generated from the `/*QUAKED*/` comments in OpenMoHAA's game c
 MOHRadiant's drawing rules (entity box colours, face shading) were worked out from the
 editor itself and are reproduced as behaviour; none of its code is used.
 
+The Map Editor ships a compiled program from OpenMoHAA's source: **ommap**, the map
+compiler in `code/tools/ommap` (id Software's q3map from the Quake III Arena tools, with
+MoHAA's `.bsp` lumps added by OpenMoHAA's developers), GPL version 2 or later. Its source,
+with this project's changes, is in `tools/ommap` (the changes are listed in its
+`README.md`), and `tools/build_ommap.py` builds the programs in `bin/ommap`. EA's own
+compiler and tools are not included.
+
 Using GPLv2 for this project settles that question: it matches OpenMOHAA, it fits the
 MOHAA / OpenMOHAA modding community, and every runtime dependency is GPL-compatible
 (section 2). *This is a plain-language summary, not legal advice.*
@@ -57,6 +64,7 @@ knows what to include.
 | **pywebview** (pinned 4.4.1) | WebView host (Windows only, optional) | BSD 3-Clause | Yes |
 | **tkwebview2** | Embeds Edge WebView2 in Tk (Windows only, optional) | MIT | Yes |
 | **Microsoft Edge WebView2 Runtime** | Renders the 3D pane (Windows only, optional) | Microsoft proprietary redistributable, ships with Windows 10/11 | Not redistributed by this project |
+| **PySide6** (pinned 6.11.1: PySide6-Essentials, PySide6-Addons, shiboken6) | Qt and Qt WebEngine for the embedded pane (Linux only, optional) | LGPLv3 (or GPLv3, or commercial); Qt WebEngine includes Chromium's code under its own licences | Not redistributed by this project (installed by the user's RUN file) |
 | pywebview / pythonnet dependencies | `bottle`, `proxy_tools`, `clr_loader`, `cffi`, `pycparser`, `typing_extensions` (installed automatically) | MIT, MIT, MIT, MIT, BSD 3-Clause, PSF | Yes |
 
 If you ever ship a frozen build (PyInstaller and similar) rather than source,

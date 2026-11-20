@@ -10,12 +10,16 @@ MODIFY's unsaved work, and the grid's size and colour,
 where the Edit parameters box was left and Simulate's model, human and weapon among the display choices (`_PRIVACY_SWAPS` in
 `mohaa_map_launcher.py`).
 
+Edit animations (in the Model Viewer) and Edit map (in the Map Viewer) use their viewer's
+settings, logs and folders; the files they add (`.skc` saves, the mod pak, New map's maps,
+compiled `.bsp` files and level scripts) are listed in section (d) of each notice.
+
 `python tests/check_privacy_sync.py` checks that this file, `PRIVACY_TEXT` and every
 `_PRIVACY_SWAPS` entry agree; `--write` regenerates the block below from `PRIVACY_TEXT`.
 
 ```
 PRIVACY NOTICE  --  MOHAA Model Viewer
-Last updated: 14 November 2026
+Last updated: 18 November 2026
 
 1. THE SHORT VERSION
    This program does not collect, transmit, sell, share or profile anything.
@@ -56,9 +60,13 @@ Last updated: 14 November 2026
      d) Working files
         A temporary workspace under your system temp folder (mohaaview_*), and
         the generated .html viewers in your chosen output folder. Both are
-        removable from File --> Clear built models / Clear %temp% files. On
-        Windows, the embedded 3D pane (Microsoft Edge WebView2) also keeps its
-        browser files in a "webview2" folder beside (a).
+        removable from File --> Clear built models / Clear %temp% files. With
+        Edit animations on, the .skc files you save go where you choose (at
+        first the "skc" folder in the output folder), and Add to game keeps its
+        mod pak, a list of your animations and copies of them in the "mod"
+        folder there; delete them whenever you like. On Windows, the embedded
+        3D pane (Microsoft Edge WebView2) also keeps its browser files in a
+        "webview2" folder beside (a).
 
      e) Display choices in the browser
         The viewer pages remember a few display choices (theme, backdrop colour,
@@ -74,10 +82,11 @@ Last updated: 14 November 2026
 
      g) Update record  --  update_manifest.json, in the same folder as (a).
         The fingerprint (SHA-1) GitHub lists for each program file, as last
-        installed or seen matching, so a file you changed yourself is not
-        offered as an update, and whether to check for updates at startup.
-        Both programs share it, as they share one update. It holds no
-        personal data.
+        installed or seen matching, and when GitHub last committed a file
+        that differs from your copy, so a file you changed yourself (or saved
+        after GitHub's copy) is not offered as an update; and whether to check
+        for updates at startup. Both programs share it, as they share one
+        update. It holds no personal data.
 
    None of this is transmitted anywhere. If you want it gone, delete the folders
    above; the program will simply start fresh.
@@ -90,9 +99,9 @@ Last updated: 14 November 2026
 
    The program reaches the network in only two places:
 
-     - The update check reads this project's file list and version file from
-       GitHub (api.github.com, raw.githubusercontent.com) and compares it with the
-       files in the program folder. It runs as soon as the program starts,
+     - The update check reads this project's file list, version file and commit
+       dates from GitHub (api.github.com, raw.githubusercontent.com) and compares
+       them with the files in the program folder. It runs as soon as the program starts,
        unless you untick Help --> Check for updates at startup, and when
        you open Help --> Check for updates. Only if you click Download are the
        new files downloaded (codeload.github.com). Nothing about your computer
