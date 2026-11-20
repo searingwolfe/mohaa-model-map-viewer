@@ -3090,7 +3090,7 @@ look of the walk and the doors should be confirmed by eye in the launcher.
   showed as slightly heavier shading on the terrain in the game), 1 about 8 bright.
 
 
-## Map Editor: compiling again (November 2026)
+## Map Editor: compiling again, the eyedropper (November 2026)
 
 - Compile... no longer stops with "open a map first" when the file the page was opened
   from is gone (moved, renamed or deleted after the first compile). `_edit_compile` takes
@@ -3100,3 +3100,77 @@ look of the walk and the doors should be confirmed by eye in the launcher.
   text says to open the map again, naming the path. F9 only needs a page or a last open
   to ask the page.
 - The compile log leaves out the compiler's blank lines (hundreds of them on a big map).
+- An eyedropper button (a pipette) beside the EDITOR section's *- tool textures -* list
+  (`edDrop`, `edTexAt`, `edDropTake` in `mohaa_map_editor.js`): click it, then click any
+  surface in the view and its texture goes into the Texture box, whatever tool is on. A
+  brush face, patch or terrain patch gives the map's texture; any other surface the page
+  draws gives its shader (without `textures/`); a model or entity says to click a surface
+  and keeps the eyedropper on. A drag still turns the camera, the cursor is a pipette while
+  it is on, and Esc, the button again or another tool turns it off. The Texture tool's
+  Alt+click uses the same lookup (`edTexAt`), so it now also reads a `.bsp`'s own surfaces
+  and keeps a terrain pick inside the block.
+- The Texture box follows the selection (`edSelTex` in `edPickSync`): a newly selected
+  brush, patch or terrain block, or another face of the selected brush, puts its texture
+  in the box: the face, patch or terrain patch clicked, else the picked face, else the most
+  used texture (a real one before a `common/` tool texture). A texture chosen with
+  Browse..., *- tool textures -* or the eyedropper goes on the selection too
+  (`edTexApplySel`): every face of a brush, a patch, every patch of a terrain block, as one
+  Undo. While the Texture tool or terrain paint is on (`edTexPainting`), the box is the
+  paint: it neither follows the selection nor repaints the selected brush. Checked in the
+  page: three clicked brushes each put their face's texture in the box, Browse... and the
+  tool-texture list retextured the selected brush, and with the Texture tool on Browse...
+  left it alone.
+- **Copy (Alt+C) takes brushes**: with Edit map on and brushes, patches, terrain blocks or
+  brush entities selected, Modify's Copy button and Alt+C start the editor's copy
+  (`edCopySet`, `edCarryStart`, `edCarryPlace` in `mohaa_map_editor.js`) instead of saying
+  that only point entities are copied. The copies follow the mouse as Modify's do (middle
+  under it, bottom on the surface, on the grid; terrain on 64-unit steps; a drag still
+  turns the camera) until a click puts them down; Esc, Alt+C again or another tool takes
+  them away. Brushes, patches and terrain go into the entity each came from; a brush
+  entity is written as a new entity after the map's last, without `targetname` or
+  `target`, its `origin` moved with it. Everything goes in as one change (`edDoMany`: one
+  rebuild, one Undo / Redo). A selection with both brushes and entities isn't copied (the
+  log says to leave one kind out); entities alone still get Modify's Copy. The button
+  shows `Copy (N)` for brushes too (`edCopyBtn`).
+- An entity added to the map's text sits after the static props on a `.bsp`'s page:
+  `isStaticProp` doesn't count it as one, and the level script's entities after it keep
+  their models (`scriptEnts` moves `D.modelOf` and the entity light along). A rebuild
+  clears the selection before anything reads it, so an Undo that takes an added entity
+  away leaves nothing selected past the map's end.
+- Exact values no longer has its own texture box and Browse... for the picked face: the
+  Texture box above does it (it follows the face clicked, and the Texture tool paints one
+  face). The face's texture is shown as text; Set face keeps it.
+- **Classname** row under the Texture box (`edClsHtml`, `edClsApply`, `edClsOpen` in
+  `mohaa_map_editor.js`): the selection's class, and Browse... with the brush entity
+  classes (the definitions' brush classes, sent as `bcls` by `brush_classes` in
+  `mohaa_map_view.py`, and the map's own brush entities' classes, with how many). Typing a
+  class and Enter does the same. Brushes and patches of the world (or a func_group) become
+  one new entity of that class after the map's last, their text moved into it (one Undo);
+  a brush entity gets the class through its Modify row (a key change, so Save as .bsp keeps
+  it without compiling). `worldspawn` isn't given to a brush entity, terrain stays in the
+  world, and point entities selected too are left to Modify's Edit parameters. Checked in
+  the page: a world brush became `func_rotatingdoor` entity 537 (Undo put it back), a
+  `trigger_use` became `trigger_multiple` in its Modify row, and a selection with a path
+  node too was refused.
+- **A brush entity's brushes one by one** (editor on): `keyOfHit` gives the brush under
+  the mouse (`p` key) for a brush entity too, so a door and its `common/origin` brush are
+  picked, Shift+clicked and deselected separately; `selFocusEnt` still hands Modify the
+  entity whose brushes are selected (its row: keys, Edit parameters, Move as a whole).
+  `edCopySet` counts an entity whose every brush is selected as that entity (Copy makes a
+  new one) and some of its brushes as brushes (copied into it); Modify's focus row is not
+  counted on its own. Classname with a brush entity's brush selected renames the entity.
+  Edits select by `edKeyOfPrim`.
+- **Move moves the selection**: pressing on a brush that is part of a selection of more
+  (`edMoveSelDown`) drags all of it, brushes, patches, terrain and whole entities (their
+  `origin` key with them); Alt+drag drops a copy of all of it; one Undo. Checked in the
+  page: a two-brush func_rotatingdoor moved 32 -16 0 together and stayed selected.
+- **Resize hover**: with Resize on, the face under the mouse is outlined in green (C_GOOD),
+  or the corner / edge a drag would take (`edResizeHover`).
+- A rebuild forgets the hover's last hit, so an Undo that takes an added entity away no
+  longer trips over it.
+- **Fixed: the map going black after Classname turned a brush into an entity.** The view
+  culls faces by boxes made once per face (`CULL.fk` / `CULL.fb`, `cullPrepFaces`), kept
+  until the face count changes. Moving a world brush into a new entity keeps the count but
+  reorders the faces, so the boxes belonged to other faces and terrain and walls were culled
+  (seen on m3l1b: the picks there found the sky). `edRebuild` now drops the boxes with
+  every edit, which also keeps a moved or resized brush from being culled by its old box.

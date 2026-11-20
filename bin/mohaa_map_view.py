@@ -1645,6 +1645,17 @@ def _norm_model_path(p):
     return p
 
 
+def brush_classes(entdefs):
+    """[name, first line of the description] of each brush entity class, by name."""
+    out = []
+    for d in (getattr(entdefs, "defs", None) or {}).values():
+        if not d.get("brush") or not d.get("name"):
+            continue
+        first = next((l.strip() for l in (d.get("desc") or "").splitlines() if l.strip()), "")
+        out.append([d["name"], first[:160]])
+    return sorted(out, key=lambda x: x[0].lower())
+
+
 def entity_model_path(kvd, entdefs):
     """The .tik (or .skd) an entity draws, or ''. A "model" key wins (script models,
     turrets, the static props of a compiled map); otherwise the class may come from
@@ -4868,6 +4879,9 @@ def build(src, args):
               "bsp": bspinfo, "lit": lit, "sky": skies, "clouds": clouds, "legend": legend,
               "vis": vis, "paths": paths, "lg": lgrid, "rain": rain, "sun": sun, "dcl": dcl, "leak": leak, "scr": scr, "weather": weather,
               "ek": {"simple": sorted(ME.SIMPLE_CLASSES), "dropped": sorted(ME.DROPPED_CLASSES)},
+              # every brush class the definitions know (the editor's Classname list): name and
+              # the first line of its description
+              "bcls": brush_classes(entdefs),
               # the keys a "$" or "#" in front of a key can set (MB.SETTER_KEYS)
               "sk": sorted(MB.SETTER_KEYS)}
     t0 = time.time()

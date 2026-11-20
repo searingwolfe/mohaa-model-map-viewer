@@ -523,9 +523,24 @@ way here.
     direction. The brush's corners show as white crosses: drag a **corner** or an
     **edge** to reshape the brush freely (it stays a closed, convex brush; the faces keep
     their textures). On a patch, drag any **control point**. These drag across the floor;
-    hold Shift to drag them up and down.
+    hold Shift to drag them up and down. The face under the mouse (the one a drag pulls),
+    or the corner or edge a drag would take, is outlined in green.
   * **✥ Move**: drag a brush, patch or terrain block across the floor; Shift+drag moves it
-    up and down, Alt+drag makes a moved copy. Texture lock keeps the textures in place.
+    up and down, Alt+drag makes a moved copy. Press on a brush that is part of a bigger
+    selection and the whole selection moves (or is copied) together; an entity whose every
+    brush is selected takes its `origin` key along. Texture lock keeps the textures in place.
+  * **Selecting brushes of a brush entity**: with the editor on, a click picks the one brush
+    under the mouse (a door apart from its `common/origin` brush) and Shift+click adds or
+    takes away single brushes. Modify still shows the entity's row (its keys, its Move as a
+    whole). Selecting every brush of an entity counts as the entity: Copy makes a new one.
+  * **Copy (Alt+C)**, with any tool: the selected brushes, patches, terrain blocks and
+    brush entities (Shift+click selects more) follow the mouse, their middle under it and
+    their bottom on the surface it is over, on the grid, until a click puts them down; a
+    drag still turns the camera, **Esc** or Alt+C again takes them away. Brushes go into
+    the entity they came from; a brush entity becomes a new entity, without its
+    `targetname` or `target`. One Undo (Alt+Z) takes the whole copy away. Brushes and
+    entities (path nodes, spawns ...) aren't copied at once: with only entities selected,
+    Alt+C is Modify's Copy.
   * **✂ Clip**: click the brush, then two points: it is cut along the line between them
     as you see it on screen (a third point tilts the cut). **Enter** cuts, **Shift+Enter**
     splits it into two brushes, **Tab** keeps the other side. Cuts make any shape: bevels,
@@ -534,6 +549,23 @@ way here.
     face of the brush; patches and terrain patches too). **Alt+click** takes the texture
     under the mouse into the box. **Ctrl+click** picks a face, then **Fit** (once across
     the face), turn ⟲ ⟳, flip, shift, scale up or down, or **Natural** (reset).
+  * **Eyedropper** (the pipette button beside *- tool textures -*, with any tool): click
+    it, then click any surface in the view (a brush face, a patch, a terrain patch or a
+    `.bsp`'s own surface) and its texture goes into the Texture box. A drag still turns
+    the camera; **Esc** or the button again cancels.
+  * **The Texture box follows the selection**: selecting a brush, patch or terrain block
+    puts its texture in the box (the face clicked, else the brush's most used texture).
+    A texture chosen with **Browse...**, *- tool textures -* or the eyedropper goes on what
+    is selected too: every face of a brush, a patch, or every patch of a terrain block
+    (one Undo). With the **▦ Texture** tool or terrain *paint texture* on, the box is the
+    paint and stays as you set it.
+  * **Classname** (under Texture): what the selected brushes are. **Browse...** lists the
+    brush entity classes (`func_rotatingdoor`, `script_object`, `trigger_multiple` ...);
+    typing one and Enter does the same. Brushes or patches of the world become one new
+    entity of that class, moved into it (a door also needs a `common/origin` brush where
+    it turns: Draw one with *in entity* ticked while the door is selected). A brush entity
+    selected just gets the new class, as a key change, so **Save as .bsp** keeps it
+    without compiling. Point entities' classname is in Modify's Edit parameters.
   * **▲ Terrain**: click a terrain triangle to cut it away (or click a cut one to fill it
     back); drag across to do many. Each square of terrain is two triangles and the game
     keeps either one on its own, as the original maps do where terrain meets a trench wall.
