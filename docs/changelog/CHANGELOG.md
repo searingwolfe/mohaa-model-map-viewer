@@ -3081,3 +3081,22 @@ look of the walk and the doors should be confirmed by eye in the launcher.
 - The EDITOR section's note (`edNote`) is a short list instead of one paragraph: what
   Compile..., Save as .map / .bsp do, that nothing is written over the map without asking,
   and how brush entities move.
+- The launcher's choice windows (Compiled, Replace..., unsaved changes) wrap their text at
+  520 pixels (`DIALOG_WRAP`, `_unsaved_dialog`) instead of one window-wide line; the Compiled
+  question is two short paragraphs.
+- **Sun scale 0.82 by default** (was 0.77): the game's own m3l1b against compiles at every
+  scale from 0.70 to 1, terrain texel by texel. 0.82 has the least difference (mean 2.6 of
+  255, 91% within 5) and no overall bias; 0.77 left the ground about 2 levels dark (what
+  showed as slightly heavier shading on the terrain in the game), 1 about 8 bright.
+
+
+## Map Editor: compiling again (November 2026)
+
+- Compile... no longer stops with "open a map first" when the file the page was opened
+  from is gone (moved, renamed or deleted after the first compile). `_edit_compile` takes
+  the map from the launcher's last open, else from the page's own `srcFile`; when that file
+  isn't there any more, a page that sent its text still compiles (the log says the file is
+  missing; a `.bsp` page's vis groups are not read back from it), and one that sent no
+  text says to open the map again, naming the path. F9 only needs a page or a last open
+  to ask the page.
+- The compile log leaves out the compiler's blank lines (hundreds of them on a big map).

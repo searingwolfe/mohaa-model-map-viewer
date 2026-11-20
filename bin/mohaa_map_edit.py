@@ -328,7 +328,7 @@ class EditApp(MM.MapApp):
         "map": "No compile: only the .map is written, with the page's changes and the MAP box's\n"
                "worldspawn keys, where you choose (or in the game's maps folder).",
     }
-    SUN_SCALE = 0.77   # the Compile window's sun scale: the game's own maps were lit this much darker
+    SUN_SCALE = 0.82   # the Compile window's sun scale: the game's own maps were lit this much darker
     VIS_CAP = 100000   # the vis work cap's default: flow steps for each portal (ommap -cap)
     GAMETYPES = (("sp", "Single player", "maps", "0"), ("dm", "Deathmatch / team / round based", "maps/dm", "1"),
                  ("obj", "Objective", "maps/obj", "4"))
@@ -387,7 +387,7 @@ class EditApp(MM.MapApp):
         "light": "More of ommap's light switches, separated by spaces:\n"
                  "-threads N  CPU threads to use (default: all)\n"
                  "-samplesize N  units a lightmap texel (16)\n"
-                 "-sunscale N  scale the sun's baked light (0.77 matched m3l1b's own .bsp with\n"
+                 "-sunscale N  scale the sun's baked light (0.82 matches m3l1b's own .bsp with\n"
                  "    sundiffuse 1); the game's sun for models keeps suncolor\n"
                  "-skyscale N  scale the sky's light (sundiffuse) by N\n"
                  "-point N  scale every light by N (2: twice as bright)\n"
@@ -534,7 +534,10 @@ class EditApp(MM.MapApp):
                 v = vars_["light_sunon"] = tk.BooleanVar(value=opts.get("light_sunon", True))
                 sl_ = widgets["light_sunon"] = chk(sf_, "Sun scale  (-sunscale):", v); sl_.pack(side="left")
                 se_ = sunent[0] = widgets["light_sunscale"] = ttk.Entry(sf_, width=6)
-                se_.insert(0, str(opts.get("sunscale", self.SUN_SCALE))); se_.pack(side="left", padx=(4, 0))
+                sv_ = str(opts.get("sunscale") or "").strip()
+                if sv_ in ("", "0.77"):
+                    sv_ = str(self.SUN_SCALE)          # unset, or the old default (0.77): the default
+                se_.insert(0, sv_); se_.pack(side="left", padx=(4, 0))
                 tip = ("The sun's light baked into the lightmaps, times this (-sunscale; 1: as the map's keys\n"
                        "say, which is what EA's MOHTools light step gives). The game's own maps were lit\n"
                        "darker than MOHTools lights them: %s matches them (m3l1b, m2l1). The map's\n"
@@ -848,12 +851,13 @@ class EditApp(MM.MapApp):
                 self._log_line("Compile: stopping.", "dim")
             return
         src = self._last_build[0] if self._last_build else None
-        if not src or not os.path.isfile(src):
-            self._log_line("Compile: open a map first.", "err"); return
+        wv = getattr(self, "_webview", None)
+        page_up = wv is not None and getattr(wv, "core", None) is not None
         if body is None:
+            if not src and not page_up:
+                self._log_line("Compile: open a map first.", "err"); return
             # F9 or the menu: the page sends its text (with any changes) and comes back here
-            wv = getattr(self, "_webview", None)
-            if wv is not None and getattr(wv, "core", None) is not None:
+            if page_up:
                 self._page_js("try{edCompileAsk()}catch(e){window.chrome.webview.postMessage('mohaa-edit-compile')}")
                 return
             body = ""
@@ -862,11 +866,27 @@ class EditApp(MM.MapApp):
             try: info = json.loads(body)
             except ValueError: MC.swallowed(); info = {}
             if not isinstance(info, dict): info = {}
-        src = os.path.abspath(src)
-        from_pak = bool(self._tmp) and os.path.normcase(src).startswith(os.path.normcase(os.path.abspath(self._tmp)))
-        is_map = src.lower().endswith(".map")
         text = info.get("mapText") if isinstance(info.get("mapText"), str) else None
         changed = bool(info.get("changed"))
+        # the map the page shows: the launcher's last open, else the page's own file. A page
+        # that sent its text compiles even when that file has since been moved or deleted
+        # (only a .bsp's vis groups are read from it).
+        page_src = info.get("src") if isinstance(info.get("src"), str) else ""
+        if (not src or not os.path.isfile(src)) and page_src and os.path.isfile(page_src):
+            src = page_src
+        if not src:
+            src = page_src
+        if not src:
+            self._log_line("Compile: open a map first.", "err"); return
+        src = os.path.abspath(src)
+        gone = not os.path.isfile(src)
+        if gone and text is None:
+            self._log_line(f"Compile: {src} isn't there any more (moved or deleted?): open the map again.", "err"); return
+        if gone:
+            self._log_line(f"Compile: {src} isn't there any more (moved or deleted?); compiling the map as the page "
+                           "shows it.", "warn")
+        from_pak = bool(self._tmp) and os.path.normcase(src).startswith(os.path.normcase(os.path.abspath(self._tmp)))
+        is_map = src.lower().endswith(".map")
         if text is None and not is_map:
             self._log_line("Compile: the page didn't send the map's text (open the map in the viewer's own pane "
                            "and try again).", "err"); return
@@ -924,7 +944,7 @@ class EditApp(MM.MapApp):
                                         [("yes", "Replace it", True), ("cancel", "Cancel", True)]) != "yes":
                     self._log_line("Compile: cancelled.", "dim"); return
         else:
-            loose_dir = os.path.dirname(src) if not from_pak else None
+            loose_dir = os.path.dirname(src) if not from_pak and os.path.isdir(os.path.dirname(src)) else None
             init = self._cfg.get("compile_dir") or loose_dir or self._new_maps_dir()
             try: os.makedirs(init, exist_ok=True)
             except OSError: MC.swallowed(); init = ML.DATADIR
@@ -985,9 +1005,11 @@ class EditApp(MM.MapApp):
         vfs, work = self._vfs, self._tmp
         procs = self._compile_procs = []
         saved = (info.get("edN"), info.get("modKey")) if changed else None
-        origin = src if not is_map else None              # a .bsp's page: its own .bsp, for the vis groups
+        origin = src if not is_map and not gone else None  # a .bsp's page: its own .bsp, for the vis groups
         after = (o.get("gametype"), o.get("cmdline")) if o.get("launch") else None
         def log(line):
+            if not line.strip():
+                return                                    # the compiler's blank lines
             if line.startswith("entering ") or line.startswith("Unknown surfaceparm"):
                 return                                    # one per shader file: too many to show
             self._log_q.put(("dim", "  " + line))
@@ -1034,8 +1056,9 @@ class EditApp(MM.MapApp):
             self._log_line("Compile: no light step, so the .bsp has no lightmaps or light grid: "
                            "view it here, but compile with light before playing it in the game.", "warn")
         choice = self._unsaved_dialog("Compiled", f"{os.path.basename(res['bsp'])} is written.",
-                                      f"Open it here in the Map Viewer now, with its baked light? (This doesn't start "
-                                      f"the game. {os.path.basename(src)}, the .map it was built from, is beside it.)",
+                                      f"Open it here in the Map Viewer now, with its baked light?\n\n"
+                                      f"This doesn't start the game. {os.path.basename(src)}, the .map it was built "
+                                      f"from, is beside it.",
                                       [("open", "Open the .bsp", True), ("stay", "Not now", True)])
         if choice == "open":
             self._path_var.set(res["bsp"])

@@ -1409,6 +1409,8 @@ class MapApp(ML.App):
         self._log_line(f"  MODIFY: unsaved work found for {info.get('map')} - the viewer offers to restore it", "warn")
         self._page_js("try{MOHAA_MODIFY_RECOVERY(%s)}catch(e){}" % json.dumps(data, separators=(",", ":")))
 
+    DIALOG_WRAP = 520      # the choice windows' text wraps at this width (pixels), not one long line
+
     def _unsaved_dialog(self, title, head, body, buttons):
         """A modal choice in the launcher's look (dark / light), or the system's own look
         with "Use old popup windows" on. buttons: (key, text, enabled); returns the key
@@ -1423,16 +1425,17 @@ class MapApp(ML.App):
             res["k"] = k; w.destroy()
         if old:
             frm = tk.Frame(w); frm.pack(fill="both", expand=True, padx=14, pady=(12, 6))
-            tk.Label(frm, text=head, justify="left", anchor="w").pack(anchor="w", pady=(0, 4))
-            tk.Label(frm, text=body, justify="left", anchor="w").pack(anchor="w")
+            tk.Label(frm, text=head, justify="left", anchor="w", wraplength=self.DIALOG_WRAP).pack(anchor="w", pady=(0, 4))
+            tk.Label(frm, text=body, justify="left", anchor="w", wraplength=self.DIALOG_WRAP).pack(anchor="w")
             row = tk.Frame(w); row.pack(padx=10, pady=(6, 12))
             mk = lambda t, c: tk.Button(row, text=t, command=c, width=max(10, len(t) + 2))
         else:
             w.configure(bg=ML.BG)
             frm = ttk.Frame(w, style="Panel.TFrame"); frm.pack(fill="both", expand=True, padx=10, pady=(10, 0))
-            ttk.Label(frm, text=head, style="Panel.TLabel", foreground=ML.ACCENT, justify="left"
-                      ).pack(anchor="w", padx=10, pady=(8, 4))
-            ttk.Label(frm, text=body, style="Panel.TLabel", justify="left").pack(anchor="w", padx=10, pady=(0, 8))
+            ttk.Label(frm, text=head, style="Panel.TLabel", foreground=ML.ACCENT, justify="left",
+                      wraplength=self.DIALOG_WRAP).pack(anchor="w", padx=10, pady=(8, 4))
+            ttk.Label(frm, text=body, style="Panel.TLabel", justify="left",
+                      wraplength=self.DIALOG_WRAP).pack(anchor="w", padx=10, pady=(0, 8))
             row = ttk.Frame(w, style="Panel.TFrame"); row.pack(fill="x", padx=10, pady=(0, 10), ipady=4)
             mk = lambda t, c: ttk.Button(row, text=t, command=c, cursor="hand2")
         cancel = None

@@ -579,8 +579,8 @@ way here.
      the `.bsp` compiled before: seconds, for lights, spawns or triggers changed), detail as
      structural. **VIS**: verbose, passage vis only, merge leafs, vis groups skip the work,
      ignore the farplane, **Vis groups** (on) and **Cap the work per portal** (on).
-     **LIGHT**: verbose, extra detail, no shadows, and **Sun scale** (ticked, 0.77: the game's own
-     maps were lit darker than MOHTools' light step lights them, and 0.77 comes closest to
+     **LIGHT**: verbose, extra detail, no shadows, and **Sun scale** (ticked, 0.82: the game's own
+     maps were lit darker than MOHTools' light step lights them, and 0.82 comes closest to
      them; unticked or 1 lights as MOHTools does). Each step also has a box for more
      switches (hold the mouse over it for the compiler's others: `-threads`, `-samplesize`,
      `-point`, `-nogrid`...). **MAP** (scroll right, or on its own with map file only): the

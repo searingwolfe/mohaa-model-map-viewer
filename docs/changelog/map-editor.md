@@ -269,7 +269,7 @@ with `changed`, `edN`, `modKey` and, for a `.bsp` or a map with changes, `mapTex
    MBuilder's switches for each step (`COMPILE_SWITCHES`: bsp `-v -nocurves -nodetail
    -nohint -onlyents -fulldetail`; with `-onlyents` the `.bsp` beside the map, else the
    opened one, is copied in for ommap to rewrite its entities, and vis is skipped; vis `-v -passageOnly -merge -derived -nofarplane`, light `-v
-   -extra -notrace`), **Sun scale** (ticked by default, `light_sunon`; `SUN_SCALE` 0.77: light `-sunscale N`,
+   -extra -notrace`), **Sun scale** (ticked by default, `light_sunon`; `SUN_SCALE` 0.82: light `-sunscale N`,
    none unticked or at 1),
    **Vis groups** (on; off adds `-nomanvis` to bsp and vis), **Cap the
    work per portal** (on, `VIS_CAP` 100,000 steps: vis `-cap N`) and a box of more switches

@@ -605,7 +605,7 @@ class CompileFlow(unittest.TestCase):
                 self.assertTrue(any("edCompiledSaved(3" in j for j in js), js)
                 self.assertEqual(app._compile_switches(app._cfg.get("compile_opts") or {"steps": "bsp", "bsp_v": True,
                                  "light_extra": True, "manvis": True, "viscap": False}),
-                                 {"bsp": ["-v"], "vis": [], "light": ["-extra", "-sunscale", "0.77"]})
+                                 {"bsp": ["-v"], "vis": [], "light": ["-extra", "-sunscale", "0.82"]})
                 self.assertIn("as you see it here", chosen[0])
                 # the .map it wrote is replaced next time without asking
                 answers[:] = ["stay"]
@@ -615,6 +615,24 @@ class CompileFlow(unittest.TestCase):
                 # a .bsp page that sent no text can't be compiled
                 app._edit_compile(json.dumps({"changed": False}))
                 self.assertIn("didn't send the map's text", logged[-1])
+                # the opened .bsp moved away after a compile: the page's text still compiles
+                os.remove(src)
+                answers[:] = ["stay"]
+                app._edit_compile(body)
+                self.assertTrue(app._compiling, logged)
+                self.assertTrue(any("isn't there any more" in m for m in logged), logged)
+                self._wait(app)
+                self.assertTrue(any("Compile: wrote" in m for m in logged[-3:]), logged)
+                app._edit_compile(json.dumps({"changed": False}))
+                self.assertIn("open the map again", logged[-1])
+                # the launcher forgot the map but the page says which it is
+                app._last_build = None
+                answers[:] = ["stay"]
+                app._edit_compile(json.dumps(dict(json.loads(body), src=os.path.join(out, "m3l1b.map"))))
+                self._wait(app)
+                self.assertTrue(any("Compile: wrote" in m for m in logged[-3:]), logged)
+                app._edit_compile(None)
+                self.assertEqual(logged[-1], "Compile: open a map first.")
         finally:
             E.filedialog.asksaveasfilename = real_save
 
@@ -740,12 +758,12 @@ class CompileOptions(unittest.TestCase):
                                     "light_extra": True, "vis_more": "-level 3"})
         self.assertEqual(sw, {"bsp": ["-nocurves", "-nomanvis"], "vis": ["-passageOnly", "-nomanvis", "-cap",
                                                                        str(E.EditApp.VIS_CAP), "-level", "3"],
-                              "light": ["-extra", "-sunscale", "0.77"]})
-        # the sun scale: 0.77 by default, as typed, none at 1, the default for a bad one
+                              "light": ["-extra", "-sunscale", "0.82"]})
+        # the sun scale: 0.82 by default, as typed, none at 1, the default for a bad one
         sun = lambda v: app._compile_switches({"sunscale": v, "viscap": False})["light"]
         self.assertEqual(sun("1"), [])
         self.assertEqual(sun("0,9"), ["-sunscale", "0.9"])
-        self.assertEqual(sun("x"), ["-sunscale", "0.77"])
+        self.assertEqual(sun("x"), ["-sunscale", "0.82"])
         self.assertEqual(app._compile_switches({"sunscale": "0.5", "light_sunon": False, "viscap": False})["light"], [])
         # the vis work cap: on by default, its number as typed, the default for a bad one, off when unticked
         cap = lambda o: app._compile_switches(o)["vis"]

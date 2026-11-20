@@ -81,10 +81,10 @@ game's headers. These are the changes made here:
   (the keys stay as they are, so the game's own sun for models keeps `suncolor`). The
   game's own maps were lit darker than EA's MOHTools lights them now (m3l1b: MOHTools'
   terrain is 8% brighter, m2l1's 32%), so no light step given their keys gives them back
-  exactly; `-sunscale 0.77` comes closest on the maps measured (m3l1b: 88% of the terrain
-  texels within 5 of 255 of the game's, against 15% without; m2l1's sunlit floors 113 ->
-  108, the game's 101). The Compile window's LIGHT box has it as **Sun scale**, 0.77 by
-  default (1: as MOHTools).
+  exactly; `-sunscale 0.82` comes closest on m3l1b (its terrain texels against the game's:
+  mean difference 2.6 of 255, 91% within 5, no overall bias; 0.77: 3.0, 88%, 1.9 dark; 1:
+  8.7, 15%, 7.9 bright). The Compile window's LIGHT box has it as **Sun scale**, ticked
+  with 0.82 by default (unticked or 1: as MOHTools).
 - **Terrain** (`mohterrain.c`): MOHRadiant's `terrainDef` blocks become the terrain lump
   (heights, holes, texture coordinates, neighbours, the level-of-detail variance tree with
   holes marked) and the terrain index lump that lists the patches in each leaf. A
