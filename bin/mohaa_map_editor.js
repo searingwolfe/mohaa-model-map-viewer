@@ -1798,11 +1798,15 @@ function edNote(){
   if(typeof D==='undefined'||!D||!MAP){el.textContent='Loading the map...';return false;}
   const kind=D.kind==='bsp'?'.bsp':'.map';
   try{edPanel();}catch(err){console.error(err);}
-  el.innerHTML='Editing <b>'+esc((D.name||'map')+kind)+'</b>. <b>Compile...</b> builds a .bsp from what you see here, '+
-    'your changes included: pick the steps and where the .bsp goes, and the .map it is built from is kept beside it. '+
-    'Baked light comes back once it is compiled. Save as .map keeps your work to carry on later'+
-    (D.kind==='bsp'?' (Save as .bsp: entity changes only)':'')+'. Nothing is written over this map without asking. '+
-    'Doors, triggers and other brush entities change, move and delete as a whole: their origin here is the middle of their brushes (or their origin brush).';
+  const li=t=>'<li style="margin:2px 0">'+t+'</li>';
+  el.innerHTML='<div>Editing <b>'+esc((D.name||'map')+kind)+'</b></div>'+
+    '<ul style="margin:4px 0 0;padding-left:16px;line-height:1.35">'+
+    li('<b>Compile...</b>: a .bsp of what you see, changes included; the .map it is built from is kept beside it')+
+    li('Baked light comes back once it is compiled')+
+    li('<b>Save as .map</b>: keeps your work to carry on later'+(D.kind==='bsp'?' (<b>Save as .bsp</b>: entity changes only)':''))+
+    li('Nothing is written over this map without asking')+
+    li('Doors, triggers and other brush entities change, move and delete as a whole (their origin: the middle of their brushes, or their origin brush)')+
+    '</ul>';
   return true;
 }
 // Compile...: the launcher builds a .bsp from what the page shows. A .bsp's map, or any map

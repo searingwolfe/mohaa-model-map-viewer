@@ -3078,3 +3078,6 @@ look of the walk and the doors should be confirmed by eye in the launcher.
   the built-in compiler ommap and its EA light rules, the world's keys, the Compile
   window). `VERSION` (`mohaa_launcher.py`, `mohaa_envcheck.py`) and `docs/version.txt` say
   1.0.010; the updater finds it by the tag `v1.0.010`.
+- The EDITOR section's note (`edNote`) is a short list instead of one paragraph: what
+  Compile..., Save as .map / .bsp do, that nothing is written over the map without asking,
+  and how brush entities move.
