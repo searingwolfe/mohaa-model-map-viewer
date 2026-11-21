@@ -4744,6 +4744,15 @@ function rebuildLines(){
       const h1=[tip[0]-f[0]*t-u[0]*t,tip[1]-f[1]*t-u[1]*t,tip[2]-f[2]*t-u[2]*t], h2=[h1[0]+u[0]*2*t,h1[1]+u[1]*2*t,h1[2]+u[2]*2*t];
       ARROWS.push([c,tip,h1,h2,selE.has(X.ei)]);
     }
+    // a ladder: the way a climber looks at it, from the middle of its brushes
+    for(const X of ENTS){if(X.marker||!X.hasGeo||!X.box||!entShown(X.ei)||MAP.ents[X.ei].cls!=='func_ladder')continue;
+      const y=ladderYaw(X.ei);if(y==null)continue;
+      const ax=anglesAxis([0,y,0]),f=ax[0],u=ax[2],o=X.box.origin,b=X.box;
+      const c=[o[0]+(b.mins[0]+b.maxs[0])/2,o[1]+(b.mins[1]+b.maxs[1])/2,o[2]+(b.mins[2]+b.maxs[2])/2];
+      const hw=Math.max(8,Math.min(32,Math.max(b.maxs[0]-b.mins[0],b.maxs[1]-b.mins[1])/2)),len=hw*2.5,t=hw*0.5;
+      const tip=[c[0]+f[0]*len,c[1]+f[1]*len,c[2]+f[2]*len];
+      const h1=[tip[0]-f[0]*t-u[0]*t,tip[1]-f[1]*t-u[1]*t,tip[2]-f[2]*t-u[2]*t],h2=[h1[0]+u[0]*2*t,h1[1]+u[1]*2*t,h1[2]+u[2]*2*t];
+      ARROWS.push([c,tip,h1,h2,selE.has(X.ei)||[...primsOfEnt(X.ei)].some(pi=>SEL.has('p'+pi))]);}
     MOD.ents.forEach((m,i)=>{if(!modDrawn(i)||modHasModel(m))return;const kvl=modKvl(m);if(kvl.angle==null&&kvl.angles==null)return;   // a modelled entity gets axes at its origin instead (drawModify)
       const ax=anglesAxis(entAngles(kvl)),f=ax[0],u=ax[2],o=modOrigin(m),b=modBox(m);
       const c=[o[0]+(b.mins[0]+b.maxs[0])/2,o[1]+(b.mins[1]+b.maxs[1])/2,o[2]+(b.mins[2]+b.maxs[2])/2];
@@ -5814,6 +5823,65 @@ function doorUse(){
     flash((opening?'Opening ':'Closing ')+entName(ds[0].ei)+(n?' and the '+n+' door'+(n>1?'s':'')+' linked to it':'')+(opening?' · '+doorCloses(m):''));}
   else flash((opening?'Opening ':'Closing ')+ms.reduce((s,m)=>s+m.chain.length,0)+' doors');
 }
+// ---- class specs: the keys a class takes from the map ----------------------------------------
+// D.cspec (bin/data/class_specs.json, from OpenMoHAA's game code by tools/make_class_specs.py):
+// each game class, its parent, its classname, and the events it responds to that a key can
+// give (a map's key is sent to the entity as the event of that name, its value as the
+// arguments: SpawnArgs::Spawn in g_spawn.cpp). A key marked SH or BT is one Allied Assault
+// itself doesn't have (Spearhead 2.0, Breakthrough 2.30; OPM: OpenMoHAA's own).
+let CSPEC_BY=null;
+const CSPEC_STOP=new Set(['ScriptSlave','Mover','Trigger','Animate','Entity','SimpleEntity','Listener','Class','Sentient']);
+function cspecClass(cls){const C=D.cspec;if(!C||!C.classes)return null;
+  if(!CSPEC_BY){CSPEC_BY=new Map();for(const k of Object.keys(C.classes)){const id=C.classes[k].id;if(id&&!CSPEC_BY.has(id.toLowerCase()))CSPEC_BY.set(id.toLowerCase(),k);}}
+  return CSPEC_BY.get(String(cls||'').toLowerCase())||null;}
+// [{c: class, own: before the general classes (ScriptSlave, Trigger, Entity...), keys}]; a key a
+// subclass lists isn't listed again for its parent
+function cspecGroups(cls){
+  const C=D.cspec,first=cspecClass(cls);if(!first)return null;
+  const out=[],seen=new Set(),names=new Set();let c=first,own=true;
+  // a trigger's own keys are Trigger's (wait, delay, setthread...)
+  const trig=/^trigger_/i.test(String(cls||''));
+  while(c&&C.classes[c]&&!seen.has(c)){seen.add(c);if(c!==first&&CSPEC_STOP.has(c)&&!(trig&&c==='Trigger'))own=false;
+    const K=[];for(const[k,sig,v]of C.classes[c].k){const l=k.toLowerCase();if(names.has(l))continue;
+      const ev=(C.events[l]||[]).find(x=>x.a+'|'+x.an===sig);if(!ev)continue;
+      // a key without a value only where it sets something (lock, alwaysaway...), not the
+      // events the game sends itself (doorclosed, trysolid...)
+      if(!ev.a&&!/^(makes?|sets?|turns?|lock|unlock|enables?|disables?|allows?|start)/i.test(ev.d))continue;
+      names.add(l);K.push({n:k,a:ev.a,an:ev.an,d:ev.d,v:v||C.classes[c].v||''});}
+    out.push({c:c,own:own,keys:K});c=C.classes[c].p;}
+  return out;}
+// what a key's value is: its argument types and names ("float open_angle"); capitals optional
+function cspecArgs(k){const T={s:'string',f:'float',i:'integer',b:'0 or 1',v:'x y z'};
+  const f=String(k.a||'').replace(/\[[^\]]*\]/g,''),names=String(k.an||'').split(/\s+/).filter(Boolean);
+  if(!f)return'no value: any value turns it on';
+  return [...f].map((ch,i)=>{const t=T[ch.toLowerCase()]||ch;return(ch!==ch.toLowerCase()?'[':'')+t+(names[i]?' '+names[i]:'')+(ch!==ch.toLowerCase()?']':'');}).join(', ');}
+function cspecBadge(v){return v?' <span class="cs'+v+'" title="'+(v==='SH'?'Spearhead (2.0) and later: not in Allied Assault':v==='BT'?'Breakthrough (2.30) and later: not in Allied Assault or Spearhead':'OpenMoHAA only')+'" style="font-size:9px;padding:0 3px;border:1px solid var(--warn);color:var(--warn);border-radius:3px">'+v+'</span>':'';}
+// the entity's keys as they stand (Modify's row first: its changes aren't saved yet)
+function cspecValues(ei){const m=(typeof MOD!=='undefined'&&MOD.ents)?MOD.ents.find(x=>x.ei===ei&&!x.del):null;
+  const kv=m?m.kv:MAP.ents[ei].kv,o=new Map();for(const[k,v]of kv)o.set(k.toLowerCase(),v);return o;}
+function cspecInfo(ei){
+  const e=MAP.ents[ei];if(!e||e.scr)return'';const G=cspecGroups(e.kvl.classname||e.cls);if(!G)return'';
+  const own=G.filter(g=>g.own&&g.keys.length);if(!own.length)return'';
+  const val=cspecValues(ei),rows=[];
+  for(const g of own)for(const k of g.keys){const v=val.get(k.n.toLowerCase());
+    rows.push([k.n,(v!=null?'<b>'+esc(v)+'</b> ':'<span class="co">-</span> ')+cspecBadge(k.v)+'<div class="co">'+esc(cspecArgs(k))+(k.d?' · '+esc(k.d):'')+'</div>']);}
+  return '<h4>Class specs ('+esc(own.map(g=>g.c).join(', '))+')</h4>'+kvTable(rows)+
+    '<div class="note">The keys this class takes from the map (from OpenMoHAA\'s game code); SH / BT: Spearhead / Breakthrough only. '+
+    'Edit them in the EDITOR section\'s Class specs (Edit map on); the other keys it takes, from '+esc(G.filter(g=>!g.own).map(g=>g.c).join(', ')||'its parent classes')+', are listed there too.</div>';}
+// the Ladder part of a func_ladder's info card (FuncLadder, OpenMoHAA misc.cpp): its "angle"
+// is the way a climber looks at it (SetLadderFacing); CanUseLadder takes a climber within
+// 52 units of its origin, looking that way (within about 98°) from the side it faces away
+// from, and puts one 29 units in front of it at the bottom, 26 behind it at the top
+function ladderYaw(ei){const a=cspecValues(ei).get('angle');const y=parseFloat(a);return a!=null&&isFinite(y)?((y%360)+360)%360:null;}
+function ladderInfo(ei){
+  const e=MAP.ents[ei];if(!e||e.cls!=='func_ladder')return'';
+  const y=ladderYaw(ei),dirs={0:'+x (east)',90:'+y (north)',180:'-x (west)',270:'-y (south)'};
+  const rows=[];
+  rows.push(['faces',y!=null?esc('"angle" '+fnum(y)+': a climber looks toward '+(dirs[Math.round(y)]||'yaw '+fnum(y))+' to climb it, from the side behind that'):
+    '<span class="warn">no "angle": the game gives it no facing (a climber needn\'t look at it)</span>']);
+  rows.push(['reach',esc('within 52 units of its origin (put 29 units out from it at the bottom, 26 past it at the top)')]);
+  rows.push(['in game',esc('its brushes are ladder contents, solid, never drawn (LadderSetup)')]);
+  return '<h4>Ladder</h4>'+kvTable(rows)+'<div class="note">Its "angle" is in the EDITOR section\'s Class specs; with Arrows on, the arrow shows the way a climber looks.</div>';}
 // the Door part of a door's info card
 function doorOpener(d){
   const hp=doorNum(MAP.ents[d.ei].kvl.health);
@@ -9403,6 +9471,8 @@ function infoEntity(ei){
   }
   if(e.cls==='info_pathnode')h+=pathNodeInfo(ei);
   h+=doorInfo(ei);
+  h+=ladderInfo(ei);
+  h+=cspecInfo(ei);
   h+=expInfo(ei);
   // textures of a brush entity
   if(X.hasGeo){const cnt=new Map();for(const pi of primsOfEnt(ei)){const p=SC.prims[pi];for(let f=p.f0;f<p.f1;f++){const t=SC.faceTex[f];cnt.set(t,(cnt.get(t)||0)+1);}}
@@ -9583,6 +9653,7 @@ function infoPrim(pi){
   else{
     for(let f=p.f0;f<p.f1;f++)h+=faceHtml(f,lastHit&&lastHit.face===f);
   }
+  if(p.ent>0)h+=ladderInfo(p.ent)+cspecInfo(p.ent);   // a brush entity's brush: its entity's ladder part, class specs
   h+='<h4>.map source<span class="sp"></span>'+copyBtn(srcText(pr.ts,pr.te),'Copy')+openBtn(pr.ts)+'</h4><pre>'+esc(clipText(srcText(pr.ts,pr.te)))+'</pre>';
   card(kind+' '+p.bn+(p.ent?' · entity '+p.ent:' · world'),h);
 }

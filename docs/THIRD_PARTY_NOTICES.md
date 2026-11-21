@@ -25,7 +25,10 @@ JavaScript. Two things are worth separating:
 The Map Viewer adds two sources of the same kind: its decompiler follows the id Tech 3
 map compiler's geometry and texture code (q3map's `polylib.c` and `map.c`, part of the
 Quake III Arena source id Software released under GPLv2), and its built-in table of
-entity classes is generated from the `/*QUAKED*/` comments in OpenMoHAA's game code.
+entity classes is generated from the `/*QUAKED*/` comments in OpenMoHAA's game code, and
+`bin/data/class_specs.json` (the Map Editor's Class specs: each class's events, their
+arguments and descriptions) from the `Event` definitions and `CLASS_DECLARATION` tables
+in OpenMoHAA's `code/fgame` by `tools/make_class_specs.py`.
 MOHRadiant's drawing rules (entity box colours, face shading) were worked out from the
 editor itself and are reproduced as behaviour; none of its code is used.
 

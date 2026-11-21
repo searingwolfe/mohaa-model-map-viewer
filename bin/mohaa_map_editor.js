@@ -63,6 +63,14 @@ function brKv(m){
   return out;
 }
 
+// a door works as its Modify row's keys say (doortype, angle, openangle... typed in Class
+// specs) before they are saved
+const _doorNew=doorNew;
+doorNew=function(ei){
+  const e=MAP.ents[ei],m=(MOD&&MOD.ents)?MOD.ents.find(x=>x.ei===ei&&!x.del):null;if(!e||!m)return _doorNew(ei);
+  const kv=e.kv,kvl=e.kvl,hadO=kv.some(x=>x[0].toLowerCase()==='origin');
+  e.kv=m.kv.filter(x=>hadO||x[0].toLowerCase()!=='origin');e.kvl={};for(const[k,v]of e.kv){const l=k.toLowerCase();if(!(l in e.kvl))e.kvl[l]=v;}
+  try{return _doorNew(ei);}finally{e.kv=kv;e.kvl=kvl;}};
 const _modTakes=modTakes;
 modTakes=function(ei){return _modTakes(ei)||(EON()&&brOk(ei));};
 
@@ -565,6 +573,15 @@ function edClsHtml(){
   const v=S.size===1?[...S][0]:'';
   return'<div class="row" style="gap:4px;flex-wrap:wrap;align-items:center;margin-top:4px">Classname '+edField('edCls',v,148).replace('<input ','<input placeholder="'+(S.size>1?'(several)':'')+'" ')+
     '<button class="sm" id="bEdCls" title="The brush entity classes: the world\'s brushes selected become one new entity of the class chosen (the brushes moved into it); a brush entity selected gets the class (a key change, kept by Save as .bsp). Typing a class and Enter does the same.">Browse...</button></div>';}
+// what a class still needs once a brush has it (its keys are in Class specs)
+function edClsHint(cl){
+  if(cl==='func_rotatingdoor')return' (it turns on its origin brush: Move into one, or Draw one with common/origin and \'in entity\' ticked; its "angle" and "doortype" are in Class specs)';
+  if(cl==='func_door')return' (it slides the way its "angle" says, all but its "lip": both in Class specs)';
+  if(cl==='script_door')return' (its map script moves it: initthread, openthread, closethread)';
+  if(cl==='func_ladder')return' (set its "angle" in Class specs: the way a climber looks at it; the facing arrow shows it)';
+  if(/^trigger_/.test(cl))return' (its "setthread", "wait", "delay" and "message" are in Class specs)';
+  if(cl==='func_crate'||cl==='func_barrel')return' ('+(cl==='func_crate'?'"debristype"':'"barreltype"')+' is in Class specs)';
+  return'';}
 function edClsApply(cls){
   cls=String(cls||'').trim();
   if(!/^[A-Za-z_][A-Za-z0-9_]*$/.test(cls))throw new Error('a classname is letters, digits and _');
@@ -575,7 +592,7 @@ function edClsApply(cls){
   if(world&&ents.length)throw new Error('a brush entity\'s brushes don\'t go back into the world here: give it another class');
   if(!ents.length&&!prims.length){flash('Classname: no change');return;}
   if(ents.length){modHist();for(const ei of ents)modSetKv(modRowFor(ei),'classname',cls);modChanged(true);
-    flash('Classname '+cls+': '+(ents.length===1?entName(ents[0]):ents.length+' brush entities')+' (Save as .bsp keeps it without compiling)');}
+    flash('Classname '+cls+': '+(ents.length===1?entName(ents[0]):ents.length+' brush entities')+' (Save as .bsp keeps it without compiling)'+edClsHint(cl));}
   if(prims.length){
     const items=prims.map(pi=>{const r=SC.prims[pi];return MAP.ents[r.ent].prims[r.bn];});
     if(items.some(pr=>pr.kind===2))throw new Error('terrain stays in the world: leave the terrain block out of the selection');
@@ -586,9 +603,97 @@ function edClsApply(cls){
     ins+='}\n';
     ops.push({at:D.srcText.length,del:'',ins:ins,sel:null,ents:1});
     if(ED.nText0==null)ED.nText0=MAP.nMap;
-    edDoMany(ops,'Classname '+cls+': '+(items.length===1?'the brush is':items.length+' brushes are')+' now entity '+ne+(/door/.test(cl)?' (a door turns on its origin brush: with it selected, Draw one with common/origin and \'in entity\' ticked)':''));
+    edDoMany(ops,'Classname '+cls+': '+(items.length===1?'the brush is':items.length+' brushes are')+' now entity '+ne+edClsHint(cl));
     SEL.clear();lastHit=null;if(MAP.ents[ne])for(const pi of primsOfEnt(ne))SEL.add(edKeyOfPrim(pi));selectionChanged();lineDirty=true;requestDraw();}
   else edPanel();}
+// ---- Entity: the selected brushes moved into one entity -----------------------------------
+// MOHRadiant's "move into entity": the brushes (and patches) selected go into the entity
+// picked in the list (one of theirs, or the world), out of the ones they are in now. A
+// door's origin brush made apart (a copy of another door's) joins its door so; one taken
+// out of a door goes back to the world. No entity is left without brushes (delete that one
+// in Modify instead), and terrain stays in the world.
+function edJoinPrims(){
+  const out=[];for(const pi of selectedPrims())if(SC.prims[pi])out.push(pi);
+  for(const ei of selectedEnts())for(const pi of primsOfEnt(ei))if(!out.includes(pi))out.push(pi);
+  return out;}
+function edJoinHtml(){
+  if(typeof MAP==='undefined'||!MAP)return'';
+  const P=edJoinPrims();if(!P.length)return'';
+  const ents=[];for(const pi of P){const ei=SC.prims[pi].ent;if(!ents.includes(ei))ents.push(ei);}
+  if(ents.length<2&&ents[0]===0)return'';                       // the world's brushes alone: Classname makes an entity
+  if(!ents.includes(0))ents.push(0);
+  // the first of them that is an entity (the one selected first), as a door built from a brush then its origin
+  const def=ents.find(ei=>ei>0)||0;
+  const opts=ents.map(ei=>[String(ei),ei===0?'the world':ei+' '+(MAP.ents[ei].kvl.classname||MAP.ents[ei].cls)]);
+  return'<div class="row" style="gap:4px;flex-wrap:wrap;align-items:center;margin-top:4px">Entity '+edSel('edJoinT',opts,String(def))+
+    '<button class="sm" id="bEdJoin" title="Move the selected brushes and patches into this entity (out of the ones they are in now), as MOHRadiant\'s move into entity: a door\'s origin brush joins its door so, and the world takes brushes back out of an entity. One Undo.&#10;&#10;Select the brushes of both entities (a door and an origin brush, say) to have both in the list.">Move into</button></div>';}
+function edJoin(ti){
+  if(!(ti>=0)||!MAP.ents[ti])throw new Error('pick the entity to move them into');
+  const P=edJoinPrims().filter(pi=>SC.prims[pi].ent!==ti);
+  if(!P.length){flash('They are all in that entity already');return;}
+  const items=P.map(pi=>{const r=SC.prims[pi];return{ei:r.ent,pr:MAP.ents[r.ent].prims[r.bn]};}).filter(x=>x.pr);
+  if(ti>0&&items.some(x=>x.pr.kind===2))throw new Error('terrain stays in the world: leave the terrain block out of the selection');
+  const took=new Map();for(const x of items)took.set(x.ei,(took.get(x.ei)||0)+1);
+  for(const[ei,n]of took)if(ei>0&&n>=MAP.ents[ei].prims.filter(Boolean).length)
+    throw new Error('entity '+ei+' ('+MAP.ents[ei].cls+') would have no brushes left: delete it in Modify, or leave one of its brushes out');
+  const e=MAP.ents[ti],end=D.srcText.lastIndexOf('}',e.te-1);
+  if(end<e.ts)throw new Error('the entity\'s block can\'t be found in the text');
+  const ops=items.map(x=>({at:x.pr.ts,del:D.srcText.slice(x.pr.ts,x.pr.te),ins:'',sel:null}));
+  let ins='';items.forEach((x,k)=>{ins+='// '+(x.pr.kind===1?'patch':x.pr.kind===2?'terrain':'brush')+' '+(e.prims.length+k)+' (Map Editor: from '+(x.ei?'entity '+x.ei:'the world')+')\n'+D.srcText.slice(x.pr.ts,x.pr.te)+'\n';});
+  ops.push({at:end,del:'',ins:ins,sel:null});
+  const nb0=e.prims.length,origin=items.some(x=>x.pr.kind===0&&x.pr.d&&x.pr.d.faces&&x.pr.d.faces.some(f=>/(^|\/)origin$/i.test(f.tex)));
+  // (entities aren't added or taken away, so the target keeps its number)
+  edDoMany(ops,(items.length===1?'1 brush':items.length+' brushes')+' moved into '+(ti?'entity '+ti+' ('+(e.kvl.classname||e.cls)+')':'the world')+
+    (ti&&origin?': it now turns or moves about that origin brush':''));
+  // selected after: the whole entity, or in the world the brushes moved
+  SEL.clear();lastHit=null;
+  if(ti>0)for(const pi of primsOfEnt(ti))SEL.add(edKeyOfPrim(pi));
+  else for(let k=0;k<items.length;k++){const pi=SC.prims.findIndex(p=>p.ent===0&&p.bn===nb0+k);if(pi>=0)SEL.add('p'+pi);}
+  selectionChanged();lineDirty=true;requestDraw();}
+// ---- Class specs: the selected brush entity's keys by what its class takes -----------------
+// cspecGroups (the page's, from bin/data/class_specs.json): the class's own keys open, the
+// ones its general parents take (ScriptSlave, Trigger, Entity...) under "more". A key typed
+// here is set in the entity's Modify row (a key change: Save as .bsp keeps it); emptied, it
+// goes. SH / BT mark keys Allied Assault itself doesn't have.
+function edSpecEnt(){
+  const c=edClsTargets();if(!c||c.prims.length||c.ents.length!==1)return -1;
+  const ei=c.ents[0];return MAP.ents[ei]&&!MAP.ents[ei].scr?ei:-1;}
+function edSpecHtml(){
+  if(typeof cspecGroups!=='function')return'';
+  const ei=edSpecEnt();if(ei<0)return'';
+  const cls=edClsOf(ei),G=cspecGroups(cls);
+  if(!G)return'<div class="co" style="margin-top:6px">Class specs: '+esc(cls)+' isn\'t a class the game code lists.</div>';
+  const val=cspecValues(ei);
+  const row=k=>{const v=val.get(k.n.toLowerCase());
+    return'<div class="row" style="gap:4px;align-items:center;margin-top:2px"><span style="width:118px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(k.n+': '+cspecArgs(k)+(k.d?'\n\n'+k.d:''))+'">'+
+      (v!=null?'<b>'+esc(k.n)+'</b>':esc(k.n))+'</span>'+cspecBadge(k.v)+
+      '<input type="text" data-spec="'+esc(k.n)+'" value="'+esc(v!=null?v:'')+'" placeholder="'+esc(cspecArgs(k))+'" title="'+esc(cspecArgs(k)+(k.d?'\n\n'+k.d:'')+'\n\nEnter sets it; empty takes the key away')+'" style="flex:1;min-width:60px;padding:1px 3px;font:inherit;font-size:11px"></div>';};
+  const own=G.filter(g=>g.own),more=G.filter(g=>!g.own&&g.keys.length);
+  let h='<details id="edSpecs"'+(ED.specs!==false?' open':'')+' style="margin-top:6px"><summary style="cursor:pointer" title="The keys '+esc(cls)+' takes from the map, from OpenMoHAA\'s game code (its events: a key is sent to the entity as the event of that name). SH / BT: Spearhead / Breakthrough only.">Class specs: '+esc(cls)+'</summary>';
+  for(const g of own){if(!g.keys.length)continue;h+='<div class="co" style="margin-top:4px">'+esc(g.c)+'</div>';for(const k of g.keys)h+=row(k);}
+  if(more.length){h+='<details id="edSpecMore"'+(ED.specMore?' open':'')+' style="margin-top:4px"><summary style="cursor:pointer">more, from '+esc(more.map(g=>g.c).join(', '))+'</summary>';
+    if(ED.specMore)for(const g of more){h+='<div class="co" style="margin-top:4px">'+esc(g.c)+'</div>';for(const k of g.keys)h+=row(k);}
+    h+='</details>';}
+  h+='<div class="co" style="margin-top:4px">Bold: set on this entity. Enter sets a key, empty takes it away (Modify\'s Undo, Alt+Z, puts it back).</div></details>';
+  return h;}
+function edSpecSet(ei,k,v){
+  v=String(v==null?'':v).trim();
+  if(/["\r\n]/.test(v))throw new Error('a key\'s value can\'t hold quotes or line breaks');
+  const m=modRowFor(ei),l=k.toLowerCase(),i=m.kv.findIndex(x=>x[0].toLowerCase()===l),cur=i>=0?m.kv[i][1]:null;
+  if((cur==null&&v==='')||cur===v)return;
+  modHist();
+  if(v==='')m.kv.splice(i,1);else if(i>=0)m.kv[i][1]=v;else m.kv.push([k,v]);
+  modChanged(true);lineDirty=true;
+  try{if(DOOR_CLASSES[MAP.ents[ei].cls])doorsInit();}catch(_e){}
+  flash((v===''?'"'+k+'" taken away':'"'+k+'" "'+v+'"')+' on '+entName(ei)+' (Save as .bsp keeps it without compiling)');
+  edPanel();}
+function edSpecBind(el){
+  const sd=$('edSpecs');if(sd)sd.ontoggle=()=>{ED.specs=sd.open;};
+  const sm=$('edSpecMore');if(sm)sm.ontoggle=()=>{const was=!!ED.specMore;ED.specMore=sm.open;if(sm.open&&!was)edPanel();};
+  const ei=edSpecEnt();if(ei<0)return;
+  el.querySelectorAll('input[data-spec]').forEach(inp=>{
+    inp.addEventListener('keydown',e=>{if(e.key!=='Enter')return;e.preventDefault();e.stopImmediatePropagation();edRun(()=>edSpecSet(ei,inp.dataset.spec,inp.value))();});
+    inp.addEventListener('change',()=>edRun(()=>edSpecSet(ei,inp.dataset.spec,inp.value))());});}
 // the list: the definitions' brush classes and the map's own brush entities' classes
 const ECL={el:null,back:null,hot:0,hits:[]};
 function edClsAll(){
@@ -1360,19 +1465,44 @@ function edMoveSelDown(h,q,e){
     SEL.clear();for(const k of keep)SEL.add(k);selectionChanged();lineDirty=true;requestDraw();};
   EDDRAG=d;return true;}
 // Resize: the face the mouse is over (or the corner / edge it would take) outlined in green
-let _edRzT=0,_edRzOn=false;
+let _edRzT=0,_edRzOn=false,_edRzKey='';
+// The green lines take the place of the selection's red (and the mouse-over's) outline on
+// that face or edge: those outlines are drawn after every other line, so the edges under
+// the green are left out of them while it shows (edRzOutlines), and put back after.
+function edRzOutlines(pi,skip){
+  if(!gl)return;
+  const of=(pis,cut)=>{const edg=[];for(const q of pis){const p=SC.prims[q];if(!p)continue;
+    for(let f=p.f0;f<p.f1;f++){if(faceVis&&!faceVis[f])continue;const ea=SC.faceE0[f],ec=SC.faceEN[f];
+      for(let k=ea;k+1<ea+ec;k+=2){const a=SC.edge[k],b=SC.edge[k+1];if(cut&&q===pi&&skip(a,b))continue;edg.push(a,b);}}}return edg;};
+  const sel=[...selectedPrims()];for(const ei of selectedEnts())sel.push(...primsOfEnt(ei));
+  const se=of(sel,true);
+  gl.bindVertexArray(null);
+  gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,B.selE);gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint32Array(se.length?se:[0,0]),gl.DYNAMIC_DRAW);selEdgeCount=se.length;
+  const hk=setHover.key;
+  if(hk&&!SEL.has(hk)&&hovEdgeCount){const hp=hk[0]==='p'?[+hk.slice(1)]:primsOfEnt(+hk.slice(1)),he=of(hp,true);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,B.hovE);gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint32Array(he.length?he:[0,0]),gl.DYNAMIC_DRAW);hovEdgeCount=he.length;}
+  requestDraw();}
+function edRzRestore(){try{rebuildSelection();refreshHover();}catch(_e){}}
 function edResizeHover(x,y){
-  const H=[],G=C_GOOD;
+  const H=[],G=C_GOOD;let key='',pi=-1,skip=null;
+  const P=SC.pos,near=(v,q)=>Math.abs(P[v*3]-q[0])<0.05&&Math.abs(P[v*3+1]-q[1])<0.05&&Math.abs(P[v*3+2]-q[2])<0.05;
   try{const g=edGrabAt(x,y);
     if(g&&(g.kind==='vert'||g.kind==='edge')){
       for(const i of g.ids){const p=g.G.V[i];for(let k=0;k<3;k++){const a=p.slice(),b=p.slice();a[k]-=6;b[k]+=6;segPush(H,a,b,G);}}
-      if(g.kind==='edge')segPush(H,g.G.V[g.ids[0]],g.G.V[g.ids[1]],G);}
+      if(g.kind==='edge'){const A=g.G.V[g.ids[0]],B2=g.G.V[g.ids[1]];segPush(H,A,B2,G);
+        pi=SC.prims.findIndex(p=>p.ent===ED.sel.ei&&p.bn===ED.sel.bn);
+        skip=(a,b)=>(near(a,A)&&near(b,B2))||(near(a,B2)&&near(b,A));}
+      key=g.kind+':'+g.ids.join(',');}
     else if(!g){const h=edHit(x,y),q=edPrimOfHit(h);
-      if(q&&q.kind===0){const w=edCheck(edFaces(q.pr)).ws[q.side];if(w)wEdges(H,w,G);}}}catch(_e){}
-  if(H.length){_edRzOn=true;edShow(H,null);}else if(_edRzOn){_edRzOn=false;edShow();}}
+      if(q&&q.kind===0){const fs=edFaces(q.pr),w=edCheck(fs).ws[q.side],pl=planeOf(fs[q.side]);
+        if(w){wEdges(H,w,G);pi=q.pi;key='f:'+q.pi+':'+q.side;
+          if(pl)skip=(a,b)=>{const on=v=>Math.abs(P[v*3]*pl[0]+P[v*3+1]*pl[1]+P[v*3+2]*pl[2]-pl[3])<0.05;return on(a)&&on(b);};}}}}catch(_e){}
+  key+='|'+setHover.key+'|'+[...SEL].slice(0,32).join(',');
+  if(H.length){_edRzOn=true;edShow(H,null);if(key!==_edRzKey){_edRzKey=key;if(skip)edRzOutlines(pi,skip);else edRzRestore();}}
+  else if(_edRzOn){_edRzOn=false;_edRzKey='';edShow();edRzRestore();}}
 window.addEventListener('mousemove',e=>{
-  if(ED.tool!=='resize'||!EON()||!MAP||EDDRAG||ED.carry||ED.drop)return;
-  if(e.target!==glcv){if(_edRzOn){_edRzOn=false;edShow();}return;}
+  if(ED.tool!=='resize'||!EON()||!MAP||EDDRAG||ED.carry||ED.drop){if(_edRzOn&&!EDDRAG){_edRzOn=false;_edRzKey='';edRzRestore();}return;}
+  if(e.target!==glcv){if(_edRzOn){_edRzOn=false;_edRzKey='';edShow();edRzRestore();}return;}
   const now=performance.now();if(now-_edRzT<50)return;_edRzT=now;
   const[x,y]=edXY(e);edResizeHover(x,y);},true);
 // ---- Copy (Alt+C): the selected brushes, patches, terrain blocks and brush entities again ----
@@ -2112,6 +2242,7 @@ function edPanel(){
   h+='<div class="row" style="gap:4px;flex-wrap:wrap;align-items:center;margin-top:4px">Texture '+edField('edTex',tex,170)+'<button class="sm" id="bEdTex" title="Choose from the map\'s textures and the paks\': new brushes and cut faces get it, and so does what is selected (every face of a brush, a patch, a terrain block; one Undo). Selecting something puts its texture here.">Browse...</button>'+
      edSel('edTexP',TEXPRESETS,'')+'<button class="sm'+(ED.drop?' on':'')+'" id="bEdDrop" title="Eyedropper: click this, then click any surface in the view; its texture goes into the Texture box (and onto what is selected). Esc or a second click here cancels.">'+DROPICON+'</button></div>';
   h+=edClsHtml();
+  h+=edJoinHtml();
   h+=edSelSummary();
   h+='<details id="edExact"'+(ED.exact?' open':'')+' style="margin-top:6px"><summary style="cursor:pointer" title="Every value typed in: sizes, corners, planes, control points, heights, texture shifts">Exact values</summary>';
   h+='<div class="row" style="gap:4px;flex-wrap:wrap;align-items:center;margin-top:4px">New box '+edVecFields('edNs',ED.ns||[64,64,64],40)+
@@ -2148,18 +2279,20 @@ function edPanel(){
       '<button class="sm" id="bEdTall" title="The texture above on every face">Texture on all faces</button></div>';}
   }else h+='<div class="co" style="margin-top:4px">Select a brush, patch or terrain block to type its values here.</div>';
   h+='</details>';
+  h+=edSpecHtml();
   h+='<div class="co" id="edBrSt" style="margin-top:4px"></div>';
   el.innerHTML=h;
   edToolBind(el);
   const txp=$('edTexP');if(txp)txp.onchange=()=>{if(txp.value){const tv=txp.value;$('edTex').value=tv;flash('Texture: '+tv+(tv==='common/hint'?' - a hint brush: hint on the faces that should split the map, skip on the rest':''));txp.value='';edTexApplyRun(tv);}txp.value='';};
   const dx=$('edExact');if(dx)dx.ontoggle=()=>{ED.exact=dx.open;};
+  edSpecBind(el);
   const on=(id,fn)=>{const b=$(id);if(b)b.onclick=edRun(fn);};
   on('bEdNewB',()=>{ED.ns=edVec('edNs');edOpNew();});on('bEdBox',edOpBox);
   on('bEdMv',()=>{ED.mv=edVec('edMv');edOpMove(1);});on('bEdMvB',()=>{ED.mv=edVec('edMv');edOpMove(-1);});
   on('bEdCp',()=>{ED.mv=edVec('edMv');edOpCopy();});on('bEdDel',edOpDelete);on('bEdCl',edOpClip);
   on('bEdF',edOpFace);on('bEdPush',edOpPush);on('bEdTall',edOpTexAll);
   edPTBind(on);
-  on('bEdTex',()=>edTexOpen('edTex'));on('bEdCls',edClsOpen);
+  on('bEdTex',()=>edTexOpen('edTex'));on('bEdCls',edClsOpen);on('bEdJoin',()=>edJoin(+$('edJoinT').value));
   const ce=$('edCls');if(ce)ce.addEventListener('keydown',e=>{if(e.key!=='Enter')return;e.preventDefault();e.stopImmediatePropagation();edRun(()=>edClsApply(ce.value))();});
   const dp=$('bEdDrop');if(dp)dp.onclick=()=>edDrop(!ED.drop);
   const lk=$('edLock');if(lk)lk.onchange=()=>{ED.lock=lk.checked;};
@@ -2256,7 +2389,7 @@ function edMode(on){
 window.__EDITHOOKS__&&window.__EDITHOOKS__.push(edMode);
 
 // what the editor holds, for the test harness and the console (read it; change it through the panel)
-window.MOHAA_EDITOR_API={get drag(){return EDDRAG;},ED:ED,edMoveDown:edMoveDown,edMoveSelDown:edMoveSelDown,edPrimOfHit:edPrimOfHit,edResizeHover:edResizeHover,edKeyOfPrim:edKeyOfPrim,edClsApply:edClsApply,edClsTargets:edClsTargets,edClsAll:edClsAll,edCopySet:edCopySet,edCarryStart:edCarryStart,edCarryPlace:edCarryPlace,edCarryEnd:edCarryEnd,edSelTex:edSelTex,edTexApplySel:edTexApplySel,edTexChoose:edTexChoose,edDrop:edDrop,edTexAt:edTexAt,edDropTake:edDropTake,edFaces:edFaces,edFaceLine:edFaceLine,edBounds:edBounds,edCheck:edCheck,edPanel:edPanel,brRow:brRow,edPatchData:edPatchData,edTerrData:edTerrData,edTerrSpan:edTerrSpan,edMarks:edMarks,edPatchFacing:edPatchFacing,edTerrFitSel:edTerrFitSel,edRegionSet:edRegionSet,edSetTerr:edSetTerr,terrHeightsMap:terrHeightsMap,
+window.MOHAA_EDITOR_API={edJoin:edJoin,edJoinHtml:edJoinHtml,edRzOutlines:edRzOutlines,get rzKey(){return _edRzKey;},get drag(){return EDDRAG;},ED:ED,edMoveDown:edMoveDown,edMoveSelDown:edMoveSelDown,edPrimOfHit:edPrimOfHit,edResizeHover:edResizeHover,edKeyOfPrim:edKeyOfPrim,edClsApply:edClsApply,edClsTargets:edClsTargets,edClsAll:edClsAll,edCopySet:edCopySet,edCarryStart:edCarryStart,edCarryPlace:edCarryPlace,edCarryEnd:edCarryEnd,edSelTex:edSelTex,edTexApplySel:edTexApplySel,edTexChoose:edTexChoose,edDrop:edDrop,edTexAt:edTexAt,edDropTake:edDropTake,edFaces:edFaces,edFaceLine:edFaceLine,edBounds:edBounds,edCheck:edCheck,edPanel:edPanel,brRow:brRow,edPatchData:edPatchData,edTerrData:edTerrData,edTerrSpan:edTerrSpan,edMarks:edMarks,edPatchFacing:edPatchFacing,edTerrFitSel:edTerrFitSel,edRegionSet:edRegionSet,edSetTerr:edSetTerr,terrHeightsMap:terrHeightsMap,
   edAddBrush:edAddBrush,edBoxFaces:edBoxFaces,edNew:()=>EDNEW,edNewLines:edNewLines,edNewSync:edNewSync};
 
 try{edSection();}catch(err){console.error(err);}

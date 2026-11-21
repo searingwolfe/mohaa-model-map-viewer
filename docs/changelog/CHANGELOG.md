@@ -3174,3 +3174,54 @@ look of the walk and the doors should be confirmed by eye in the launcher.
   reorders the faces, so the boxes belonged to other faces and terrain and walls were culled
   (seen on m3l1b: the picks there found the sky). `edRebuild` now drops the boxes with
   every edit, which also keeps a moved or resized brush from being culled by its old box.
+- **Resize hover in place of the red**: the selection's red outline (and the mouse-over's)
+  is drawn after every other line, so it covered the green one. While the green shows, the
+  edges under it are left out of those outlines (`edRzOutlines`: the face's plane, or the
+  edge a drag would take, on that brush only) and put back when the mouse moves off
+  (`edRzRestore`). Checked in the page: hovering a face of the selected brush took its 8
+  edges (16 indices) out of the red, 48 to 32, and moving away put them back.
+- **Entity / Move into** row under Classname (`edJoinHtml`, `edJoin` in
+  `mohaa_map_editor.js`): with brushes of an entity selected, a list of their entities and
+  the world (the first entity selected chosen) and Move into, which moves the selected
+  brushes and patches into that entity's block, out of their own, as one change (one
+  Undo). For a door built from a brush: a copied origin brush (which Copy puts into the
+  door it came from) is moved into the new door, which then turns about it. An entity is
+  never left with no brushes (the log says to delete it in Modify instead), and terrain
+  stays in the world. Checked in the page: a brush of one door moved into another (1 + 2
+  brushes became 2 + 1), the last brush of a door was refused, one went back to the world,
+  and two Undos put it all back.
+- Move into's tooltip ends with a note to select the brushes of both entities (a door and
+  an origin brush) so both are in its list.
+- **Class specs** (`edSpecHtml`, `edSpecSet` in `mohaa_map_editor.js`; `cspecGroups`,
+  `cspecInfo` in `mohaa_map_page.py`): `tools/make_class_specs.py` reads OpenMoHAA's
+  `code/fgame` (every `Event` definition and `CLASS_DECLARATION` response table) into
+  `bin/data/class_specs.json`, which the build puts in each page (`cspec`). A map's key is
+  sent to the entity as the event of that name (`SpawnArgs::Spawn`, g_spawn.cpp), so a
+  class's keys are the normal and setter events of it and its parents that take no entity
+  arguments; events without a value only where they set something (lock, alwaysaway). Keys
+  are marked SH / BT from OpenMoHAA's "Added in 2.0 / 2.30" comments and, for the rest, by
+  Allied Assault's own `dumpallclasses` listing (238 more that Allied Assault doesn't
+  have). With one brush entity selected, the EDITOR section lists its class's keys (its own
+  classes open, the general ones under *more*), set ones in bold; Enter sets a key in its
+  Modify row, empty removes it. Doors read their Modify row's keys (`doorNew` wrapper), so
+  Open door shows a new `doortype` or `angle` at once. More info for the entity and for
+  its brushes has a Class specs table of the same keys with their values. Checked in the
+  page: a func_rotatingdoor listed 15 keys (openangle, doortype, angle, alwaysaway, time,
+  wait, the sounds...), `doortype metal` made it take 1.5 s, `angle 270` turned its
+  direction, and emptying `angle` took the key away. A page is built again when the JSON
+  changes (`_html_current`).
+- **func_ladder and the other brush classes** get what doors got:
+  - Class specs leave out the events only the game code sends (`EV_CODEONLY`, and names
+    starting with `_`: `_ladder_setup`, `_cratesetup`...), so a `func_ladder` lists its
+    `angle`, a `func_crate` its `debristype`, a `func_barrel` its `barreltype`; a
+    trigger's own list is Trigger's keys (`setthread`, `wait`, `delay`, `message`...).
+  - A Ladder part in More info (`ladderInfo`, for the entity and its brushes): its `angle`
+    as the way a climber looks at it (FuncLadder::SetLadderFacing in OpenMoHAA misc.cpp),
+    the 52-unit reach and the places CanUseLadder / PositionOnLadder put a climber, and
+    that LadderSetup makes its brushes ladder contents, never drawn. It reads the Modify
+    row's keys, so a new `angle` shows at once.
+  - With Arrows on, a ladder's facing arrow from the middle of its brushes (`ladderYaw`).
+  - Classname tells what the class still needs (`edClsHint`): a rotating door's origin
+    brush, a sliding door's `angle` and `lip`, a ladder's `angle`, a trigger's thread...
+  Checked in the page on mohdm6's ladder: Class specs showed `angle` 90, More info said
+  it faces +y, setting 180 turned it at once, and a trigger_use listed Trigger's 14 keys.

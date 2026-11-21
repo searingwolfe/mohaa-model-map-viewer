@@ -1645,6 +1645,22 @@ def _norm_model_path(p):
     return p
 
 
+_CLASS_SPECS = []
+
+
+def class_specs():
+    """bin/data/class_specs.json (the keys each game class takes from a map, read from
+    OpenMoHAA's game code by tools/make_class_specs.py), or None without it."""
+    if not _CLASS_SPECS:
+        try:
+            with open(os.path.join(HERE, "data", "class_specs.json"), encoding="utf-8") as f:
+                _CLASS_SPECS.append(json.load(f))
+        except (OSError, ValueError):
+            MC.swallowed()
+            _CLASS_SPECS.append(None)
+    return _CLASS_SPECS[0]
+
+
 def brush_classes(entdefs):
     """[name, first line of the description] of each brush entity class, by name."""
     out = []
@@ -4882,6 +4898,8 @@ def build(src, args):
               # every brush class the definitions know (the editor's Classname list): name and
               # the first line of its description
               "bcls": brush_classes(entdefs),
+              # the keys each game class takes (the Class specs: tools/make_class_specs.py)
+              "cspec": class_specs(),
               # the keys a "$" or "#" in front of a key can set (MB.SETTER_KEYS)
               "sk": sorted(MB.SETTER_KEYS)}
     t0 = time.time()

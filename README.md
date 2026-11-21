@@ -566,6 +566,30 @@ way here.
     it turns: Draw one with *in entity* ticked while the door is selected). A brush entity
     selected just gets the new class, as a key change, so **Save as .bsp** keeps it
     without compiling. Point entities' classname is in Modify's Edit parameters.
+  * **Entity [list] Move into** (under Classname, with brushes of an entity selected): the
+    selected brushes and patches go into the entity picked in the list, out of the ones
+    they are in now, as MOHRadiant's move into entity. Select a door's brush, Shift+click an
+    origin brush (a copy of another door's, say), pick the door and **Move into**: the door
+    then turns about that origin brush. Picking *the world* takes brushes back out of an
+    entity. No entity is left with no brushes, and terrain stays in the world; one Undo.
+  * **Class specs** (below Exact values, with one brush entity's brush selected): every key
+    its class takes from the map, by class (a `func_rotatingdoor`: RotatingDoor's
+    `openangle`, then Door's `doortype`, `time`, `wait`, `angle`, `alwaysaway`, the
+    sounds...), and under *more* the general ones from ScriptSlave, Trigger and Entity.
+    Bold keys are set on the entity; type a value and Enter sets it, empty takes it away
+    (a key change, so Save as .bsp keeps it; Undo puts it back), and Open door uses it at
+    once. **SH** / **BT** mark keys only Spearhead / Breakthrough have. A door that opens
+    to one side only usually needs the `angle` its neighbours have (Door::SetDir turns its
+    direction from it), and `doortype metal` makes it take 1.5 s instead of 1. The same
+    list, with the values set, is in the entity's (and its brushes') More info. Every
+    brush class gets it: a trigger's own list is Trigger's (`setthread`, `wait`, `delay`,
+    `message`...), a `func_ladder`'s is its `angle`.
+  * **func_ladder**: its `angle` is the way a climber looks at it (FuncLadder's
+    SetLadderFacing). More info has a Ladder part (which way it faces, its 52-unit reach,
+    that its brushes become ladder contents, never drawn), and with Arrows on it gets a
+    facing arrow from the middle of its brushes, which follows a new `angle` at once.
+    Giving brushes a class with Classname says what that class still needs (a rotating
+    door's origin brush, a ladder's or sliding door's `angle`...).
   * **▲ Terrain**: click a terrain triangle to cut it away (or click a cut one to fill it
     back); drag across to do many. Each square of terrain is two triangles and the game
     keeps either one on its own, as the original maps do where terrain meets a trench wall.

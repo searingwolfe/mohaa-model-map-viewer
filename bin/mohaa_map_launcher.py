@@ -1085,7 +1085,8 @@ class MapApp(ML.App):
         baked page revision is current."""
         try:
             srcs = [os.path.abspath(__file__), MAP_BUILDER] + [os.path.join(HERE, n) for n in
-                    ("mohaa_map_page.py", "mohaa_bsp.py", "mohaa_entdefs.py", "mohaa_textures.py", "mohaa_view.py")]
+                    ("mohaa_map_page.py", "mohaa_bsp.py", "mohaa_entdefs.py", "mohaa_textures.py", "mohaa_view.py",
+                     os.path.join("data", "class_specs.json"))]
             newest = max((os.path.getmtime(s) for s in srcs if os.path.exists(s)), default=0)
             if os.path.getmtime(hp) < newest:
                 key = (hp, os.path.getmtime(hp))   # a pak map is checked twice per open: say it once
