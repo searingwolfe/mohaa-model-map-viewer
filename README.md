@@ -526,7 +526,15 @@ way here.
     hold Shift to drag them up and down. The face under the mouse (the one a drag pulls),
     or the corner or edge a drag would take, is outlined in green.
   * **✥ Move**: drag a brush, patch or terrain block across the floor; Shift+drag moves it
-    up and down, Alt+drag makes a moved copy. Press on a brush that is part of a bigger
+    up and down, Alt+drag makes a moved copy, and Shift+click (no drag) adds a brush to the
+    selection or takes it out, without going back to Select. Move and Resize go in single
+    units, or in the grid's size with Grid on. **✥ Trim / ⇕ Trim** (beside Region, with Move
+    or Resize): W A S D / arrows and Space / C nudge the selected brushes by Modify's trim
+    step (Resize: push out the face that faces that way, Shift+key pulls it in), the way to
+    stretch a brush too thin to grab, like a ceiling wire; Esc or T stops, one Undo for it
+    all. **Delete** (the key, or the button beside the selection) deletes the selected
+    brushes, patches and terrain blocks; a brush entity whose every brush is selected is
+    deleted as Modify deletes it. Press on a brush that is part of a bigger
     selection and the whole selection moves (or is copied) together; an entity whose every
     brush is selected takes its `origin` key along. Texture lock keeps the textures in place.
   * **Selecting brushes of a brush entity**: with the editor on, a click picks the one brush
@@ -559,6 +567,12 @@ way here.
     is selected too: every face of a brush, a patch, or every patch of a terrain block
     (one Undo). With the **▦ Texture** tool or terrain *paint texture* on, the box is the
     paint and stays as you set it.
+  * **Tiling** (under Texture, with a brush or terrain block selected): its texture's scale,
+    rotate and shift, on the face clicked (else every face) or every terrain patch; **Set**
+    lays them. The eyedropper takes a surface's tiling with its texture and gives both to
+    the selection, to match a neighbour, also when the selection has that texture already.
+    With the Texture tool (or terrain paint), the eyedropper or an Alt+click loads both and
+    each click lays the texture with that tiling.
   * **Classname** (under Texture): what the selected brushes are. **Browse...** lists the
     brush entity classes (`func_rotatingdoor`, `script_object`, `trigger_multiple` ...);
     typing one and Enter does the same. Brushes or patches of the world become one new

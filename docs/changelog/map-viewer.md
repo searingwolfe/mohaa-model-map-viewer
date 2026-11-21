@@ -182,8 +182,9 @@ run at once.
 - **Hints** (`Ctrl+H`) covers hint, skip and vis brushes (`C_HINT|C_VIS`). Vis faces have
   their own group, which only the looks used to show, so Hints left them hidden in the
   In-game look; now one click shows all three whatever the look.
-- **All, In-game look, Editor look** (under the Show buttons; `Ctrl+A`, `G`, `Shift+G`):
-  All shows every group. In-game look hides what the game never draws (caulk, clips,
+- **All, None, In-game look, Editor look** (under the Show buttons; `Ctrl+A`,
+  `Ctrl+Shift+A`, `G`, `Shift+G`): All shows every group, None hides all but the map's own
+  surfaces (World, Patches, Translucent, Liquids, Details, Terrain). In-game look hides what the game never draws (caulk, clips,
   triggers, hints, origin brushes, areaportals, nodraw, rain, foliage clips) and the
   entity markers, with the game's lighting, sky and sun flare (Full Brightness and Simple
   Sky off, Sun flare on). Editor look is MOHRadiant's view: everything but hints,

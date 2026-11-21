@@ -484,11 +484,20 @@ function edRebuild(sel){
   // the culling boxes are per face: a change that keeps the face count (a brush moved into a
   // new entity, a brush reshaped) still reorders or moves faces
   try{CULL.fk=CULL.fb=null;}catch(_e){}
+  try{PG=null;GRID.fk='';GRID.key='';}catch(_e){}     // the player collision (traces, the grid's focus) from the new geometry
   edNewCalc();
   buildEntities();prepMaterials();prepSeeThrough();doorsInit();expInit();
   ENTPRIMS=null;LINE_STARTS=null;TRACEBR=null;_texCounts=null;TEXUSE=null;SEARCH=null;TARGETED_BY=null;LBLOCC=null;
   GAME_TN=null;PNIDX=null;ENTVIS=null;
   BR.clear();brPosed.clear();hidPrim.clear();
+  // a brush entity's Modify row holds its anchor as its origin: where its brushes' middle
+  // was when the row was made. Brushes moved here move the middle; a row Modify itself hasn't
+  // moved takes the new anchor, so the entity isn't drawn shifted back to where it was
+  try{const ko=kv=>{for(const[k,v]of kv||[])if(k.toLowerCase()==='origin')return v;return null;};
+    for(const m of MOD.ents){if(m.ei==null||!m.brA||m.del||!brOk(m.ei))continue;
+      const o=ko(m.kv);if(o==null||o!==ko(m.orig))continue;
+      const a=brInfo(m.ei).anchor.map(fmt).join(' ');if(a===o)continue;
+      for(const L of[m.kv,m.orig])for(const kv of L)if(kv[0].toLowerCase()==='origin')kv[1]=a;}}catch(err){console.error(err);}
   try{paDirty();}catch(_e){}
   if(gl){
     gl.bindBuffer(gl.ARRAY_BUFFER,B.pos);gl.bufferData(gl.ARRAY_BUFFER,SC.pos,gl.STATIC_DRAW);
@@ -526,6 +535,7 @@ function edPickSync(){
   // texture in the Texture box - except while the box is what the Texture tool or terrain
   // paint lays down
   if(s&&(!same||ED.face!==face0)&&!edTexPainting()){const tx=edSelTex(),el=$('edTex');if(tx&&el)el.value=tx;}
+  if(!same||ED.face!==face0)ED.tileV=null;           // the Tiling row shows the new selection's
   lineDirty=true;edPanel();
 }
 // the Texture tool and terrain paint lay the box's texture down: there it stays as chosen
@@ -547,14 +557,118 @@ function edSelTex(){
   return null;}
 // a texture chosen for the box (Browse..., tool textures, the eyedropper) also goes on what
 // is selected: every face of a brush, a patch, every patch of a terrain block. One Undo.
-function edTexApplySel(tx){
+function edTexApplySel(tx,tile){
   if(!ED.sel||edTexPainting())return false;
   edTexOk(tx);
   const pr=edPrim(),pp=edPatch(),tp=edTerr();
+  if(pr&&tile&&tile.kind==='face'){const fs=edFaces(pr);for(const f of fs){f.tex=tx;if(!f.tm){f.sc=tile.sc.slice();f.rot=tile.rot;f.sh=tile.sh.slice();}}
+    edSetFaces(fs,'Every face of the brush: '+tx+', its tiling too');return true;}
+  if(tp&&tile&&tile.kind==='terrain'){const T=edTerrData(tp);for(const c of T.cl){while(c.length<7)c.push('0');c[0]=tx;c[1]=edN6(tile.sh[0]);c[2]=edN6(tile.sh[1]);c[3]=edN6(tile.rot);c[5]=edN6(tile.sc[0]);c[6]=edN6(tile.sc[1]);}
+    edSetTerr(T,'Every patch of the terrain block: '+tx+', its tiling too');return true;}
   if(pr){const fs=edFaces(pr);if(fs.every(f=>f.tex===tx))return false;for(const f of fs)f.tex=tx;edSetFaces(fs,'Every face of the brush: '+tx);return true;}
   if(pp){if(pp.d.tex===tx)return false;const P=edPatchData(pp);P.tex=tx;edSetPatch(P,'Patch: '+tx);return true;}
   if(tp){const T=edTerrData(tp);if(T.cl.every(c=>c[0]===tx))return false;for(const c of T.cl)c[0]=tx;edSetTerr(T,'Every patch of the terrain block: '+tx);return true;}
   return false;}
+// ---- Tiling: how the texture lies (scale, rotate, shift) on the selected brush or terrain ----
+// On a brush: the face clicked (or picked in Exact values), else every face; on a terrain
+// block: every patch. The eyedropper takes a face's or terrain patch's tiling with its
+// texture and gives both to the selection.
+function edTileAt(h){
+  const q=edPrimOfHit(h);if(!q)return null;
+  if(q.kind===0){const f=q.pr.d.faces[q.side];if(!f||f.tm)return null;return{kind:'face',sc:f.sc.slice(),rot:f.rot,sh:f.sh.slice()};}
+  if(q.kind===2&&h.point){const t=q.pr.d,nx=(t.W-1)/8,ny=(t.H-1)/8;
+    const pi=Math.max(0,Math.min(nx-1,Math.floor((h.point[0]-t.org[0])/512))),pj=Math.max(0,Math.min(ny-1,Math.floor((h.point[1]-t.org[1])/512)));
+    const c=t.corners[pj*(nx+1)+pi]||t.corners[0];if(!c)return null;return{kind:'terrain',sc:c.sc.slice(),rot:c.rot,sh:c.sh.slice()};}
+  return null;}
+function edSelTile(){
+  const pr=edPrim(),tp=edTerr();
+  if(pr){const f=pr.d.faces[ED.face>=0?ED.face:0];if(!f||f.tm)return null;return{kind:'face',sc:f.sc.slice(),rot:f.rot,sh:f.sh.slice()};}
+  if(tp){const c=tp.d.corners[0];if(!c)return null;return{kind:'terrain',sc:c.sc.slice(),rot:c.rot,sh:c.sh.slice()};}
+  return null;}
+function edTileHtml(){
+  if(!ED.sel)return'';const pr=edPrim(),tp=edTerr();if(!pr&&!tp)return'';
+  const kind=pr?'face':'terrain',t=(ED.tileV&&ED.tileV.kind===kind)?ED.tileV:edSelTile();if(!t)return'';
+  const who=pr?(ED.face>=0?'face '+(ED.face+1)+' (the one clicked)':'every face'):'every patch of the block';
+  return edLine('Tiling',edCap('scale')+edField('edTlK0',fmt(t.sc[0]),38)+edField('edTlK1',fmt(t.sc[1]),38)+edCap('rotate')+edField('edTlR',fmt(t.rot),34)+
+    edCap('shift')+edField('edTlS0',fmt(t.sh[0]),38)+edField('edTlS1',fmt(t.sh[1]),38)+edBtn('bEdTile','Set','This scale, rotate and shift on '+who+'. The eyedropper takes them with a texture'),
+    'How the texture lies on '+who+': scale x y (on a brush 0.5 is the editor\'s default, 1 twice as big; below 0 flips), rotate in degrees, shift x y in texels. The eyedropper copies them from the surface it takes a texture from.');}
+function edTileRead(){
+  const v=id=>num($(id).value,-1e6,1e6),kind=edPrim()?'face':'terrain';
+  const t={kind:kind,sc:[v('edTlK0'),v('edTlK1')],rot:v('edTlR'),sh:[v('edTlS0'),v('edTlS1')]};
+  if(!t.sc[0]||!t.sc[1])throw new Error('a scale can\'t be 0');return t;}
+function edTileSet(){
+  const t=edTileRead();ED.tileV=t;const pr=edPrim(),tp=edTerr();
+  if(pr){const fs=edFaces(pr),ks=ED.face>=0?[ED.face]:fs.map((_f,i)=>i);let n=0;
+    for(const k of ks){const f=fs[k];if(!f||f.tm)continue;f.sc=t.sc.slice();f.rot=t.rot;f.sh=t.sh.slice();n++;}
+    if(!n)throw new Error('that face uses brush-primitive texturing: its matrix is kept');
+    edSetFaces(fs,'Tiling on '+(ks.length===1?'face '+(ks[0]+1):'every face')+': scale '+t.sc.map(fmt).join(' ')+', rotate '+fmt(t.rot)+', shift '+t.sh.map(fmt).join(' '));return;}
+  if(tp){const T=edTerrData(tp);for(const c of T.cl){while(c.length<7)c.push('0');c[1]=edN6(t.sh[0]);c[2]=edN6(t.sh[1]);c[3]=edN6(t.rot);c[5]=edN6(t.sc[0]);c[6]=edN6(t.sc[1]);}
+    edSetTerr(T,'Tiling on every patch: scale '+t.sc.map(fmt).join(' ')+', rotate '+fmt(t.rot)+', shift '+t.sh.map(fmt).join(' '));return;}
+  throw new Error('select a brush or a terrain block');}
+
+// ---- Delete (the Delete key, or the Delete beside the selection): the selected brushes ----
+// Brushes, patches and terrain blocks go from the text; a brush entity whose every brush is
+// selected is deleted as Modify deletes it (its row flagged DEL), so no entity is left
+// without brushes. One Undo puts it all back.
+function edDeleteSel(){
+  let c;try{c=edCopySet();}catch(_e){return false;}
+  if(!c.prims.length&&!c.ents.length)return false;
+  if(c.pts)throw new Error('Delete takes brushes or entities, not both: Shift+click to leave one kind out of the selection');
+  const items=c.prims.map(pi=>{const r=SC.prims[pi];return MAP.ents[r.ent].prims[r.bn];}).filter(Boolean),ents=c.ents.slice();
+  const what=(items.length?items.length+(items.length===1?' brush':' brushes'):'')+(items.length&&ents.length?' and ':'')+(ents.length?ents.map(entName).join(', '):'');
+  if(items.length)edDoMany(items.map(pr=>({at:pr.ts,del:D.srcText.slice(pr.ts,pr.te),ins:'',sel:null})),'Deleted '+what+' (Undo, Alt+Z, puts it back)');
+  else modHist();
+  if(ents.length){for(const ei of ents)modRowFor(ei).del=true;modChanged(true);flash('Deleted '+what+' (Undo, Alt+Z, puts it back)');}
+  SEL.clear();lastHit=null;selectionChanged();lineDirty=true;requestDraw();return true;}
+window.addEventListener('keydown',e=>{
+  if(e.key!=='Delete'||!EON()||typeof MAP==='undefined'||!MAP||e.altKey||e.metaKey)return;
+  const tg=e.target&&e.target.tagName;if(tg==='INPUT'||tg==='TEXTAREA'||tg==='SELECT')return;
+  if(MOD.edit>=0||MOD.placing||ED.carry||EDDRAG)return;
+  let done=false;try{done=edDeleteSel();}catch(err){flash(err.message);done=true;}
+  if(done){e.preventDefault();e.stopPropagation();}},true);
+
+// ---- Trim (with Move or Resize): the selection nudged from the keyboard -----------------------
+// As Modify's Trim origin: W A S D / arrows along the world axis nearest the way the camera
+// looks, Space / C up and down, by Modify's trim step. Move moves the selected brushes; Resize
+// pushes out the face of each selected brush that faces that way (Shift+key pulls it in), so a
+// brush too thin to grab a side of (a wire) can be stretched. The whole trim is one Undo.
+function edTrim(on){
+  if(on==null)on=!ED.trim;
+  if(on&&!(ED.tool==='move'||ED.tool==='resize'))return;
+  if(on){if(MOD.trim)modTrim(false);if(!edJoinPrims().length){flash('Select a brush first');return;}stopCamera();ED.trimN=0;}
+  ED.trim=!!on;edPanel();
+  flash(on?(ED.tool==='move'?'Trim: W A S D / arrows move the selection, Space / C up and down':'Trim: W A S D / arrows / Space / C push the brush\'s face that way out, Shift+key pulls it in')+
+    ', '+MOD_STEPS[MOD.stepI]+' at a time (Modify\'s trim step). Esc or T stops':'Trim off');}
+function edTrimKey(e){
+  const kl=e.key.toLowerCase(),A=modAxes();let d=null;
+  if(kl==='w'||kl==='arrowup')d=A.f;else if(kl==='s'||kl==='arrowdown')d=A.f.map(v=>-v);
+  else if(kl==='d'||kl==='arrowright')d=A.r;else if(kl==='a'||kl==='arrowleft')d=A.r.map(v=>-v);
+  else if(kl===' ')d=[0,0,1];else if(kl==='c')d=[0,0,-1];
+  else if(kl==='escape'||kl==='t'){edTrim(false);return true;}
+  if(!d)return CAM_KEYS_FREE.has(kl)||CAM_KEYS_RAD.has(kl);   // the camera stays put
+  const st=MOD_STEPS[MOD.stepI],keep=[...SEL],n0=MOD.undo.length;
+  if(ED.tool==='move'){const c=edCopySet();if(c.pts)throw new Error('Trim moves brushes; Modify\'s Trim origin moves entities');
+    if(!c.prims.length&&!c.ents.length)throw new Error('Select a brush first');
+    const C=edCarryBuild(c),o=d.map(v=>v*st);edDoMany(edMoveOps(C,o),'Trim: moved '+o.map(fmt).join(' '));}
+  else{const ops=[];let n=0;
+    for(const pi of edJoinPrims()){const r=SC.prims[pi],pr=MAP.ents[r.ent].prims[r.bn];if(!pr||pr.kind!==0)continue;
+      const fs=edFaces(pr);let k=-1,best=0.5;
+      fs.forEach((f,i)=>{const pl=planeOf(f);if(!pl)return;const dd=pl[0]*d[0]+pl[1]*d[1]+pl[2]*d[2];if(dd>best){best=dd;k=i;}});
+      if(k<0)continue;const pl=planeOf(fs[k]),v=e.shiftKey?-st:st;for(let i=0;i<9;i++)fs[k].p[i]+=pl[i%3]*v;
+      try{edCheck(fs);}catch(_e){throw new Error('that would turn the brush inside out');}
+      ops.push({at:pr.ts,del:D.srcText.slice(pr.ts,pr.te),ins:edBrushText(fs),sel:null});n++;}
+    if(!ops.length)throw new Error('Trim resizes brushes: select one (a patch or terrain block has its own tools)');
+    edDoMany(ops,'Trim: '+(n===1?'its face':n+' faces')+' '+(e.shiftKey?'pulled in ':'pushed out ')+st);}
+  if(ED.trimN++>0&&MOD.undo.length>n0)MOD.undo.splice(n0,MOD.undo.length-n0);   // one Undo for the trim
+  SEL.clear();for(const k of keep)SEL.add(k);selectionChanged();lineDirty=true;requestDraw();return true;}
+window.addEventListener('keydown',e=>{
+  if(!ED.trim)return;
+  if(!EON()||!(ED.tool==='move'||ED.tool==='resize')){ED.trim=false;return;}
+  if(e.ctrlKey||e.altKey||e.metaKey)return;
+  const tg=e.target&&e.target.tagName;if(tg==='INPUT'||tg==='TEXTAREA'||tg==='SELECT')return;
+  let took=false;try{took=edTrimKey(e);}catch(err){flash(err.message);took=true;}
+  if(took){e.preventDefault();e.stopPropagation();}},true);
+
 // ---- Classname: what the selected brushes are --------------------------------------------
 // Brushes of the world (or a func_group) become one new entity of that class, with the
 // brushes moved into it; a brush entity gets the new class through Modify (a key change, so
@@ -738,7 +852,7 @@ function edClsKey(ev){
   if(ev.key==='ArrowDown'||ev.key==='ArrowUp'){ECL.hot+=ev.key==='ArrowDown'?1:-1;edClsRender();
     const h=ECL.el.querySelector('.amItem.hot');if(h)h.scrollIntoView({block:'nearest'});ev.preventDefault();ev.stopPropagation();return;}
   ev.stopPropagation();}
-function edTexApplyRun(tx){try{edTexApplySel(tx);}catch(err){flash(err.message);const st=$('edBrSt');if(st)st.textContent=err.message;}}
+function edTexApplyRun(tx,tile){try{edTexApplySel(tx,tile);}catch(err){flash(err.message);const st=$('edBrSt');if(st)st.textContent=err.message;}}
 const _selectionChanged=selectionChanged;
 selectionChanged=function(){_selectionChanged.apply(this,arguments);try{edPickSync();}catch(err){console.error(err);}try{edCopyBtn();}catch(_e){}};
 function edPrim(){if(!ED.sel)return null;const e=MAP.ents[ED.sel.ei];const pr=e&&e.prims[ED.sel.bn];return pr&&pr.kind===0?pr:null;}
@@ -1295,12 +1409,13 @@ rebuildLines=function(){
 // slider, 8 at first, whether the grid is drawn or not).
 ED.tool='select';ED.drop=false;ED.shape='box';ED.sides=8;ED.terr='holes';ED.trad=192;ED.clip=null;ED.prev=null;ED.exact=false;
 let EDDRAG=null,EDHOV=null,_edHovT=0,edClipCtrl=false;
-const snapG=()=>gridSize();
+// Move and Resize go in single units unless Grid is on; drawing keeps the grid size
+const snapG=()=>((ED.tool==='move'||ED.tool==='resize')&&!GRID.on)?1:gridSize();
 const snapV=v=>Math.round(v/snapG())*snapG();
 const EDTOOLS=[['select','Select','↖','Click to select; the view and Modify work as usual.'],
   ['draw','Draw brush','▭','Drag on a floor, wall or ceiling to draw the brush\'s outline on it; let go, move the mouse to set its height, click to make it (Esc cancels).'],
   ['resize','Resize','⇕','Drag a face of a brush to pull it out or push it in; drag a corner or an edge (the white crosses) to reshape it; drag a patch\'s control point. Shift+drag: up and down.'],
-  ['move','Move','✥','Drag a brush, patch or terrain block to slide it across the floor (a brush in a selection of more: all of them); Shift: up and down; Alt: drag a copy.'],
+  ['move','Move','✥','Drag a brush, patch or terrain block to slide it across the floor (a brush in a selection of more: all of them); Shift+click: add to the selection; Shift+drag: up and down; Alt: drag a copy.'],
   ['clip','Clip','✂','Click the brush to cut, then click two points: it is cut along the line between them as you see it (a third click tilts the cut). Enter cuts, Shift+Enter splits it in two, Tab swaps the side kept. Ctrl+click picks another brush.'],
   ['texture','Texture','▦','Click a face to give it the texture in the Texture box (Shift+click: the whole brush); Alt+click takes a texture from the view; Ctrl+click picks a face to fit, turn, flip, shift or scale its texture.'],
   ['terrain','Terrain','▲','Click or drag on terrain: cut or fill single triangles, raise or lower ground, flatten or smooth it.']];
@@ -1324,7 +1439,10 @@ function edToolHtml(){
     edRow(edBtn('bPCap','Cap ends','Close the open ends of a pipe, cylinder or cone with disc patches')+edBtn('bPThk','Thicken','A copy pushed back this far (facing the other way), with strips joining the open edges')+
       edField('edThick',ED.thick||16,36));
   h+=edRow(edBtn('bEdReg',ED.region?'Region off':'Region: selection',ED.region?'Draw the whole map again':'Draw only what is near the selection (plus the margin), as MOHRadiant\'s Region: easier to work in a crowded spot')+
-    (ED.region?'':' margin '+edSel('edRegM',[0,64,128,256,512,1024].map(n=>[String(n),String(n)]),String(ED.regm||256))));
+    (ED.region?'':' margin '+edSel('edRegM',[0,64,128,256,512,1024].map(n=>[String(n),String(n)]),String(ED.regm||256)))+
+    (ED.tool==='move'||ED.tool==='resize'?'<button class="sm'+(ED.trim?' on':'')+'" id="bEdTrim" title="'+esc(ED.tool==='move'?
+      'Trim: W A S D / arrows move the selected brushes along the world axis nearest the way you look, Space / C up and down, by Modify\'s trim step. Esc or T stops. One Undo for the whole trim.':
+      'Trim: W A S D / arrows / Space / C push the face of each selected brush that faces that way out by Modify\'s trim step (Shift+key pulls it in): a way to stretch a brush too thin to grab a side of (a wire). Esc or T stops. One Undo for the whole trim.')+'">'+(ED.tool==='move'?'✥':'⇕')+' Trim</button>':''));
   if(ED.tool==='clip'&&ED.clip&&ED.clip.pts.length>=2)
     h+=edRow(edBtn('bEdCut','Clip','Cut the brush and keep the bright side (Enter)')+edBtn('bEdSplit','Split in two','Cut it and keep both halves as two brushes (Shift+Enter)')+
       edBtn('bEdFlipC','Other side','Keep the other side (Tab)')+edBtn('bEdClrC','Start over','Clear the points (Esc)'));
@@ -1337,7 +1455,7 @@ function edHelp(){
     'Drag on a floor, wall or ceiling to draw the '+(ED.shape==='box'?'box':ED.shape==='prism'?ED.sides+'-sided prism':ED.shape==='cyl'?'cylinder':'pipe')+'\'s outline (grid '+g+'), then set its height. It gets the texture below.';
   if(t==='resize')return'Drag a brush\'s face along its own direction, or a corner or edge (white crosses) to reshape it; with a patch selected, drag its control points. Shift: up and down. Grid '+g+'.';
   if(t==='texture')return'Click: the Texture box\'s texture on that face (Shift+click: the whole brush; patches and terrain too). Alt+click: take the texture under the mouse. Ctrl+click: pick a face, then fit, turn, flip, shift or scale its texture below.';
-  if(t==='move')return'Drag a brush, patch or terrain block across the floor (grid '+g+'; terrain moves in 64s); press on one that is in a selection of more and they all move. Shift+drag: up and down. Alt+drag: a copy.';
+  if(t==='move')return'Drag a brush, patch or terrain block across the floor (grid '+g+'; terrain moves in 64s); press on one that is in a selection of more and they all move. Shift+click: add a brush to the selection or take it out; Shift+drag: up and down. Alt+drag: a copy.';
   if(t==='clip'){const n=ED.clip?ED.clip.pts.length:0;
     if(!edPrim())return'Click the brush to cut (it is selected), then click two points for the cut.';
     return n===0?'Click the first point of the cut (Ctrl+click: another brush).':n===1?'Click the second point: the cut runs along the line between them, as you see it.':
@@ -1351,6 +1469,7 @@ function edHelp(){
   return'';}
 function edSetTool(t){
   if(ED.drop)edDrop(false);
+  if(ED.trim){ED.trim=false;flash('Trim off');}
   if(ED.carry){edCarryEnd();flash('Copy: taken away');}
   EDDRAG=null;ED.prev=null;if(t!=='clip')ED.clip=null;else ED.clip={pts:[],flip:false};
   ED.tool=t;glcv.style.cursor=t==='select'?'':'crosshair';lineDirty=true;requestDraw();edPanel();}
@@ -1415,7 +1534,10 @@ function edDropTake(h){
   const tx=edTexAt(h);
   if(!tx){flash(h&&h.face<0?'That is a model or an entity: click a brush, patch or terrain surface':'Nothing there: click a surface');return false;}
   const el=$('edTex');if(el)el.value=tx;
-  edDrop(false);flash('Texture: '+tx);edTexApplyRun(tx);return true;}
+  let tile=null;try{tile=edTileAt(h);}catch(_e){}
+  if(tile)ED.tileV=tile;
+  ED.dropTile=tile?{tx:tx,t:tile}:null;   // the Texture tool and terrain paint lay this tiling with the texture
+  edDrop(false);flash('Texture: '+tx+(tile?' (scale '+tile.sc.map(fmt).join(' ')+', rotate '+fmt(tile.rot)+', shift '+tile.sh.map(fmt).join(' ')+')':'')+(edTexPainting()?': click a surface to lay it'+(tile?' with this tiling':''):''));edTexApplyRun(tx,tile);edPanel();return true;}
 // a press on the view while it's on: the camera still turns on a drag; a click (no drag) takes
 window.addEventListener('mousedown',e=>{if(ED.drop&&e.button===0&&e.target===glcv)edDropAt=[e.clientX,e.clientY];},true);
 window.addEventListener('mouseup',e=>{
@@ -1438,6 +1560,17 @@ selFocusEnt=function(){const ei=_selFocusEnt();if(ei>=0||!EON()||selectedEnts().
   const S=new Set();for(const pi of selectedPrims()){const r=SC.prims[pi];if(r)S.add(r.ent);}
   if(S.size===1){const e=[...S][0];if(e>0&&!isWorldlike(e))return e;}
   return ei;};
+// the changes that move what a carry holds by o (an entity whose every brush moves takes its
+// origin key along)
+function edMoveOps(C,o){
+  const ops=[];
+  const put=it=>{const pr=it.pr;ops.push({at:pr.ts,del:D.srcText.slice(pr.ts,pr.te),ins:it.text(o),sel:null});};
+  for(const g of C.groups.values())g.forEach(put);
+  for(const E of C.ents){E.items.forEach(put);
+    const e=MAP.ents[E.ei],first=Math.min(...E.items.map(it=>it.pr.ts)),head=D.srcText.slice(e.ts,first),m=/"origin"\s+"([^"]*)"/i.exec(head);
+    if(m){const v=m[1].trim().split(/\s+/).map(Number);if(v.length===3&&v.every(isFinite))
+      ops.push({at:e.ts+m.index,del:m[0],ins:'"origin" "'+v.map((x,i)=>fmt(x+o[i])).join(' ')+'"',sel:null});}}
+  return ops;}
 // Move with the brush pressed already in a selection of more: the whole selection moves
 // (Alt+drag: copies of it), an entity whose every brush is in it with its origin key
 function edMoveSelDown(h,q,e){
@@ -1453,15 +1586,7 @@ function edMoveSelDown(h,q,e){
     d.off=o;edCarryShow(o,C);flash((copy?'copy ':'move ')+C.n+' by '+o.map(fmt).join(' '));};
   d.up=()=>{EDDRAG=null;edShow();const o=d.off;if(!o[0]&&!o[1]&&!o[2])return;
     if(copy){edCopyDo(C,o);return;}
-    const ops=[];
-    const put=it=>{const pr=it.pr;ops.push({at:pr.ts,del:D.srcText.slice(pr.ts,pr.te),ins:it.text(o),sel:null});};
-    for(const g of C.groups.values())g.forEach(put);
-    for(const E of C.ents){E.items.forEach(put);
-      // the entity's origin key goes with its brushes
-      const e=MAP.ents[E.ei],first=Math.min(...E.items.map(it=>it.pr.ts)),head=D.srcText.slice(e.ts,first),m=/"origin"\s+"([^"]*)"/i.exec(head);
-      if(m){const v=m[1].trim().split(/\s+/).map(Number);if(v.length===3&&v.every(isFinite)){const at=e.ts+m.index,old=m[0];
-        ops.push({at:at,del:old,ins:'"origin" "'+v.map((x,i)=>fmt(x+o[i])).join(' ')+'"',sel:null});}}}
-    edDoMany(ops,C.n+' moved '+o.map(fmt).join(' '));
+    edDoMany(edMoveOps(C,o),C.n+' moved '+o.map(fmt).join(' '));
     SEL.clear();for(const k of keep)SEL.add(k);selectionChanged();lineDirty=true;requestDraw();};
   EDDRAG=d;return true;}
 // Resize: the face the mouse is over (or the corner / edge it would take) outlined in green
@@ -1659,6 +1784,7 @@ window.addEventListener('keydown',e=>{
   e.stopPropagation();e.preventDefault();edDrop(false);flash('Eyedropper: cancelled');},true);
 window.addEventListener('mousedown',e=>{
   if(ED.drop||ED.carry||!EON()||ED.tool==='select'||e.target!==glcv||!MAP)return;
+  if(typeof MOD!=='undefined'&&(MOD.placing||MOD.trim))return;     // Modify is placing or trimming: the click is its
   if(e.button===2&&EDDRAG){e.stopPropagation();e.preventDefault();EDDRAG=null;edShow();edPanel();return;}
   if(e.button!==0)return;
   const[x,y]=edXY(e);
@@ -1779,7 +1905,23 @@ function edResizeDown(x,y){
   EDDRAG=d;return true;}
 
 // ---- Move: slide a brush, patch or terrain block ----------------------------------------------
+// Move with Shift: a click (no drag) adds the brush to the selection or takes it out, as
+// with Select; a Shift+drag still moves up and down
 function edMoveDown(x,y,e){
+  if(!e.shiftKey)return edMoveDown0(x,y,e);
+  const h=edHit(x,y),q=edPrimOfHit(h);if(!q||!h.point)return false;
+  const k=keyOfHit(h),d={kind:'shiftpick',inner:null};
+  d.move=(mx,my,ev)=>{
+    if(!d.inner){if(Math.abs(mx-x)+Math.abs(my-y)<5)return;
+      EDDRAG=null;edMoveDown0(x,y,{shiftKey:true,altKey:e.altKey,ctrlKey:false,metaKey:false});d.inner=EDDRAG;EDDRAG=d;if(!d.inner)return;}
+    d.inner.move(mx,my,ev);};
+  d.up=(mx,my,ev)=>{
+    if(d.inner){EDDRAG=d.inner;return d.inner.up(mx,my,ev);}
+    EDDRAG=null;if(!k)return;
+    if(SEL.has(k))SEL.delete(k);else SEL.add(k);
+    lastHit=h;selectionChanged();};
+  EDDRAG=d;return true;}
+function edMoveDown0(x,y,e){
   const h=edHit(x,y),q=edPrimOfHit(h);if(!q||!h.point)return false;
   if(edMoveSelDown(h,q,e))return true;
   edSelectHit(h);
@@ -2007,16 +2149,21 @@ function edTexBox(){return edTexOk(($('edTex')&&$('edTex').value||'').trim()||'c
 function edPaintDown(x,y,e,terr){
   const h=terr?edTerrHit(x,y):edHit(x,y),q=edPrimOfHit(h);if(!q)return false;
   if(terr&&(q.kind!==2||!h.point)){edSelectHit(h);flash('Terrain paint works on terrain blocks (the Texture tool paints brushes and patches)');return true;}
-  if(e.altKey){   // pick: the texture under the mouse goes into the Texture box
-    const tx=edTexAt(h);if(tx){$('edTex').value=tx;flash('Texture: '+tx);}return true;}
+  if(e.altKey){   // pick: the texture under the mouse (and its tiling) goes into the Texture box
+    const tx=edTexAt(h);if(tx){$('edTex').value=tx;let t=null;try{t=edTileAt(h);}catch(_e){}ED.dropTile=t?{tx:tx,t:t}:null;flash('Texture: '+tx+(t?' (and its tiling)':''));}return true;}
   edSelectHit(h);
   if(e.ctrlKey||e.metaKey){if(q.kind===0){ED.face=q.side;edPanel();flash('Face '+(q.side+1)+' selected: the buttons below change how its texture lies');}return true;}
-  const tx=edTexBox();
-  if(q.kind===0){const fs=edFaces(q.pr);if(e.shiftKey){for(const f of fs)f.tex=tx;edSetFaces(fs,'Every face of the brush: '+tx);}
-    else{if(fs[q.side].tex===tx){ED.face=q.side;edPanel();return true;}fs[q.side].tex=tx;ED.face=q.side;edSetFaces(fs,'Face '+(q.side+1)+': '+tx);ED.face=q.side;}}
+  const tx=edTexBox(),dt=ED.dropTile&&ED.dropTile.tx===tx?ED.dropTile.t:null,tl=dt?', its tiling too':'';
+  const tileF=f=>{if(dt&&dt.kind==='face'&&!f.tm){f.sc=dt.sc.slice();f.rot=dt.rot;f.sh=dt.sh.slice();}};
+  if(q.kind===0){const fs=edFaces(q.pr);if(e.shiftKey){for(const f of fs){f.tex=tx;tileF(f);}edSetFaces(fs,'Every face of the brush: '+tx+tl);}
+    else{const f=fs[q.side];f.tex=tx;tileF(f);ED.face=q.side;
+      if(edBrushText(fs)===D.srcText.slice(q.pr.ts,q.pr.te)){edPanel();return true;}   // already so: just picked
+      edSetFaces(fs,'Face '+(q.side+1)+': '+tx+tl);ED.face=q.side;}}
   else if(q.kind===1){const P=edPatchData(q.pr);P.tex=tx;edSetPatch(P,'Patch: '+tx);}
   else{const T=edTerrData(q.pr),pi=Math.max(0,Math.min((T.W-1)/8-1,Math.floor((h.point[0]-T.org[0])/512))),pj=Math.max(0,Math.min((T.H-1)/8-1,Math.floor((h.point[1]-T.org[1])/512))),nx=(T.W-1)/8;
-    const c=T.cl[pj*(nx+1)+pi];if(!c)throw new Error('that terrain patch has no texture line');c[0]=tx;edSetTerr(T,'Terrain patch '+pi+' '+pj+': '+tx);}
+    const c=T.cl[pj*(nx+1)+pi];if(!c)throw new Error('that terrain patch has no texture line');c[0]=tx;
+    const tt=dt&&dt.kind==='terrain';if(tt){while(c.length<7)c.push('0');c[1]=edN6(dt.sh[0]);c[2]=edN6(dt.sh[1]);c[3]=edN6(dt.rot);c[5]=edN6(dt.sc[0]);c[6]=edN6(dt.sc[1]);}
+    edSetTerr(T,'Terrain patch '+pi+' '+pj+': '+tx+(tt?tl:''));}
   return true;}
 // how the selected face's texture lies: fit once across, turn, flip, shift, scale, reset
 function edFaceTex(op){
@@ -2181,36 +2328,40 @@ const edRow=s=>'<div class="row" style="gap:4px;flex-wrap:wrap;align-items:cente
 const edSel=(id,opts,v)=>'<select id="'+id+'" style="padding:2px 4px;font-size:11px">'+opts.map(o=>'<option value="'+o[0]+'"'+(o[0]===v?' selected':'')+'>'+o[1]+'</option>').join('')+'</select>';
 const edBtn=(id,label,tip)=>'<button class="sm" id="'+id+'"'+(tip?' title="'+tip+'"':'')+'>'+label+'</button>';
 function edNewHtml(){
-  return edRow('New patch '+edSel('edPShape',[['flat','flat (floor)'],['wallx','wall along x'],['wally','wall along y'],['cyl','cylinder'],['archx','arch along x'],['archy','arch along y']],ED.pshape||'flat')+
-      edVecFields('edPNs',ED.pns||[128,128,128],40)+edBtn('bEdPNew','Add','A patch of this shape and size (x y z) on the surface straight ahead, on the grid, with the texture above'))+
-    edRow('New terrain '+edField('edTNx',ED.tn?ED.tn[0]:1,28)+' x '+edField('edTNy',ED.tn?ED.tn[1]:1,28)+' patches of 512 '+
-      edBtn('bEdTNew','Add','A flat terrain block this many 512-unit patches each way, on the 64-unit grid where you look, with the texture above'));
+  return edLine('Patch',edSel('edPShape',[['flat','flat (floor)'],['wallx','wall along x'],['wally','wall along y'],['cyl','cylinder'],['archx','arch along x'],['archy','arch along y']],ED.pshape||'flat')+
+      edXYZ('edPNs',ED.pns||[128,128,128],36)+edBtn('bEdPNew','Add','A patch of this shape and size (x y z) on the surface straight ahead, on the grid, with the texture above'),'A curved patch: its shape and its size along x, y and z')+
+    edLine('Terrain',edCap('x')+edField('edTNx',ED.tn?ED.tn[0]:1,28)+edCap('y')+edField('edTNy',ED.tn?ED.tn[1]:1,28)+edCap('patches of 512')+
+      edBtn('bEdTNew','Add','A flat terrain block this many 512-unit patches each way, on the 64-unit grid where you look, with the texture above'),'A terrain block: how many 512-unit patches along x and y');
 }
 function edPatchHtml(pr){
   const d=pr.d,[j,i]=edPatchPoint(edPatchData(pr)),o=(j*d.h+i)*5,P=d.pts;
-  let h='<div style="margin-top:6px"><b>Patch '+ED.sel.bn+'</b> of '+esc(ED.sel.ei===0?'the world':entName(ED.sel.ei))+' - '+d.w+' x '+d.h+' control points, '+esc(d.tex)+'</div>';
+  let h=edHead('<b>Patch '+ED.sel.bn+'</b> of '+esc(ED.sel.ei===0?'the world':entName(ED.sel.ei))+' - '+d.w+' x '+d.h+' control points, '+esc(d.tex));
   const fc=edPatchFacing(edPatchData(pr));h+='<div class="co">It faces '+(fc?'( '+fc.map(x=>fmt(Math.round(x*100)/100)).join(' ')+' ) at its middle (the game draws one side unless its shader has cull none)':'no way: its points are in a line')+'</div>';
-  h+=edRow('Point row '+edField('edPj',j,30)+' column '+edField('edPi',i,30)+' <span class="co">(click near one in the view)</span>');
-  h+=edRow('( '+[0,1,2].map(k=>edField('edPv'+k,edN6(P[o+k]),60)).join('')+') s '+edField('edPs',edN6(P[o+3]),56)+' t '+edField('edPt',edN6(P[o+4]),56)+edBtn('bEdPSet','Set point'));
-  h+=edRow('by '+edVecFields('edPMv',ED.mv||[GRID.on?gridSize():16,0,0],44)+edSel('edPApply',[['all','the patch'],['point','the point'],['row','its row'],['col','its column']],ED.papply||'all')+
-    edBtn('bEdPMv','Move')+edBtn('bEdPCp','Copy','A copy of the whole patch, moved by x y z'));
-  h+=edRow(edBtn('bEdPTurn','Turn 90','Turn it 90 degrees round the middle of its points (anticlockwise seen from above)')+edBtn('bEdPFlip','Flip','Make it face the other way')+edBtn('bEdPDel','Delete'));
-  h+=edRow('Texture above '+edSel('edPTm',[['keep','keep s t'],['natural','natural, scale'],['fit','fit once across']],ED.ptm||'natural')+edField('edPTs',ED.pts||0.5,36)+edBtn('bEdPTex','Set texture'));
+  h+=edLine('Point',edCap('row')+edField('edPj',j,30)+edCap('column')+edField('edPi',i,30),'Which control point (or click near one in the view)');
+  h+=edLine('Position',[0,1,2].map(k=>edCap('xyz'[k])+edField('edPv'+k,edN6(P[o+k]),56)).join(''),'The point\'s place');
+  h+=edLine('Tex pos',edCap('s')+edField('edPs',edN6(P[o+3]),56)+edCap('t')+edField('edPt',edN6(P[o+4]),56)+edBtn('bEdPSet','Set point','Set the point\'s place and texture position to these'),'Where the texture is at this point (s across, t down; 1 = once across)');
+  h+=edLine('Move by',edXYZ('edPMv',ED.mv||[GRID.on?gridSize():16,0,0])+edSel('edPApply',[['all','the patch'],['point','the point'],['row','its row'],['col','its column']],ED.papply||'all')+
+    edBtn('bEdPMv','Move')+edBtn('bEdPCp','Copy','A copy of the whole patch, moved by x y z'),'How far to move the patch (or its point, row or column) along x, y and z');
+  h+=edLine('',edBtn('bEdPTurn','Turn 90','Turn it 90 degrees round the middle of its points (anticlockwise seen from above)')+edBtn('bEdPFlip','Flip','Make it face the other way')+edBtn('bEdPDel','Delete'));
+  h+=edLine('Texture',edSel('edPTm',[['keep','keep s t'],['natural','natural, scale'],['fit','fit once across']],ED.ptm||'natural')+edCap('scale')+edField('edPTs',ED.pts||0.5,36)+edBtn('bEdPTex','Set texture'),'The Texture box\'s texture on the patch, laid as chosen');
   return h;
 }
 function edTerrHtml(pr){
   const d=pr.d,T={W:d.W,H:d.H},[i,j]=edTerrVert(T),k=j*d.W+i,c=d.corners[0]||{sh:[0,0],rot:0,sc:[1,1]};
-  const sq=[Math.min(i,d.W-2),Math.min(j,d.H-2)];
-  let h='<div style="margin-top:6px"><b>Terrain '+ED.sel.bn+'</b> - '+d.W+' x '+d.H+' vertices ('+(d.W-1)*64+' x '+(d.H-1)*64+' units) at '+esc(d.org.map(fmt).join(' '))+'</div>';
-  h+=edRow('Vertex '+edField('edTvi',i,30)+edField('edTvj',j,30)+' <span class="co">( '+[d.org[0]+i*64,d.org[1]+j*64,d.org[2]+d.heights[k]].map(fmt).join(' ')+' ), height '+fmt(d.heights[k])+' (or click the terrain)</span>');
-  h+=edRow('vertices '+[0,1].map(q=>edField('edTr'+q,[i,j][q],30)).join('')+' to '+[0,1].map(q=>edField('edTr'+(q+2),[i,j][q],30)).join('')+
-    edSel('edThM',[['set','set to'],['add','raise by']],ED.thm||'set')+edField('edThV',fmt(d.heights[k]),48)+edBtn('bEdTH','Apply')+edBtn('bEdTSm','Smooth','Each vertex the average of it and its four neighbours, once'));
-  h+=edRow('raise '+edField('edThA',ED.tha!=null?ED.tha:32,44)+' within '+edField('edThR',ED.thr||256,44)+' units of the vertex '+
-    edSel('edThS',[['smooth','smooth'],['cone','cone'],['flat','flat']],ED.ths||'smooth')+edBtn('bEdTHill','Raise','Below 0 lowers'));
-  h+=edRow('squares '+[0,1].map(q=>edField('edTq'+q,sq[q],30)).join('')+' to '+[0,1].map(q=>edField('edTq'+(q+2),sq[q],30)).join('')+
-    edBtn('bEdTHole','Cut hole','nodraw on both triangles of each square')+edBtn('bEdTFill','Fill'));
-  h+=edRow('Texture above, shift '+edField('edTs0',fmt(c.sh[0]),40)+edField('edTs1',fmt(c.sh[1]),40)+' rotate '+edField('edTrot',fmt(c.rot),36)+' scale '+edField('edTk0',fmt(c.sc[0]),36)+edField('edTk1',fmt(c.sc[1]),36)+edBtn('bEdTTex','Set'));
-  h+=edRow('by '+edVecFields('edTMv',ED.tmv||[64,0,0],44)+edBtn('bEdTMv','Move','x and y in 64-unit steps')+edBtn('bEdTCp','Copy')+edBtn('bEdTDel','Delete'));
+  const sq=[Math.min(i,d.W-2),Math.min(j,d.H-2)],ij=(pfx,a,b)=>edCap('i')+edField(pfx+a[0],a[1],30)+edCap('j')+edField(pfx+b[0],b[1],30);
+  let h=edHead('<b>Terrain '+ED.sel.bn+'</b> - '+d.W+' x '+d.H+' vertices ('+(d.W-1)*64+' x '+(d.H-1)*64+' units) at '+esc(d.org.map(fmt).join(' ')));
+  h+=edLine('Vertex',ij('edTv',['i',i],['j',j])+'<span class="co">( '+[d.org[0]+i*64,d.org[1]+j*64,d.org[2]+d.heights[k]].map(fmt).join(' ')+' ), height '+fmt(d.heights[k])+'</span>',
+    'Which vertex: i along x, j along y, from the block\'s corner (or click the terrain)');
+  h+=edLine('Heights',edCap('from')+ij('edTr',['0',i],['1',j])+edCap('to')+ij('edTr',['2',i],['3',j]),'The vertices from one corner to the other');
+  h+=edLine('',edSel('edThM',[['set','set to'],['add','raise by']],ED.thm||'set')+edField('edThV',fmt(d.heights[k]),48)+edBtn('bEdTH','Apply')+edBtn('bEdTSm','Smooth','Each vertex the average of it and its four neighbours, once'));
+  h+=edLine('Hill',edCap('raise')+edField('edThA',ED.tha!=null?ED.tha:32,44)+edCap('radius')+edField('edThR',ED.thr||256,44)+
+    edSel('edThS',[['smooth','smooth'],['cone','cone'],['flat','flat']],ED.ths||'smooth')+edBtn('bEdTHill','Raise','Below 0 lowers'),'Raise (below 0: lower) the ground round the vertex, within the radius');
+  h+=edLine('Squares',edCap('from')+ij('edTq',['0',sq[0]],['1',sq[1]])+edCap('to')+ij('edTq',['2',sq[0]],['3',sq[1]])+
+    edBtn('bEdTHole','Cut hole','nodraw on both triangles of each square')+edBtn('bEdTFill','Fill'),'The 64-unit squares from one corner to the other');
+  h+=edLine('Texture',edCap('scale')+edField('edTk0',fmt(c.sc[0]),36)+edField('edTk1',fmt(c.sc[1]),36)+edCap('rotate')+edField('edTrot',fmt(c.rot),34)+
+    edCap('shift')+edField('edTs0',fmt(c.sh[0]),36)+edField('edTs1',fmt(c.sh[1]),36)+edBtn('bEdTTex','Set'),'The Texture box\'s texture on every patch of the block, with this scale, rotate and shift (the same order as Tiling above)');
+  h+=edLine('Move by',edXYZ('edTMv',ED.tmv||[64,0,0])+edBtn('bEdTMv','Move','x and y in 64-unit steps')+edBtn('bEdTCp','Copy'),'How far to move the block (or a copy): x and y in 64-unit steps');
+  h+=edLine('',edBtn('bEdTDel','Delete'));
   const sp=edTerrSpan({W:d.W,H:d.H,V:Array.from(d.heights,x=>({h:x}))});
   if(sp.n)h+='<div class="co" style="color:var(--warn)">'+sp.n+' of its patches span more than 510 in height (up to '+fmt(sp.worst)+'): a .bsp holds each patch\'s heights in 2-unit steps, 510 above its lowest point at most.</div>';
   return h;
@@ -2235,6 +2386,14 @@ function edPTBind(on){
 // ---- the panel's brush part --------------------------------------------------------------
 function edField(id,v,w){return '<input type="text" id="'+id+'" value="'+esc(String(v))+'" style="width:'+(w||52)+'px;padding:1px 3px;font:inherit;font-size:11px">';}
 function edVecFields(pfx,v,w){return [0,1,2].map(k=>edField(pfx+k,fmt(v[k]),w)).join('');}
+// Exact values' rows: a label column, then each box with its own small name (x y z, i j...),
+// then the row's buttons (Enter in a box presses the row's first button)
+const edCap=t=>'<span class="co" style="font-size:10px;margin-left:2px">'+t+'</span>';
+const edLab=(t,tip)=>'<span style="flex:none;width:62px;padding-top:3px"'+(tip?' title="'+esc(tip)+'"':'')+'>'+t+'</span>';
+function edLine(label,inner,tip){return'<div class="row" style="gap:3px;align-items:flex-start;margin-top:3px">'+edLab(label,tip)+
+  '<span style="display:flex;flex-wrap:wrap;gap:3px;align-items:center;flex:1;min-width:0">'+inner+'</span></div>';}
+function edXYZ(pfx,v,w){return [0,1,2].map(k=>edCap('xyz'[k])+edField(pfx+k,fmt(v[k]),w||44)).join('');}
+function edHead(t){return'<div style="margin-top:8px;padding-top:4px;border-top:1px solid var(--line,#333)">'+t+'</div>';}
 function edPanel(){
   const el=$('edBr');if(!el||typeof MAP==='undefined'||!MAP)return;
   const pr=edPrim();let h=edToolHtml();
@@ -2243,40 +2402,45 @@ function edPanel(){
      edSel('edTexP',TEXPRESETS,'')+'<button class="sm'+(ED.drop?' on':'')+'" id="bEdDrop" title="Eyedropper: click this, then click any surface in the view; its texture goes into the Texture box (and onto what is selected). Esc or a second click here cancels.">'+DROPICON+'</button></div>';
   h+=edClsHtml();
   h+=edJoinHtml();
+  h+=edTileHtml();
   h+=edSelSummary();
   h+='<details id="edExact"'+(ED.exact?' open':'')+' style="margin-top:6px"><summary style="cursor:pointer" title="Every value typed in: sizes, corners, planes, control points, heights, texture shifts">Exact values</summary>';
-  h+='<div class="row" style="gap:4px;flex-wrap:wrap;align-items:center;margin-top:4px">New box '+edVecFields('edNs',ED.ns||[64,64,64],40)+
-     '<button class="sm" id="bEdNewB" title="A box this size (x y z) on the surface straight ahead, on the grid, with the texture above">Add</button></div>';
+  h+=edHead('<b>New</b> <span class="co">(on the surface straight ahead, with the Texture above)</span>');
+  h+=edLine('Box',edXYZ('edNs',ED.ns||[64,64,64],40)+edBtn('bEdNewB','Add','A box this size (x y z) on the surface straight ahead, on the grid, with the texture above'),'A box: its size along x, y and z');
   h+=edNewHtml();
   const pp=pr?null:edPatch(),tp=pr?null:edTerr();
   if(pp)h+=edPatchHtml(pp);
   else if(tp)h+=edTerrHtml(tp);
   else if(pr){
     const faces=edFaces(pr),box=edBoxOf(faces);let bb=null;try{bb=edBounds(faces);}catch(_e){}
-    const e=MAP.ents[ED.sel.ei];
-    h+='<div style="margin-top:6px"><b>Brush '+ED.sel.bn+'</b> of '+esc(ED.sel.ei===0?'the world':entName(ED.sel.ei))+' - '+faces.length+' faces'+(box?', a box':'')+'</div>';
-    if(bb)h+='<div class="row" style="gap:4px;flex-wrap:wrap;align-items:center">min '+edVecFields('edBmn',bb.mn)+'</div><div class="row" style="gap:4px;flex-wrap:wrap;align-items:center">max '+edVecFields('edBmx',bb.mx)+
-       '<button class="sm" id="bEdBox"'+(box?'':' disabled')+' title="'+(box?'Set the box\'s corners to these':'Only a box can be sized by its corners: move its faces instead')+'">Set</button></div>';
-    h+='<div class="row" style="gap:4px;flex-wrap:wrap;align-items:center;margin-top:4px">by '+edVecFields('edMv',ED.mv||[GRID.on?gridSize():16,0,0],44)+
-       '<button class="sm" id="bEdMv" title="Move it by x y z">Move</button><button class="sm" id="bEdMvB" title="Move it back the other way">-</button>'+
-       '<button class="sm" id="bEdCp" title="A copy, moved by x y z">Copy</button><button class="sm" id="bEdDel" title="Delete this brush (Undo brings it back)">Delete</button>'+
-       '<label title="Keep each face\'s texture where it is on the wall as the brush moves"><input type="checkbox" id="edLock" '+(ED.lock===false?'':'checked')+'>texture lock</label></div>';
-    h+='<div class="row" style="gap:4px;flex-wrap:wrap;align-items:center;margin-top:4px">Clip <select id="edClAx" style="padding:2px 4px;font-size:11px"><option value="0">x =</option><option value="1">y =</option><option value="2" selected>z =</option><option value="pts">3 points</option></select>'+
+    h+=edHead('<b>Brush '+ED.sel.bn+'</b> of '+esc(ED.sel.ei===0?'the world':entName(ED.sel.ei))+' - '+faces.length+' faces'+(box?', a box':''));
+    if(bb){h+=edLine('Min',edXYZ('edBmn',bb.mn),'The corner with the smallest x, y and z');
+      h+=edLine('Max',edXYZ('edBmx',bb.mx)+'<button class="sm" id="bEdBox"'+(box?'':' disabled')+' title="'+(box?'Set the box\'s two corners to Min and Max':'Only a box can be sized by its corners: move its faces instead')+'">Set</button>','The corner with the largest x, y and z');}
+    h+=edLine('Move by',edXYZ('edMv',ED.mv||[GRID.on?gridSize():16,0,0])+
+       '<button class="sm" id="bEdMv" title="Move it by x y z">Move</button><button class="sm" id="bEdMvB" title="Move it back the other way">Back</button>'+
+       '<button class="sm" id="bEdCp" title="A copy, moved by x y z">Copy</button>','How far to move it (or a copy) along x, y and z');
+    h+=edLine('',
+       '<label title="Keep each face\'s texture where it is on the wall as the brush moves"><input type="checkbox" id="edLock" '+(ED.lock===false?'':'checked')+'>texture lock</label>'+
+       '<button class="sm" id="bEdDel" title="Delete this brush (Undo brings it back)">Delete</button>');
+    h+=edLine('Clip at','<select id="edClAx" style="padding:2px 4px;font-size:11px"><option value="0">x =</option><option value="1">y =</option><option value="2" selected>z =</option><option value="pts">3 points</option></select>'+
        edField('edClV',bb?fmt((bb.mn[2]+bb.mx[2])/2):'0')+'<select id="edClKeep" style="padding:2px 4px;font-size:11px"><option value="below">keep below</option><option value="above">keep above</option></select>'+
-       '<button class="sm" id="bEdCl" title="Cut the brush on this plane and keep one side; the new face gets the texture above">Clip</button></div>'+
-       '<div id="edClP" class="row" style="gap:4px;flex-wrap:wrap;display:none">'+['a','b','c'].map(s=>'( '+edVecFields('edC'+s,[0,0,0],44)+')').join(' ')+
-       '<span class="co">the part behind the plane is kept (the points go clockwise seen from the side cut away, as in a .map)</span></div>';
-    h+='<div style="margin-top:6px">Faces (click one in the view or here)</div><div style="max-height:150px;overflow:auto">';
+       '<button class="sm" id="bEdCl" title="Cut the brush on this plane and keep one side; the new face gets the texture above">Clip</button>','Cut the brush on a flat plane (x, y or z at a value) or through three points')+
+       '<div id="edClP" style="display:none">'+['a','b','c'].map((x,k)=>edLine('Point '+(k+1),edXYZ('edC'+x,[0,0,0]))).join('')+
+       '<div class="co">the part behind the plane is kept (the points go clockwise seen from the side cut away, as in a .map)</div></div>';
+    h+=edHead('Faces <span class="co">(click one in the view or here)</span>')+'<div style="max-height:150px;overflow:auto">';
     faces.forEach((f,k)=>{const pl=planeOf(f);h+='<div data-edf="'+k+'" class="'+(k===ED.face?'on ':'')+'it" style="cursor:pointer;padding:1px 4px'+(k===ED.face?';background:var(--onbg);color:var(--accent)':'')+'">'+(k+1)+'. ('+pl.slice(0,3).map(x=>fmt(x)).join(' ')+') at '+fmt(pl[3])+' - '+esc(f.tex)+'</div>';});
     h+='</div>';
     const f=faces[ED.face];
-    if(f){h+='<div style="margin-top:4px">Face '+(ED.face+1)+': three points of its plane</div>'+
-      '<div class="row" style="gap:4px;flex-wrap:wrap">( '+edVecFields('edFa',f.p.slice(0,3),56)+')</div><div class="row" style="gap:4px;flex-wrap:wrap">( '+edVecFields('edFb',f.p.slice(3,6),56)+')</div><div class="row" style="gap:4px;flex-wrap:wrap">( '+edVecFields('edFc',f.p.slice(6,9),56)+')</div>'+
-      '<div class="co">texture '+esc(f.tex)+'</div>'+
+    if(f){h+=edHead('<b>Face '+(ED.face+1)+'</b> <span class="co">'+esc(f.tex)+'</span>')+
+      edLine('Point 1',edXYZ('edFa',f.p.slice(0,3),52),'Three points on the face\'s plane, clockwise seen from outside the brush (as in a .map)')+
+      edLine('Point 2',edXYZ('edFb',f.p.slice(3,6),52))+edLine('Point 3',edXYZ('edFc',f.p.slice(6,9),52))+
       (f.tm?'<div class="co">brush primitives texturing: its matrix is kept</div>':
-      '<div class="row" style="gap:4px;flex-wrap:wrap;align-items:center">shift '+edField('edFs0',fmt(f.sh[0]),48)+edField('edFs1',fmt(f.sh[1]),48)+' rotate '+edField('edFr',fmt(f.rot),44)+' scale '+edField('edFk0',fmt(f.sc[0]),48)+edField('edFk1',fmt(f.sc[1]),48)+'</div>')+
-      '<div class="row" style="gap:4px;flex-wrap:wrap;align-items:center"><button class="sm" id="bEdF">Set face</button> push out '+edField('edPush',GRID.on?gridSize():8,44)+'<button class="sm" id="bEdPush" title="Move the face along its normal (below 0: in)">Push</button>'+
-      '<button class="sm" id="bEdTall" title="The texture above on every face">Texture on all faces</button></div>';}
+      edLine('Shift',edCap('x')+edField('edFs0',fmt(f.sh[0]),48)+edCap('y')+edField('edFs1',fmt(f.sh[1]),48),'Where the texture starts, in texels across and up the face')+
+      edLine('Rotate',edField('edFr',fmt(f.rot),48)+edCap('degrees'))+
+      edLine('Scale',edCap('x')+edField('edFk0',fmt(f.sc[0]),48)+edCap('y')+edField('edFk1',fmt(f.sc[1]),48),'0.5 is the editor\'s default; 1 is twice as big; below 0 flips it'))+
+      edLine('','<button class="sm" id="bEdF" title="Set the face\'s points and its texture\'s shift, rotate and scale to these">Set face</button>')+
+      edLine('Push out',edField('edPush',GRID.on?gridSize():8,44)+'<button class="sm" id="bEdPush" title="Move the face along its normal (below 0: in)">Push</button>','Move the face this far out along its normal (below 0: in)')+
+      edLine('','<button class="sm" id="bEdTall" title="The Texture box\'s texture on every face">Texture on all faces</button>');}
   }else h+='<div class="co" style="margin-top:4px">Select a brush, patch or terrain block to type its values here.</div>';
   h+='</details>';
   h+=edSpecHtml();
@@ -2296,7 +2460,9 @@ function edPanel(){
   const ce=$('edCls');if(ce)ce.addEventListener('keydown',e=>{if(e.key!=='Enter')return;e.preventDefault();e.stopImmediatePropagation();edRun(()=>edClsApply(ce.value))();});
   const dp=$('bEdDrop');if(dp)dp.onclick=()=>edDrop(!ED.drop);
   const lk=$('edLock');if(lk)lk.onchange=()=>{ED.lock=lk.checked;};
-  on('bEdDelQ',()=>{const p=edPrim(),pp=edPatch(),tp=edTerr();if(p)edOpDelete();else if(pp)edPatchOpDelete();else if(tp)edTerrOpDelete();});
+  on('bEdDelQ',()=>{if(!edDeleteSel())flash('Select a brush, patch or terrain block first');});
+  on('bEdTrim',()=>edTrim());on('bEdTile',edTileSet);
+  el.querySelectorAll('input[id^="edTl"]').forEach(i=>i.addEventListener('change',()=>{try{ED.tileV=edTileRead();}catch(_e){}}));
   const cx=$('edClAx');if(cx)cx.onchange=()=>{$('edClP').style.display=cx.value==='pts'?'':'none';$('edClV').disabled=cx.value==='pts';};
   el.querySelectorAll('[data-edf]').forEach(d=>d.onclick=()=>{ED.face=+d.getAttribute('data-edf');edPanel();});
   // typing in the panel never moves the camera
@@ -2375,6 +2541,18 @@ function edSection(){
 // hidden with Modify back where the Map Viewer has it; off clears the editor's own selection
 // and its marks (the leak trail stays)
 let MODHOME=null,TITLE0=null;
+// Edit map turned off: a brush entity's brushes picked one by one become the entity again,
+// as a click selects it with the editor off (its SELECTION card, Open door...)
+function edSelWhole(){
+  if(typeof MAP==='undefined'||!MAP||!SEL.size)return;
+  const out=new Set();let ch=false;
+  for(const k of SEL){
+    if(k[0]==='p'){const r=SC.prims[+k.slice(1)];if(r&&r.ent>0&&!isWorldlike(r.ent)){out.add('e'+r.ent);ch=true;continue;}}
+    out.add(k);}
+  if(!ch)return;
+  SEL.clear();for(const k of out)SEL.add(k);
+  if(lastHit&&lastHit.prim>=0&&SC.prims[lastHit.prim]&&!out.has('p'+lastHit.prim)&&!out.has('e'+lastHit.ent))lastHit=null;
+  selectionChanged();}
 function edMode(on){
   const s=$('edSect'),mod=$('modSect');
   if(s)s.style.display=on?'':'none';
@@ -2383,13 +2561,13 @@ function edMode(on){
   if(TITLE0==null)TITLE0=document.title.replace(/^Map Editor - /,'');
   document.title=on?'Map Editor - '+TITLE0:TITLE0;
   if(on){try{edPickSync();}catch(err){console.error(err);}}
-  else{ED.sel=null;ED.face=-1;ED.pp=null;ED.tv=null;}
+  else{ED.sel=null;ED.face=-1;ED.pp=null;ED.tv=null;try{edSelWhole();}catch(err){console.error(err);}}
   try{if(typeof MAP!=='undefined'&&MAP){edPanel();lineDirty=true;requestDraw();}}catch(err){console.error(err);}
 }
 window.__EDITHOOKS__&&window.__EDITHOOKS__.push(edMode);
 
 // what the editor holds, for the test harness and the console (read it; change it through the panel)
-window.MOHAA_EDITOR_API={edJoin:edJoin,edJoinHtml:edJoinHtml,edRzOutlines:edRzOutlines,get rzKey(){return _edRzKey;},get drag(){return EDDRAG;},ED:ED,edMoveDown:edMoveDown,edMoveSelDown:edMoveSelDown,edPrimOfHit:edPrimOfHit,edResizeHover:edResizeHover,edKeyOfPrim:edKeyOfPrim,edClsApply:edClsApply,edClsTargets:edClsTargets,edClsAll:edClsAll,edCopySet:edCopySet,edCarryStart:edCarryStart,edCarryPlace:edCarryPlace,edCarryEnd:edCarryEnd,edSelTex:edSelTex,edTexApplySel:edTexApplySel,edTexChoose:edTexChoose,edDrop:edDrop,edTexAt:edTexAt,edDropTake:edDropTake,edFaces:edFaces,edFaceLine:edFaceLine,edBounds:edBounds,edCheck:edCheck,edPanel:edPanel,brRow:brRow,edPatchData:edPatchData,edTerrData:edTerrData,edTerrSpan:edTerrSpan,edMarks:edMarks,edPatchFacing:edPatchFacing,edTerrFitSel:edTerrFitSel,edRegionSet:edRegionSet,edSetTerr:edSetTerr,terrHeightsMap:terrHeightsMap,
+window.MOHAA_EDITOR_API={edTrim:edTrim,edTrimKey:edTrimKey,edDeleteSel:edDeleteSel,edTileSet:edTileSet,edTileAt:edTileAt,edSelTile:edSelTile,edSetFaces:edSetFaces,edSelWhole:edSelWhole,edJoin:edJoin,edJoinHtml:edJoinHtml,edRzOutlines:edRzOutlines,get rzKey(){return _edRzKey;},get drag(){return EDDRAG;},ED:ED,edMoveDown:edMoveDown,edMoveSelDown:edMoveSelDown,edPrimOfHit:edPrimOfHit,edResizeHover:edResizeHover,edKeyOfPrim:edKeyOfPrim,edClsApply:edClsApply,edClsTargets:edClsTargets,edClsAll:edClsAll,edCopySet:edCopySet,edCarryStart:edCarryStart,edCarryPlace:edCarryPlace,edCarryEnd:edCarryEnd,edSelTex:edSelTex,edTexApplySel:edTexApplySel,edTexChoose:edTexChoose,edDrop:edDrop,edTexAt:edTexAt,edDropTake:edDropTake,edPaintDown:edPaintDown,edFaces:edFaces,edFaceLine:edFaceLine,edBounds:edBounds,edCheck:edCheck,edPanel:edPanel,brRow:brRow,edPatchData:edPatchData,edTerrData:edTerrData,edTerrSpan:edTerrSpan,edMarks:edMarks,edPatchFacing:edPatchFacing,edTerrFitSel:edTerrFitSel,edRegionSet:edRegionSet,edSetTerr:edSetTerr,terrHeightsMap:terrHeightsMap,
   edAddBrush:edAddBrush,edBoxFaces:edBoxFaces,edNew:()=>EDNEW,edNewLines:edNewLines,edNewSync:edNewSync};
 
 try{edSection();}catch(err){console.error(err);}

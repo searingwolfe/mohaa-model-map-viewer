@@ -3225,3 +3225,58 @@ look of the walk and the doors should be confirmed by eye in the launcher.
     brush, a sliding door's `angle` and `lip`, a ladder's `angle`, a trigger's thread...
   Checked in the page on mohdm6's ladder: Class specs showed `angle` 90, More info said
   it faces +y, setting 180 turned it at once, and a trigger_use listed Trigger's 14 keys.
+- **None** beside All under the Show buttons (`hideAllGroups`, `Ctrl+Shift+A`): every
+  group hidden but the map's own surfaces (`NONE_KEEP`: World, Patches, Translucent,
+  Liquids, Details, Terrain), so nothing with a label or marker stays. The button shows no key so it fits on All's row; its
+  tooltip and the hotkeys list (H) give Ctrl+Shift+A.
+- Turning Edit map off with a brush entity's brush selected selects the entity, as a
+  click does with the editor off (`edSelWhole` in `edMode`): the SELECTION section shows
+  the entity (origin, setsize, Open door) at once instead of "brush 0 of entity N" until
+  it is clicked again.
+- **Fixed: a brush entity made here not moving when one of its brushes is moved.** Its
+  Modify row (made when its brush is selected) holds the middle of its brushes as its
+  origin; moving one brush moved that middle, so the row's old origin drew the entity
+  shifted back by the difference: the log said the brush moved, the outline was in the new
+  place, the brush stayed. A door from the map has an "origin" key, so its middle doesn't
+  move and it never showed. `edRebuild` now gives a row that Modify itself hasn't moved
+  the new middle. Checked in the page: a func_rotatingdoor with an origin brush moved
+  into it, its door brush moved 32 along x, the row's origin followed (210 to 226) and the
+  door is drawn with no offset.
+- **Shift+click with Move on** (`edMoveDown`): a Shift+click without dragging adds the
+  brush to the selection or takes it out, as with Select; Shift+drag still moves up and
+  down.
+- **Delete** (`edDeleteSel`): the Delete key with the editor on (or the Delete beside the
+  selection) deletes the selected brushes, patches and terrain blocks in one change, as
+  Modify's Delete does an entity; a brush entity whose every brush is selected is flagged
+  DEL in Modify, so no entity is left without brushes. A selection with entities too says
+  to leave one kind out. One Undo puts it all back.
+- While Modify places an added or copied entity (or trims one), the editor's tools leave
+  the click to it, so a Move or Resize no longer grabs the brush under the copy.
+- **Trim** beside Region with Move or Resize (`edTrim`, `edTrimKey`): as Modify's Trim
+  origin, W A S D / arrows along the world axis nearest the view, Space / C up and down,
+  by Modify's trim step. Move moves the selected brushes (an entity with all its brushes
+  takes its origin key along, `edMoveOps`); Resize pushes out the face of each selected
+  brush that faces that way, Shift+key pulls it in, for brushes too thin to grab a side of
+  (ceiling wires). Esc or T stops; the whole trim is one Undo.
+- Move and Resize go in single units unless Grid is on (then the grid's size); Draw keeps
+  the grid size (`snapG`).
+- **Tiling** row under Classname (`edTileHtml`, `edTileSet`): the selected brush's face (the
+  one clicked, else every face) or terrain block's scale, rotate and shift; Set lays them.
+  The eyedropper takes the tiling of the face or terrain patch it takes a texture from
+  (`edTileAt`) and gives both to the selection.
+- **Grid**: its plane is put on the surface drawn in the middle of the view (a pick read
+  after the frame once the camera rests, `gridPickSoon`) when that is nearer than the
+  player-collision trace, so floors the collision lacks (not solid to players) still get
+  it instead of a plane past them under the map; an edit also rebuilds the collision the
+  trace uses (it was kept from before the edit).
+- **Exact values tidied**: every row is a label, then its boxes each with its own small
+  name (x y z, i j, from / to, s t, scale, rotate, shift), then its buttons; New box, New
+  patch and New terrain under a New heading; the brush's Min / Max, Move by, Clip at, its
+  faces and the picked face's points, shift, rotate and scale; the patch's Point,
+  Position, Tex pos, Move by and Texture; the terrain's Vertex, Heights, Hill, Squares,
+  Texture (scale, rotate, shift, as Tiling) and Move by.
+- The eyedropper's tiling with the Texture tool and terrain paint: the eyedropper (or an
+  Alt+click) loads the surface's texture and tiling (`ED.dropTile`), and each click or
+  Shift+click lays the texture with that tiling, so a face that already has the texture is
+  re-tiled to match too (before, a click on it only picked it and its tiling stayed, and
+  painting never carried the tiling). Browse or a tool texture puts a texture alone back.

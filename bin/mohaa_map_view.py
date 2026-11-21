@@ -1032,6 +1032,7 @@ MAP_VIEWER_KEYS = {
             _kx("I", "AI routes on / off: the connections the AI can walk between path nodes (ai_showroutes)",
                 ("I", "AI routes")),
             _kx("Ctrl+A", "show every group (All)", ("Ctrl+A", "All")),
+            _kx("Ctrl+Shift+A", "hide all but the map's surfaces: World, Patches, Translucent, Liquids, Details, Terrain (None)", ("Ctrl+Shift+A", "None")),
             _kx("G", "In-game look: hide what the game never draws, with the game's light, sky and sun flare",
                 ("G", "in-game")),
             _kx("Shift+G", "Editor look: MOHRadiant's view, at full brightness with Simple Sky and no sun flare",

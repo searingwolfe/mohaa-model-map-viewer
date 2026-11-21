@@ -455,6 +455,7 @@ window.setEditorMode=function(on){window.__EDITON__=!!on;
      <div class="tg" style="margin-bottom:7px"><button id="bFull" title="Full Brightness (B). Off: the map lit the way the game lights it (lightmaps, vertex light). On: every texture at full brightness, as MOHRadiant shows it.">Full Brightness<span class="k">B</span></button><button id="bSimpleSky" title="Simple Sky (K). On: the sky brushes solid, their picture tiled, as MOHRadiant draws them. Off: the game's sky box and its moving clouds, drawn behind everything, so whatever is behind a sky brush shows through it as in game.">Simple Sky<span class="k">K</span></button><button id="bSimpleMod" title="Simple models (M). On: each tree that has a sprite version is drawn as that sprite alone, the way the game draws trees far away; it turns about its upright axis to face the camera. Off: the whole tree. Models with no sprite version (bushes, props) don't change.">Simple models<span class="k">M</span></button><button id="bRoutes" title="AI routes: the game cvar ai_showroutes (game cvars, `): the connections the AI can walk between path nodes, from the map's .pth file (worked out here when it has none, and for Modify's new nodes), green both ways, a red arrowhead one way. Only the nodes within ai_showroutes_distance of the camera (I)">AI routes<span class="k">I</span></button><button id="bAiErr" title="AI errors: the tags over path nodes saying what is wrong with them: no paths, N one-way, own group of N (joined to each other but not to the map's other nodes), in the wall, no angle (a CORNER_LEFT, CORNER_RIGHT, CRATE or LOW_WALL_ARC node without an angle). On by itself when AI routes is turned on and off when it is turned off; click to hide or show them while AI routes stays on. Tags that aren't errors (DONT_LINK, a duplicate, 48 paths or a cell full) stay">AI errors</button><button id="bSunFlare" title="Sun flare (J). On: the game's lens flare, drawn as the game draws it when the view looks toward the map's sun and nothing solid is between the camera and the sky that way, with the screen's glare that fades when the sun goes out of sight. Off: no flare, as in MOHRadiant.">Sun flare<span class="k">J</span></button></div>
      <div class="tg" id="filtBtns" style="margin-bottom:7px"></div>
      <button id="bShowAll" title="Show every group (Ctrl+A)">All<span class="k">Ctrl+A</span></button>
+     <button id="bShowNone" title="Hide everything with a label or a marker (entities, models, paths, AI nodes, lights, triggers, clips, caulk...): only the map's own surfaces stay, World, Patches, Translucent, Liquids, Details and Terrain (Ctrl+Shift+A)">None</button>
      <!-- the two looks, as wide as the panel like the cameras' buttons; each is on while the
           Show buttons, the light, the sky and the sun flare are as it sets them (the flare
           only on a map that has one). A name never breaks: in a
@@ -1192,7 +1193,7 @@ $('bgReset').onclick=()=>{applyBackdrop(null,true);gridColour(null);};
 // round a point (Modify's moving or selected entity, else ahead of the camera), fading out
 // over a dozen cells or so so the map stays in sight, with its coordinates written along
 // the three lines through that point. On, Modify's Add and Move snap to its corners.
-const GRID={on:false,i:3,mode:'xy',col:null,key:'',n:0,buf:null,vao:null,prog:null,c:null,N:0,fk:'',fp:null,vis:new Map(),vk:''};
+const GRID={on:false,i:3,mode:'xy',col:null,key:'',n:0,buf:null,vao:null,prog:null,c:null,N:0,fk:'',fp:null,vis:new Map(),vk:'',pk:'',pd:null,pt:0};
 function gridSize(){return 1<<GRID.i;}
 function gridDefCol(){return '#6fd6e8';}   // a cyan the map's own colours rarely are
 function gridSave(){slidersPost();LS.set('mohaaMapViewerGrid',JSON.stringify({on:GRID.on,i:GRID.i,col:GRID.col,mode:GRID.mode}));}
@@ -1225,9 +1226,25 @@ function gridFocus(){
   let d=Math.min(Math.max(gridSize()*5,96),3000);
   try{const L=4096,e=[cam.pos[0]+a.f[0]*L,cam.pos[1]+a.f[1]*L,cam.pos[2]+a.f[2]*L],t=pgTrace(cam.pos,e,[0,0,0],[0,0,0],false);
     if(t&&!t.startsolid&&t.f<1)d=Math.max(8,t.f*L-2);}catch(_e){}
+  // the surface drawn in the middle of the view, when it is nearer: a floor the player
+  // collision doesn't have (not solid to players, or not a brush) still gets the grid on it,
+  // not one past it under the map. It is read by a pick after the frame (gridPickSoon), so
+  // the plane may follow the camera a moment late
+  if(GRID.pk===key&&GRID.pd!=null&&GRID.pd<d)d=Math.max(8,GRID.pd-2);
+  else if(GRID.pk!==key)gridPickSoon(key);
   GRID.fk=key;GRID.fp=[cam.pos[0]+a.f[0]*d,cam.pos[1]+a.f[1]*d,cam.pos[2]+a.f[2]*d];
   return GRID.fp;
 }
+// how far the surface in the middle of the view is, along the view (null: none), read once
+// the camera has rested 120 ms, outside the frame being drawn
+function gridPickSoon(key){
+  clearTimeout(GRID.pt);
+  GRID.pt=setTimeout(()=>{if(!GRID.on||!gl)return;
+    const a=camAxes(),now=cam.pos.map(v=>Math.round(v)).join(',')+'|'+a.f.map(v=>v.toFixed(3)).join(',');if(now!==key)return;
+    let dd=null;
+    try{const x=glcv.clientWidth/2,y=glcv.clientHeight/2,h=hitInfo(pickAt(x,y),x,y);
+      if(h&&h.face>=0&&h.point){const v=vsub(h.point,cam.pos);dd=vdot(v,a.f);if(!(dd>0))dd=null;}}catch(_e){}
+    GRID.pk=key;GRID.pd=dd;GRID.fk='';GRID.key='';requestDraw();},120);}
 // whether the camera sees a point (nothing solid between): the grid's numbers behind a
 // floor or a wall aren't written
 function gridSees(p){
@@ -8488,6 +8505,7 @@ window.addEventListener('keydown',e=>{
     if(!t){copyCursorPos();e.preventDefault();return;}}
   if(combo==='ctrl+z'){undoHide();e.preventDefault();return;}     // before Radiant-look's Z
   if(combo==='ctrl+a'){showAllGroups();flash('Every group is shown');e.preventDefault();return;}   // and A
+  if(combo==='ctrl+shift+a'){hideAllGroups();flash('Only the map\'s surfaces are shown (Ctrl+A shows everything again)');e.preventDefault();return;}
   if((e.ctrlKey||e.metaKey)&&kl==='f'){$('findIn').focus();$('findIn').select();e.preventDefault();return;}
   if((e.ctrlKey||e.metaKey)&&!e.altKey&&!e.shiftKey&&kl==='t'){themeToggleAll();e.preventDefault();return;}
   if((e.ctrlKey||e.metaKey)&&(kl==='\\'||e.code==='Backslash')){toggleClip();e.preventDefault();return;}
@@ -8667,6 +8685,7 @@ function buildPanel(){
   fb.appendChild($('bRoutes'));          // AI routes, AI errors and All go last, after Origin and Point ents
   fb.appendChild($('bAiErr'));
   fb.appendChild($('bShowAll'));
+  fb.appendChild($('bShowNone'));
   $('bFull').onclick=toggleFullBright;
   if(!LIT){$('bFull').disabled=true;
     $('bFull').title=D.kind==='bsp'?'This .bsp has no lightmaps, so the game draws it at full brightness too.'
@@ -8681,7 +8700,7 @@ function buildPanel(){
     flash(AIERR?'AI errors shown: no paths, one-way, own group, in the wall, no angle':'AI errors hidden');};
   if(!routesOk()){$('bRoutes').disabled=true;$('bRoutes').title='This map has no AI paths (no .pth file in the paks, or one the viewer couldn\'t read): ai_showroutes has nothing to draw';}
   if(!sunHas()){$('bSunFlare').disabled=true;$('bSunFlare').title=sunNone();}
-  $('bShowAll').onclick=showAllGroups;$('bGameView').onclick=gameLook;$('bEditView').onclick=editorLook;
+  $('bShowAll').onclick=showAllGroups;$('bShowNone').onclick=hideAllGroups;$('bGameView').onclick=gameLook;$('bEditView').onclick=editorLook;
   $('cvarBtn').onclick=ev=>{ev.stopPropagation();toggleCvarMenu();};
   syncButtons();
   $('bFree').onclick=()=>setCamMode('free');$('bRad').onclick=()=>setCamMode('rad');
@@ -8714,9 +8733,13 @@ function buildPanel(){
   fi.addEventListener('input',()=>{clearTimeout(ft);ft=setTimeout(()=>{setTab('find');},150);});
   fi.addEventListener('keydown',e=>{if(e.key==='Enter'){setTab('find');selectFindResults();e.preventDefault();}});
 }
-// All (Ctrl+A), In-game look (G) and Editor look (Shift+G). The two looks also set the light
+// All (Ctrl+A), None (Ctrl+Shift+A), In-game look (G) and Editor look (Shift+G). The two looks also set the light
 // and the sky: MOHRadiant is always full bright.
 function showAllGroups(){hiddenMask=0;filtersChanged();}
+// None (Ctrl+Shift+A): every group hidden but the map's own surfaces (World, Patches,
+// Translucent, Liquids, Details, Terrain), so nothing with a label or a marker is left
+const NONE_KEEP=C_WORLD|C_PATCH|C_TRANS|C_LIQUID|C_DETAIL|C_TERRAIN;
+function hideAllGroups(){let m=0;for(const f of FILTERS)m|=f.m;hiddenMask=m&~NONE_KEEP;filtersChanged();}
 const GAME_LOOK=C_CAULK|C_CLIP|C_TRIGGER|C_HINT|C_ORIGIN|C_PORTAL|C_NODRAW|C_POINT|C_LIGHT|C_AINODE|C_PATH|C_VIS|C_RAIN|C_FOLIAGE|C_SCRTRIG,
   EDIT_LOOK=C_HINT|C_PORTAL|C_RAIN;
 function gameLook(){hiddenMask=GAME_LOOK;simpleSky=false;fullBright=false;setSunFlare(true);filtersChanged();requestDraw();}
