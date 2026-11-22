@@ -531,8 +531,15 @@ way here.
     units, or in the grid's size with Grid on. **✥ Trim / ⇕ Trim** (beside Region, with Move
     or Resize): W A S D / arrows and Space / C nudge the selected brushes by Modify's trim
     step (Resize: push out the face that faces that way, Shift+key pulls it in), the way to
-    stretch a brush too thin to grab, like a ceiling wire; Esc or T stops, one Undo for it
-    all. **Delete** (the key, or the button beside the selection) deletes the selected
+    stretch a brush too thin to grab, like a ceiling wire. A selected patch (a pipe or wire,
+    such as `general_industrial/ge_wires_para`) is made longer or shorter along itself by
+    the key that points along it: its end goes out, the points between follow evenly (a
+    sag stays) and the texture keeps its size; Shift+key shortens that end (Shift+A the left
+    one, Shift+D the right). While Trim is on, a grey note above the tool's help lists the
+    keys. Esc or T stops, one Undo for it all. As Modify's trim, white arrows stand out of the selection's sides (Resize: each
+    brush's sides that a key pushes) and turn red as a key moves it that way (cyan as
+    Shift pulls in); a big side gets a few, tiled from its middle, and they grow with
+    distance so a giant brush shows them from far away. The camera keys stay still. **Delete** (the key, or the button beside the selection) deletes the selected
     brushes, patches and terrain blocks; a brush entity whose every brush is selected is
     deleted as Modify deletes it. Press on a brush that is part of a bigger
     selection and the whole selection moves (or is copied) together; an entity whose every
@@ -559,8 +566,9 @@ way here.
     the face), turn ⟲ ⟳, flip, shift, scale up or down, or **Natural** (reset).
   * **Eyedropper** (the pipette button beside *- tool textures -*, with any tool): click
     it, then click any surface in the view (a brush face, a patch, a terrain patch or a
-    `.bsp`'s own surface) and its texture goes into the Texture box. A drag still turns
-    the camera; **Esc** or the button again cancels.
+    `.bsp`'s own surface) and its texture goes into the Texture box, then the **▦ Texture**
+    tool comes on (terrain *paint texture* stays on) so each click lays it. A drag still
+    turns the camera; **Esc** or the button again cancels.
   * **The Texture box follows the selection**: selecting a brush, patch or terrain block
     puts its texture in the box (the face clicked, else the brush's most used texture).
     A texture chosen with **Browse...**, *- tool textures -* or the eyedropper goes on what
@@ -571,8 +579,8 @@ way here.
     rotate and shift, on the face clicked (else every face) or every terrain patch; **Set**
     lays them. The eyedropper takes a surface's tiling with its texture and gives both to
     the selection, to match a neighbour, also when the selection has that texture already.
-    With the Texture tool (or terrain paint), the eyedropper or an Alt+click loads both and
-    each click lays the texture with that tiling.
+    With the Texture tool (or terrain paint), what the eyedropper or an Alt+click took is
+    laid with its tiling by each click.
   * **Classname** (under Texture): what the selected brushes are. **Browse...** lists the
     brush entity classes (`func_rotatingdoor`, `script_object`, `trigger_multiple` ...);
     typing one and Enter does the same. Brushes or patches of the world become one new

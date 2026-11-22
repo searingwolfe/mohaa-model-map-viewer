@@ -832,9 +832,14 @@ LEGEND = [
          {"sw": "tex", "tex": "textures/common/trigger", "name": "trigger", "key": "Ctrl+U",
           "desc": "The volume of a trigger_* entity: walking into it (or using it) fires the trigger."},
          {"sw": "tex", "tex": "textures/common/hint", "name": "hint", "key": "Ctrl+H",
-          "desc": "Tells the compiler where to split the map for visibility. Not drawn, not solid."},
+          "desc": "Tells the compiler where to split the map for visibility. Not drawn, not solid. "
+                  "Each side becomes a portal the vis pass looks through: a place is left out of what "
+                  "another sees only when structural walls block every line between them (detail "
+                  "brushes, patches, terrain and models block nothing), so on open ground hints hide "
+                  "nothing; cut along doorways, corners and ridge lines to give the walls an edge."},
          {"sw": "tex", "tex": "textures/common/vis", "name": "vis",
-          "desc": "MOHAA's other hint texture; the same job as hint."},
+          "desc": "MOHAA's other hint texture (surfaceparm hint too, in common.shader); EA's maps use "
+                  "it as whole boxes that cut big open areas into cells."},
          {"sw": "tex", "tex": "textures/common/skip", "name": "skip",
           "desc": "The sides of a hint brush that shouldn't split anything."},
          {"sw": "tex", "tex": "textures/common/waterskip", "name": "waterskip",

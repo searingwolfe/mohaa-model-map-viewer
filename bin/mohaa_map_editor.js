@@ -632,6 +632,38 @@ window.addEventListener('keydown',e=>{
 // looks, Space / C up and down, by Modify's trim step. Move moves the selected brushes; Resize
 // pushes out the face of each selected brush that faces that way (Shift+key pulls it in), so a
 // brush too thin to grab a side of (a wire) can be stretched. The whole trim is one Undo.
+// ---- a patch stretched by Trim (Resize): a pipe or wire made longer or shorter -----------
+// Its two spans (along the control net's rows and along its columns), each from the middle of
+// its first line of points to the middle of its last; the longer of the spans pointing the
+// way of the key (by more than a third) has the end that way moved out along the span by v (in, with v
+// below 0), the lines between it and the other end by their share, so a straight pipe stays
+// straight and evenly spaced and a sagging wire keeps its sag. The texture keeps its size
+// (it repeats on along the new length). null: no span points that way.
+function edPatchAxes(P){
+  const w=P.w,h=P.h,pt=(j,i)=>{const o=(j*h+i)*5;return[P.pts[o],P.pts[o+1],P.pts[o+2]];};
+  const mid=L=>{const c=[0,0,0];for(const p of L)for(let a=0;a<3;a++)c[a]+=p[a]/L.length;return c;};
+  const lineJ=j=>{const L=[];for(let i=0;i<h;i++)L.push(pt(j,i));return L;},lineI=i=>{const L=[];for(let j=0;j<w;j++)L.push(pt(j,i));return L;};
+  const out=[];
+  for(const[n,line]of[[w,lineJ],[h,lineI]]){if(n<2){out.push(null);continue;}
+    const c=[];for(let k=0;k<n;k++)c.push(mid(line(k)));
+    const a=vsub(c[n-1],c[0]),len=Math.hypot(a[0],a[1],a[2]);out.push(len>0.01?{n:n,c:c,u:vscale(a,1/len),len:len}:null);}
+  return out;}
+function edPatchTrimText(pr,d,v){
+  const P=edPatchData(pr),A=edPatchAxes(P);let best=0,k=-1,sg=1;
+  // of the spans pointing that way, the longer (along a wire that runs slantwise, not across it)
+  A.forEach((ax,i)=>{if(!ax)return;const q=vdot(ax.u,d);if(Math.abs(q)>0.33&&ax.len>best){best=ax.len;k=i;sg=q>0?1:-1;}});
+  if(k<0)return null;
+  const ax=A[k],L2=ax.len+v;if(L2<1)throw new Error('the patch can\'t get shorter than that');
+  const w=P.w,h=P.h,idx=(a,b)=>((k===0?a*h+b:b*h+a))*5;   // a: along the span, b: across it
+  const nb=k===0?h:w,opp=sg>0?0:ax.n-1,ratio=L2/ax.len;
+  for(let a=0;a<ax.n;a++){
+    const f=Math.max(0,Math.min(1,vdot(vsub(ax.c[a],ax.c[opp]),ax.u)*sg/ax.len)),m=vscale(ax.u,sg*v*f);
+    for(let b=0;b<nb;b++){const o=idx(a,b),oo=idx(opp,b);
+      for(let c=0;c<3;c++)P.pts[o+c]=Math.round((P.pts[o+c]+m[c])*1000)/1000;
+      for(const c of[3,4])P.pts[o+c]=Math.round((P.pts[oo+c]+(P.pts[o+c]-P.pts[oo+c])*ratio)*1e4)/1e4;}}
+  edPatchCheck(P);
+  const t=D.srcText.slice(pr.ts,pr.te),q=edPatchParts(t),mx=t.slice(q.m0,q.m1);
+  return t.slice(0,q.m0)+(edPatchSplice(mx,P)||edPatchMatrix(P))+t.slice(q.m1);}
 function edTrim(on){
   if(on==null)on=!ED.trim;
   if(on&&!(ED.tool==='move'||ED.tool==='resize'))return;
@@ -651,15 +683,18 @@ function edTrimKey(e){
     if(!c.prims.length&&!c.ents.length)throw new Error('Select a brush first');
     const C=edCarryBuild(c),o=d.map(v=>v*st);edDoMany(edMoveOps(C,o),'Trim: moved '+o.map(fmt).join(' '));}
   else{const ops=[];let n=0;
-    for(const pi of edJoinPrims()){const r=SC.prims[pi],pr=MAP.ents[r.ent].prims[r.bn];if(!pr||pr.kind!==0)continue;
+    for(const pi of edJoinPrims()){const r=SC.prims[pi],pr=MAP.ents[r.ent].prims[r.bn];if(!pr)continue;
+      if(pr.kind===1){const t=edPatchTrimText(pr,d,e.shiftKey?-st:st);if(t!=null){ops.push({at:pr.ts,del:D.srcText.slice(pr.ts,pr.te),ins:t,sel:null});n++;}continue;}
+      if(pr.kind!==0)continue;
       const fs=edFaces(pr);let k=-1,best=0.5;
       fs.forEach((f,i)=>{const pl=planeOf(f);if(!pl)return;const dd=pl[0]*d[0]+pl[1]*d[1]+pl[2]*d[2];if(dd>best){best=dd;k=i;}});
       if(k<0)continue;const pl=planeOf(fs[k]),v=e.shiftKey?-st:st;for(let i=0;i<9;i++)fs[k].p[i]+=pl[i%3]*v;
       try{edCheck(fs);}catch(_e){throw new Error('that would turn the brush inside out');}
       ops.push({at:pr.ts,del:D.srcText.slice(pr.ts,pr.te),ins:edBrushText(fs),sel:null});n++;}
-    if(!ops.length)throw new Error('Trim resizes brushes: select one (a patch or terrain block has its own tools)');
-    edDoMany(ops,'Trim: '+(n===1?'its face':n+' faces')+' '+(e.shiftKey?'pulled in ':'pushed out ')+st);}
+    if(!ops.length)throw new Error('Trim resizes brushes and patches (a pipe or wire: press the key that points along it); a terrain block has its own tools');
+    edDoMany(ops,'Trim: '+(n===1?'its end':n+' ends')+' '+(e.shiftKey?'pulled in ':'pushed out ')+st);}
   if(ED.trimN++>0&&MOD.undo.length>n0)MOD.undo.splice(n0,MOD.undo.length-n0);   // one Undo for the trim
+  ED.tflash={k:edAxKey(d),t:performance.now(),pull:ED.tool==='resize'&&e.shiftKey};setTimeout(requestDraw,240);
   SEL.clear();for(const k of keep)SEL.add(k);selectionChanged();lineDirty=true;requestDraw();return true;}
 window.addEventListener('keydown',e=>{
   if(!ED.trim)return;
@@ -668,6 +703,68 @@ window.addEventListener('keydown',e=>{
   const tg=e.target&&e.target.tagName;if(tg==='INPUT'||tg==='TEXTAREA'||tg==='SELECT')return;
   let took=false;try{took=edTrimKey(e);}catch(err){flash(err.message);took=true;}
   if(took){e.preventDefault();e.stopPropagation();}},true);
+// while trimming, the camera's keys are let go of too where the page would hear them
+window.addEventListener('keyup',e=>{
+  if(!ED.trim||e.ctrlKey||e.altKey||e.metaKey)return;
+  const tg=e.target&&e.target.tagName;if(tg==='INPUT'||tg==='TEXTAREA'||tg==='SELECT')return;
+  const kl=e.key.toLowerCase();if(kl===' '||CAM_KEYS_FREE.has(kl)||CAM_KEYS_RAD.has(kl)){e.preventDefault();e.stopPropagation();}},true);
+// ---- the trim arrows: as Modify's Trim origin draws them on an entity, on the selected brushes
+// White arrows out of each side of the selection's box (Move: the box round it all; Resize:
+// each brush, only the sides with a face that a key pushes), red for a moment as a key moves
+// or pushes that way (cyan as Shift pulls a face in). A big side gets a few of them, tiled
+// from its middle, and each arrow is drawn bigger the farther it is from the camera, so a
+// giant brush (a vis box) still shows them from far away.
+const edAxKey=d=>(d[0]>0.5?'+x':d[0]<-0.5?'-x':d[1]>0.5?'+y':d[1]<-0.5?'-y':d[2]>0?'+z':'-z');
+const ED_AX=[[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
+let edTrimCache=null;
+function edTrimBoxes(){
+  const P=edJoinPrims(),key=ED.tool+'|'+ED.n+'|'+P.join(',');
+  if(edTrimCache&&edTrimCache.key===key)return edTrimCache.boxes;
+  const boxOf=pi=>{const p=SC.prims[pi],mn=[Infinity,Infinity,Infinity],mx=[-Infinity,-Infinity,-Infinity];if(!p)return null;
+    for(let f=p.f0;f<p.f1;f++){const ea=SC.faceE0[f],ec=SC.faceEN[f];for(let k=ea;k<ea+ec;k++){const v=SC.edge[k]*3;
+      for(let a=0;a<3;a++){const x=SC.pos[v+a];if(x<mn[a])mn[a]=x;if(x>mx[a])mx[a]=x;}}}
+    return mn[0]<=mx[0]?{mn:mn,mx:mx}:null;};
+  let boxes=[];
+  if(ED.tool==='resize'&&P.length<=24){
+    for(const pi of P){const r=SC.prims[pi],pr=r&&MAP.ents[r.ent].prims[r.bn];if(!pr||pr.kind>1)continue;const b=boxOf(pi);if(!b)continue;
+      if(pr.kind===1){let A=[];try{A=edPatchAxes(edPatchData(pr)).filter(Boolean);}catch(_e){}   // a patch: the ends of its spans
+        b.dirs=ED_AX.filter(d=>A.some(ax=>Math.abs(vdot(ax.u,d))>0.33));if(b.dirs.length)boxes.push(b);continue;}
+      let pls=[];try{pls=edFaces(pr).map(planeOf).filter(Boolean);}catch(_e){}
+      b.dirs=ED_AX.filter(d=>pls.some(pl=>pl[0]*d[0]+pl[1]*d[1]+pl[2]*d[2]>0.5));boxes.push(b);}}
+  else{const U={mn:[Infinity,Infinity,Infinity],mx:[-Infinity,-Infinity,-Infinity],dirs:ED_AX};
+    for(const pi of P){if(ED.tool==='resize'){const r=SC.prims[pi],pr=r&&MAP.ents[r.ent].prims[r.bn];if(!pr||pr.kind>1)continue;}
+      const b=boxOf(pi);if(!b)continue;for(let a=0;a<3;a++){U.mn[a]=Math.min(U.mn[a],b.mn[a]);U.mx[a]=Math.max(U.mx[a],b.mx[a]);}}
+    if(U.mn[0]<=U.mx[0])boxes=[U];}
+  edTrimCache={key:key,boxes:boxes};return boxes;}
+// where on a side, across one of its spans: its middle, then every step out from it (at most 3 a way)
+function edTrimSpots(lo,hi){const c=(lo+hi)/2,h=(hi-lo)/2,st=Math.max(512,(hi-lo)/7),n=Math.min(3,Math.floor((h-st*0.25)/st));
+  const out=[c];for(let i=1;i<=n;i++)out.push(c-i*st,c+i*st);return out;}
+function edDrawTrim(vp){
+  if(!ED.trim||!gl||typeof MAP==='undefined'||!MAP||!EON())return;
+  let boxes;try{boxes=edTrimBoxes();}catch(_e){return;}if(!boxes.length)return;
+  const L=[],now=performance.now(),F=ED.tflash,hot=F&&now-F.t<220,cp=cam.pos;
+  const lin=(p,q,c)=>{L.push(p[0],p[1],p[2],q[0],q[1],q[2],c[0],c[1],c[2],c[3],q[0],q[1],q[2],p[0],p[1],p[2],c[0],c[1],c[2],c[3]);};
+  for(const b of boxes)for(const d of b.dirs){
+    const ax=d[0]?0:d[1]?1:2,u=(ax+1)%3,v=(ax+2)%3,side=d[ax]>0?b.mx[ax]:b.mn[ax],k=edAxKey(d);
+    const col=hot&&F.k===k?(F.pull?[0.2,0.9,1,1]:[1,0.15,0.1,1]):[1,1,1,1];
+    for(const su of edTrimSpots(b.mn[u],b.mx[u]))for(const sv of edTrimSpots(b.mn[v],b.mx[v])){
+      const p=[0,0,0];p[ax]=side;p[u]=su;p[v]=sv;
+      const dist=Math.hypot(p[0]-cp[0],p[1]-cp[1],p[2]-cp[2]),Ln=Math.max(18,dist*0.06),g=Math.max(6,Ln*0.3);
+      const s=[p[0]+d[0]*g,p[1]+d[1]*g,p[2]+d[2]*g],e=[s[0]+d[0]*Ln,s[1]+d[1]*Ln,s[2]+d[2]*Ln];
+      lin(s,e,col);
+      for(const w of[u,v]){const o=[0,0,0];o[w]=Ln*0.28;   // the head, seen from any side
+        lin(e,[e[0]-d[0]*Ln*0.4+o[0],e[1]-d[1]*Ln*0.4+o[1],e[2]-d[2]*Ln*0.4+o[2]],col);
+        lin(e,[e[0]-d[0]*Ln*0.4-o[0],e[1]-d[1]*Ln*0.4-o[1],e[2]-d[2]*Ln*0.4-o[2]],col);}}}
+  if(!L.length)return;
+  if(!PMODT)PMODT=compile(VS_GVL,FS_LINE);
+  if(!B.edTrimBuf){B.edTrimBuf=gl.createBuffer();B.vEdTrim=gvLineVAO(B.edTrimBuf,true);gl.bindVertexArray(null);}
+  gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.depthMask(false);
+  gl.enable(gl.BLEND);gl.blendFuncSeparate(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA,gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
+  gvUniforms(PMODT,vp,0.0015);gl.bindVertexArray(B.vEdTrim);gl.bindBuffer(gl.ARRAY_BUFFER,B.edTrimBuf);
+  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(L),gl.STREAM_DRAW);gl.drawArrays(gl.LINES,0,L.length/10);
+  gl.bindVertexArray(null);gl.disable(gl.BLEND);gl.depthMask(true);}
+const _drawModifyEd=drawModify;
+drawModify=function(vp){_drawModifyEd(vp);try{edDrawTrim(vp);}catch(_e){}};
 
 // ---- Classname: what the selected brushes are --------------------------------------------
 // Brushes of the world (or a func_group) become one new entity of that class, with the
@@ -852,7 +949,7 @@ function edClsKey(ev){
   if(ev.key==='ArrowDown'||ev.key==='ArrowUp'){ECL.hot+=ev.key==='ArrowDown'?1:-1;edClsRender();
     const h=ECL.el.querySelector('.amItem.hot');if(h)h.scrollIntoView({block:'nearest'});ev.preventDefault();ev.stopPropagation();return;}
   ev.stopPropagation();}
-function edTexApplyRun(tx,tile){try{edTexApplySel(tx,tile);}catch(err){flash(err.message);const st=$('edBrSt');if(st)st.textContent=err.message;}}
+function edTexApplyRun(tx,tile){try{return edTexApplySel(tx,tile);}catch(err){flash(err.message);const st=$('edBrSt');if(st)st.textContent=err.message;return false;}}
 const _selectionChanged=selectionChanged;
 selectionChanged=function(){_selectionChanged.apply(this,arguments);try{edPickSync();}catch(err){console.error(err);}try{edCopyBtn();}catch(_e){}};
 function edPrim(){if(!ED.sel)return null;const e=MAP.ents[ED.sel.ei];const pr=e&&e.prims[ED.sel.bn];return pr&&pr.kind===0?pr:null;}
@@ -1446,8 +1543,15 @@ function edToolHtml(){
   if(ED.tool==='clip'&&ED.clip&&ED.clip.pts.length>=2)
     h+=edRow(edBtn('bEdCut','Clip','Cut the brush and keep the bright side (Enter)')+edBtn('bEdSplit','Split in two','Cut it and keep both halves as two brushes (Shift+Enter)')+
       edBtn('bEdFlipC','Other side','Keep the other side (Tab)')+edBtn('bEdClrC','Start over','Clear the points (Esc)'));
+  if(ED.trim&&(ED.tool==='move'||ED.tool==='resize'))h+='<div class="co" id="edTrimHelp" style="margin-top:4px;line-height:1.35">'+esc(edTrimHelp())+'</div>';
   h+='<div class="co" id="edToolHelp" style="margin-top:4px;line-height:1.35">'+esc(edHelp())+'</div>';
   return h;}
+// what the keys do while Trim is on (W A S D go along the world axes nearest the way you look)
+function edTrimHelp(){
+  const k='W / S forward and back, A / D left and right (or the arrow keys), Space / C up and down';
+  if(ED.tool==='move')return'Trim on: '+k+' move the selection by Modify\'s trim step. The camera stays still; Esc or T stops (one Undo for it all).';
+  return'Trim on: '+k+' push the side facing that way out by Modify\'s trim step; hold Shift to pull it in instead (Shift+A shortens the left end, Shift+D the right). '+
+    'A pipe or wire: the keys that point along it make that end longer or shorter. The camera stays still; Esc or T stops (one Undo for it all).';}
 function edHelp(){
   const t=ED.tool,g=snapG();
   if(t==='select')return'Pick a tool above to build in the view. Grid '+g+'.';
@@ -1537,7 +1641,12 @@ function edDropTake(h){
   let tile=null;try{tile=edTileAt(h);}catch(_e){}
   if(tile)ED.tileV=tile;
   ED.dropTile=tile?{tx:tx,t:tile}:null;   // the Texture tool and terrain paint lay this tiling with the texture
-  edDrop(false);flash('Texture: '+tx+(tile?' (scale '+tile.sc.map(fmt).join(' ')+', rotate '+fmt(tile.rot)+', shift '+tile.sh.map(fmt).join(' ')+')':'')+(edTexPainting()?': click a surface to lay it'+(tile?' with this tiling':''):''));edTexApplyRun(tx,tile);edPanel();return true;}
+  edDrop(false);flash('Texture: '+tx+(tile?' (scale '+tile.sc.map(fmt).join(' ')+', rotate '+fmt(tile.rot)+', shift '+tile.sh.map(fmt).join(' ')+')':'')+(edTexPainting()?': click a surface to lay it'+(tile?' with this tiling':''):''));
+  // what it took goes on the selection, then the Texture tool is on (terrain paint stays) to lay it
+  const put=edTexApplyRun(tx,tile);
+  if(!edTexPainting()){edSetTool('texture');
+    flash((put?'On the selection, and the ':'The ')+'Texture tool: click a surface to lay '+tx+(tile?' with its tiling':'')+' (Shift+click: every face of a brush)');}
+  edPanel();return true;}
 // a press on the view while it's on: the camera still turns on a drag; a click (no drag) takes
 window.addEventListener('mousedown',e=>{if(ED.drop&&e.button===0&&e.target===glcv)edDropAt=[e.clientX,e.clientY];},true);
 window.addEventListener('mouseup',e=>{
@@ -1894,7 +2003,7 @@ function edDrawMake(){
 function edResizeDown(x,y){
   const h=edHit(x,y),q=edPrimOfHit(h);if(!q)return false;
   edSelectHit(h);
-  if(q.kind!==0){flash('Resize pulls brush faces: a patch or terrain block changes by its own tools (Move, Terrain, or Exact values)');return true;}
+  if(q.kind!==0){flash('Resize pulls brush faces. A patch: drag its control points, or ⇕ Trim makes a pipe or wire longer or shorter; a terrain block: Terrain or Exact values');return true;}
   const faces=edFaces(q.pr),k=q.side,pl=planeOf(faces[k]);if(!pl)return true;
   const n=pl.slice(0,3),P0=h.point||[0,0,0];
   const d={kind:'face',k:k,n:n,P0:P0,faces:faces,dist:0,ok:true};
@@ -2399,7 +2508,7 @@ function edPanel(){
   const pr=edPrim();let h=edToolHtml();
   const tex=($('edTex')&&$('edTex').value)||'common/caulk';
   h+='<div class="row" style="gap:4px;flex-wrap:wrap;align-items:center;margin-top:4px">Texture '+edField('edTex',tex,170)+'<button class="sm" id="bEdTex" title="Choose from the map\'s textures and the paks\': new brushes and cut faces get it, and so does what is selected (every face of a brush, a patch, a terrain block; one Undo). Selecting something puts its texture here.">Browse...</button>'+
-     edSel('edTexP',TEXPRESETS,'')+'<button class="sm'+(ED.drop?' on':'')+'" id="bEdDrop" title="Eyedropper: click this, then click any surface in the view; its texture goes into the Texture box (and onto what is selected). Esc or a second click here cancels.">'+DROPICON+'</button></div>';
+     edSel('edTexP',TEXPRESETS,'')+'<button class="sm'+(ED.drop?' on':'')+'" id="bEdDrop" title="Eyedropper: click this, then click any surface in the view; its texture and tiling go into the Texture box and onto what is selected, and the Texture tool comes on to lay them with each click. Esc or a second click here cancels.">'+DROPICON+'</button></div>';
   h+=edClsHtml();
   h+=edJoinHtml();
   h+=edTileHtml();
@@ -2567,7 +2676,7 @@ function edMode(on){
 window.__EDITHOOKS__&&window.__EDITHOOKS__.push(edMode);
 
 // what the editor holds, for the test harness and the console (read it; change it through the panel)
-window.MOHAA_EDITOR_API={edTrim:edTrim,edTrimKey:edTrimKey,edDeleteSel:edDeleteSel,edTileSet:edTileSet,edTileAt:edTileAt,edSelTile:edSelTile,edSetFaces:edSetFaces,edSelWhole:edSelWhole,edJoin:edJoin,edJoinHtml:edJoinHtml,edRzOutlines:edRzOutlines,get rzKey(){return _edRzKey;},get drag(){return EDDRAG;},ED:ED,edMoveDown:edMoveDown,edMoveSelDown:edMoveSelDown,edPrimOfHit:edPrimOfHit,edResizeHover:edResizeHover,edKeyOfPrim:edKeyOfPrim,edClsApply:edClsApply,edClsTargets:edClsTargets,edClsAll:edClsAll,edCopySet:edCopySet,edCarryStart:edCarryStart,edCarryPlace:edCarryPlace,edCarryEnd:edCarryEnd,edSelTex:edSelTex,edTexApplySel:edTexApplySel,edTexChoose:edTexChoose,edDrop:edDrop,edTexAt:edTexAt,edDropTake:edDropTake,edPaintDown:edPaintDown,edFaces:edFaces,edFaceLine:edFaceLine,edBounds:edBounds,edCheck:edCheck,edPanel:edPanel,brRow:brRow,edPatchData:edPatchData,edTerrData:edTerrData,edTerrSpan:edTerrSpan,edMarks:edMarks,edPatchFacing:edPatchFacing,edTerrFitSel:edTerrFitSel,edRegionSet:edRegionSet,edSetTerr:edSetTerr,terrHeightsMap:terrHeightsMap,
+window.MOHAA_EDITOR_API={edPatchTrimText:edPatchTrimText,edPatchAxes:edPatchAxes,edTrimBoxes:edTrimBoxes,edDrawTrim:edDrawTrim,edTrim:edTrim,edTrimKey:edTrimKey,edDeleteSel:edDeleteSel,edTileSet:edTileSet,edTileAt:edTileAt,edSelTile:edSelTile,edSetFaces:edSetFaces,edSelWhole:edSelWhole,edJoin:edJoin,edJoinHtml:edJoinHtml,edRzOutlines:edRzOutlines,get rzKey(){return _edRzKey;},get drag(){return EDDRAG;},ED:ED,edMoveDown:edMoveDown,edMoveSelDown:edMoveSelDown,edPrimOfHit:edPrimOfHit,edResizeHover:edResizeHover,edKeyOfPrim:edKeyOfPrim,edClsApply:edClsApply,edClsTargets:edClsTargets,edClsAll:edClsAll,edCopySet:edCopySet,edCarryStart:edCarryStart,edCarryPlace:edCarryPlace,edCarryEnd:edCarryEnd,edSelTex:edSelTex,edTexApplySel:edTexApplySel,edTexChoose:edTexChoose,edDrop:edDrop,edTexAt:edTexAt,edDropTake:edDropTake,edPaintDown:edPaintDown,edFaces:edFaces,edFaceLine:edFaceLine,edBounds:edBounds,edCheck:edCheck,edPanel:edPanel,brRow:brRow,edPatchData:edPatchData,edTerrData:edTerrData,edTerrSpan:edTerrSpan,edMarks:edMarks,edPatchFacing:edPatchFacing,edTerrFitSel:edTerrFitSel,edRegionSet:edRegionSet,edSetTerr:edSetTerr,terrHeightsMap:terrHeightsMap,
   edAddBrush:edAddBrush,edBoxFaces:edBoxFaces,edNew:()=>EDNEW,edNewLines:edNewLines,edNewSync:edNewSync};
 
 try{edSection();}catch(err){console.error(err);}

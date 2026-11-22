@@ -3280,3 +3280,26 @@ look of the walk and the doors should be confirmed by eye in the launcher.
   Shift+click lays the texture with that tiling, so a face that already has the texture is
   re-tiled to match too (before, a click on it only picked it and its tiling stayed, and
   painting never carried the tiling). Browse or a tool texture puts a texture alone back.
+- The eyedropper turns the Texture tool on once it has taken a texture (after giving it
+  and its tiling to the selection), since laying it is what it is for; terrain paint stays
+  on if that was the tool.
+- Legend: hint says what a hint brush can and can't do (it only cuts where the vis pass
+  looks; walls do the hiding, so open ground stays seen), and vis says it is
+  `surfaceparm hint` too, used by EA's maps as whole boxes over open areas.
+- Trim arrows on the selected brushes (`edDrawTrim`, drawn after Modify's): with Move, white
+  arrows out of the six sides of the box round the selection; with Resize, out of each
+  selected brush's sides that have a face a key pushes. The one the last key went turns red
+  for a moment (cyan for Shift pulling a face in). A side wider than 512 units gets up to 7
+  x 7 of them tiled from its middle (`edTrimSpots`), and each is drawn bigger the farther it
+  is from the camera, so a giant vis box shows a few dozen from far away. The camera keys'
+  key-ups are kept from the page while trimming too, so the camera can't take them.
+- ⇕ Trim stretches patches (`edPatchTrimText`, `edPatchAxes`): of a selected patch's two
+  spans (its control net's first line of points to its last, each way), the longer one
+  pointing the key's way by more than a third has its end moved out along the span by the
+  trim step (Shift: in), the lines between by their share, so a straight pipe or wire
+  (ge_wires_para) gets longer or shorter as it is, a sagging one keeps its sag, and its
+  texture coordinates are spread to keep the texture's size. Its arrows show the ends' ways.
+  Resize's note on a patch says so.
+- While ✥ / ⇕ Trim is on, a grey note above the tool's help (`edTrimHelp`) lists its keys:
+  W / S, A / D (or the arrows), Space / C, by Modify's trim step, and with Resize that
+  Shift+key pulls the side in (Shift+A shortens a wire's left end, Shift+D its right).
