@@ -133,6 +133,11 @@ doorXf=function(ei){
   if(!X)return{R:[1,0,0,0,1,0,0,0,1],o:[0,0,0],t:t,yaw:0};
   return{R:X.R,o:X.o,t:[X.t[0]+t[0],X.t[1]+t[1],X.t[2]+t[2]],yaw:X.yaw};
 };
+// what moves a brush entity the row has moved (not a door): its box, as a door's, for what
+// draws a moved door's box (the selection's outline, Fly to's bounds)
+const _movObj=movObj;
+movObj=function(ei){const d=_movObj(ei);if(d||!brOffset(ei))return d;
+  const I=brInfo(ei);if(!I.d){const b=ENTS[ei].box;I.d={ei:ei,o:b.origin.slice(),mins:b.mins.slice(),maxs:b.maxs.slice(),gm:null};}return I.d;};
 const brPosed=new Map();      // ei -> the offset its geometry was last put at
 function brPose(ei){
   const door=DOORS&&DOORS.get(ei);
@@ -755,14 +760,7 @@ function edDrawTrim(vp){
       for(const w of[u,v]){const o=[0,0,0];o[w]=Ln*0.28;   // the head, seen from any side
         lin(e,[e[0]-d[0]*Ln*0.4+o[0],e[1]-d[1]*Ln*0.4+o[1],e[2]-d[2]*Ln*0.4+o[2]],col);
         lin(e,[e[0]-d[0]*Ln*0.4-o[0],e[1]-d[1]*Ln*0.4-o[1],e[2]-d[2]*Ln*0.4-o[2]],col);}}}
-  if(!L.length)return;
-  if(!PMODT)PMODT=compile(VS_GVL,FS_LINE);
-  if(!B.edTrimBuf){B.edTrimBuf=gl.createBuffer();B.vEdTrim=gvLineVAO(B.edTrimBuf,true);gl.bindVertexArray(null);}
-  gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.depthMask(false);
-  gl.enable(gl.BLEND);gl.blendFuncSeparate(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA,gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
-  gvUniforms(PMODT,vp,0.0015);gl.bindVertexArray(B.vEdTrim);gl.bindBuffer(gl.ARRAY_BUFFER,B.edTrimBuf);
-  gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(L),gl.STREAM_DRAW);gl.drawArrays(gl.LINES,0,L.length/10);
-  gl.bindVertexArray(null);gl.disable(gl.BLEND);gl.depthMask(true);}
+  if(L.length){drawTrimArrows(vp,L);gl.disable(gl.BLEND);gl.depthMask(true);}}
 const _drawModifyEd=drawModify;
 drawModify=function(vp){_drawModifyEd(vp);try{edDrawTrim(vp);}catch(_e){}};
 

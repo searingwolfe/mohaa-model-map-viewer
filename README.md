@@ -363,7 +363,8 @@ click away: its targetname, origin, `setsize`, targets and ready-to-paste script
   map where it goes. A new node is drawn
   see-through until saved, its parameters edit as entity-lump text (applied as you type),
   **Move** picks it up again with the mouse, **Trim origin** nudges it with W A S D / the arrows by a trim step of 1 to 50 units
-  while the camera stays put, and **AI routes** show its links as soon as it is placed,
+  while the camera stays put (white arrows out of its sides, red the way it just went; a
+  door or other brush entity's from round its brushes, faint where a wall is in front), and **AI routes** show its links as soon as it is placed,
   worked out the way the game builds its `.pth`. **Save as .bsp** writes a copy of the
   map with the new entities and a new `map_time`, so the game rebuilds its paths; it
   never writes over the original. **Save as .map** and **Copy** are there too. Closing the

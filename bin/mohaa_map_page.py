@@ -10667,8 +10667,26 @@ function drawModify(vp){
     for(let f=0;f<6;f++){const q=F[f],U=k=>{const u=[k&1?1:0,k&2?1:0,k&4?1:0];u[ax[f]]=0.5;return u;};
       for(const k of[q[0],q[1],q[2],q[0],q[2],q[3]]){const p=Cn(k),u=U(k);M.push(p[0],p[1],p[2],c[0],c[1],c[2],mk,u[0],u[1],u[2],O[0],O[1],O[2],O[3]);}}};
   const Mb=[],Mn=[];       // still / being edited (fainter)
+  // the trim arrows: white, red while it moves that way; out of each side of its box (from
+  // the box's middle: a brush entity's origin can be at an edge, a door's hinge), and bigger
+  // the farther they are, so a big entity's stay in sight
+  const LA=[],lina=(p,q,c)=>{LA.push(p[0],p[1],p[2],q[0],q[1],q[2],c[0],c[1],c[2],c[3],q[0],q[1],q[2],p[0],p[1],p[2],c[0],c[1],c[2],c[3]);};
+  const trimArrows=(mn,mx)=>{const lin=lina;
+    const A=modAxes(),cx=(mn[0]+mx[0])/2,cy=(mn[1]+mx[1])/2,cz=(mn[2]+mx[2])/2,cp=cam.pos;
+    const len=p=>Math.max(18,Math.hypot(p[0]-cp[0],p[1]-cp[1],p[2]-cp[2])*0.03);
+    const dirs={f:A.f,b:A.f.map(v=>-v),r:A.r,l:A.r.map(v=>-v)};
+    for(const k in dirs){const d=dirs[k],col=now-(MOD.flash[k]||0)<220?[1,0.15,0.1,1]:[1,1,1,1];
+      const r=(d[0]?(mx[0]-mn[0]):(mx[1]-mn[1]))/2+10,s=[cx+d[0]*r,cy+d[1]*r,cz],Ln=len(s),e=[s[0]+d[0]*Ln,s[1]+d[1]*Ln,cz],sd=[-d[1],d[0],0],hl=Ln*0.39,hw=Ln*0.28;
+      lin(s,e,col);lin(e,[e[0]-d[0]*hl+sd[0]*hw,e[1]-d[1]*hl+sd[1]*hw,cz],col);lin(e,[e[0]-d[0]*hl-sd[0]*hw,e[1]-d[1]*hl-sd[1]*hw,cz],col);}
+    for(const[k,sg]of[['u',1],['d',-1]]){const col=now-(MOD.flash[k]||0)<220?[1,0.15,0.1,1]:[1,1,1,1];
+      const s=[cx,cy,sg>0?mx[2]+6:mn[2]-6],Ln=len(s),e=[s[0],s[1],s[2]+sg*Ln],hl=Ln*0.39,hw=Ln*0.28;
+      lin(s,e,col);lin(e,[e[0]+hw,e[1],e[2]-sg*hl],col);lin(e,[e[0]-hw,e[1],e[2]-sg*hl],col);}};
   MOD.ents.forEach((m,i)=>{
-    if(!modDrawn(i))return;
+    if(!modDrawn(i)){
+      // one the map draws itself (a brush entity's brushes, where the row puts them): its arrows only
+      if(MOD.trim&&modIsSel(i)&&m&&!m.hid&&!m.del){const o=modOrigin(m),b=modBox(m);
+        trimArrows([o[0]+b.mins[0],o[1]+b.mins[1],o[2]+b.mins[2]],[o[0]+b.maxs[0],o[1]+b.maxs[1],o[2]+b.maxs[2]]);}
+      return;}
     const o=modOrigin(m),b=modBox(m),X=modLook(m),c=X.mcol||X.col,sel=modIsSel(i),busy=modBusy(i);
     const mn=[o[0]+b.mins[0],o[1]+b.mins[1],o[2]+b.mins[2]],mx=[o[0]+b.maxs[0],o[1]+b.maxs[1],o[2]+b.maxs[2]];
     const hasM=modHasModel(m);
@@ -10681,17 +10699,7 @@ function drawModify(vp){
     if(hasM){const kv2=modKvl(m),ax=anglesAxis(entAngles(kv2)),w=[1,1,1,1];
       for(const k of[0,1,2]){const d=ax[k];lin([o[0]-d[0]*10,o[1]-d[1]*10,o[2]-d[2]*10],[o[0]+d[0]*10,o[1]+d[1]*10,o[2]+d[2]*10],w);}}
     // (its facing arrow and target links are drawn with the map's: rebuildLines)
-    if(sel&&MOD.trim){
-      // the trim arrows: white, red while it moves that way
-      const A=modAxes(),r=Math.max(b.maxs[0]-b.mins[0],b.maxs[1]-b.mins[1])/2+10,cz=(mn[2]+mx[2])/2;
-      const dirs={f:A.f,b:A.f.map(v=>-v),r:A.r,l:A.r.map(v=>-v)};
-      for(const k in dirs){const d=dirs[k],col=now-(MOD.flash[k]||0)<220?[1,0.15,0.1,1]:[1,1,1,1];
-        const s=[o[0]+d[0]*r,o[1]+d[1]*r,cz],e=[s[0]+d[0]*18,s[1]+d[1]*18,cz],sd=[-d[1],d[0],0];
-        lin(s,e,col);lin(e,[e[0]-d[0]*7+sd[0]*5,e[1]-d[1]*7+sd[1]*5,cz],col);lin(e,[e[0]-d[0]*7-sd[0]*5,e[1]-d[1]*7-sd[1]*5,cz],col);}
-      for(const[k,sg]of[['u',1],['d',-1]]){const col=now-(MOD.flash[k]||0)<220?[1,0.15,0.1,1]:[1,1,1,1];
-        const s=[o[0],o[1],sg>0?mx[2]+6:mn[2]-6],e=[s[0],s[1],s[2]+sg*18];
-        lin(s,e,col);lin(e,[e[0]+5,e[1],e[2]-sg*7],col);lin(e,[e[0]-5,e[1],e[2]-sg*7],col);}
-    }
+    if(sel&&MOD.trim)trimArrows(mn,mx);
   });
   // the one being placed, under the cursor
   if(MOD.placing&&MOD.ghost){const G0=MOD.ghost,P0=MOD.placing,lead=P0.move!=null?MOD.ents[P0.move]:null;
@@ -10726,8 +10734,20 @@ function drawModify(vp){
     if(T.length){gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(T),gl.STREAM_DRAW);gl.drawArrays(gl.TRIANGLES,0,T.length/10);}
     if(L.length){gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(L),gl.STREAM_DRAW);gl.drawArrays(gl.LINES,0,L.length/10);}
     gl.bindVertexArray(null);}
+  if(LA.length)drawTrimArrows(vp,LA);
   gl.disable(gl.BLEND);gl.depthMask(true);
 }
+// trim arrows (lines as drawModify's): faint where walls are in front of them, so the ones
+// behind a door frame or under a floor can still be seen, then full where nothing is
+function drawTrimArrows(vp,LA){
+  if(!PMODT)PMODT=compile(VS_GVL,FS_LINE);
+  if(!B.trimBuf){B.trimBuf=gl.createBuffer();B.vTrim=gvLineVAO(B.trimBuf,true);gl.bindVertexArray(null);}
+  const faint=new Float32Array(LA);for(let i=9;i<faint.length;i+=10)faint[i]*=0.35;
+  gl.enable(gl.BLEND);gl.blendFuncSeparate(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA,gl.ONE,gl.ONE_MINUS_SRC_ALPHA);gl.depthMask(false);
+  gvUniforms(PMODT,vp,0.0015);gl.bindVertexArray(B.vTrim);gl.bindBuffer(gl.ARRAY_BUFFER,B.trimBuf);
+  gl.disable(gl.DEPTH_TEST);gl.bufferData(gl.ARRAY_BUFFER,faint,gl.STREAM_DRAW);gl.drawArrays(gl.LINES,0,LA.length/10);
+  gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(LA),gl.STREAM_DRAW);gl.drawArrays(gl.LINES,0,LA.length/10);
+  gl.bindVertexArray(null);}
 // a click in the 3D view on a new entity (nearer than what the map has under the cursor)
 function modPick(x,y){
   if(!MOD.ents.length)return -1;

@@ -3304,3 +3304,12 @@ look of the walk and the doors should be confirmed by eye in the launcher.
   W / S, A / D (or the arrows), Space / C, by Modify's trim step, and with Resize that
   Shift+key pulls the side in (Shift+A shortens a wire's left end, Shift+D its right).
 - The Trim note puts each key and each rule on its own line.
+- Modify's Trim origin draws its arrows for a brush entity too (a `script_object` door such
+  as m3l1b's `$door_bunker_exit`, with Edit map on): the map draws its brushes, so the row
+  had been left out of drawModify, arrows and all. The arrows now come out of the box's
+  middle (a brush entity's origin can be at its hinge), grow with distance, and are drawn
+  faint where a wall or floor is in front of them (`drawTrimArrows`; the editor's Trim
+  arrows too), so ones inside a door frame or under the floor still show.
+- Fixed: trimming or moving a brush entity in Modify that isn't a door threw in
+  rebuildLines (`doorCorners` of nothing: the row's offset gave it a transform but no box);
+  the editor's `movObj` now gives such an entity its box.
