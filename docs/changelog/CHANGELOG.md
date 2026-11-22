@@ -3303,3 +3303,4 @@ look of the walk and the doors should be confirmed by eye in the launcher.
 - While ✥ / ⇕ Trim is on, a grey note above the tool's help (`edTrimHelp`) lists its keys:
   W / S, A / D (or the arrows), Space / C, by Modify's trim step, and with Resize that
   Shift+key pulls the side in (Shift+A shortens a wire's left end, Shift+D its right).
+- The Trim note puts each key and each rule on its own line.

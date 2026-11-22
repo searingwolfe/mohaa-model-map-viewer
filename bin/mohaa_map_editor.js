@@ -1543,15 +1543,19 @@ function edToolHtml(){
   if(ED.tool==='clip'&&ED.clip&&ED.clip.pts.length>=2)
     h+=edRow(edBtn('bEdCut','Clip','Cut the brush and keep the bright side (Enter)')+edBtn('bEdSplit','Split in two','Cut it and keep both halves as two brushes (Shift+Enter)')+
       edBtn('bEdFlipC','Other side','Keep the other side (Tab)')+edBtn('bEdClrC','Start over','Clear the points (Esc)'));
-  if(ED.trim&&(ED.tool==='move'||ED.tool==='resize'))h+='<div class="co" id="edTrimHelp" style="margin-top:4px;line-height:1.35">'+esc(edTrimHelp())+'</div>';
+  if(ED.trim&&(ED.tool==='move'||ED.tool==='resize'))h+='<div class="co" id="edTrimHelp" style="margin-top:4px;line-height:1.35;white-space:pre-line">'+esc(edTrimHelp())+'</div>';
   h+='<div class="co" id="edToolHelp" style="margin-top:4px;line-height:1.35">'+esc(edHelp())+'</div>';
   return h;}
-// what the keys do while Trim is on (W A S D go along the world axes nearest the way you look)
+// what the keys do while Trim is on (W A S D go along the world axes nearest the way you look),
+// a line each
 function edTrimHelp(){
-  const k='W / S forward and back, A / D left and right (or the arrow keys), Space / C up and down';
-  if(ED.tool==='move')return'Trim on: '+k+' move the selection by Modify\'s trim step. The camera stays still; Esc or T stops (one Undo for it all).';
-  return'Trim on: '+k+' push the side facing that way out by Modify\'s trim step; hold Shift to pull it in instead (Shift+A shortens the left end, Shift+D the right). '+
-    'A pipe or wire: the keys that point along it make that end longer or shorter. The camera stays still; Esc or T stops (one Undo for it all).';}
+  const L=['Trim on:','W / S: forward and back','A / D: left and right (or the arrow keys)','Space / C: up and down'];
+  if(ED.tool==='move')L.push('Each key moves the selection that way by Modify\'s trim step.');
+  else L.push('Each key pushes the side facing that way out by Modify\'s trim step.',
+    'Hold Shift to pull it in instead (Shift+A shortens the left end, Shift+D the right).',
+    'A pipe or wire: the keys that point along it make that end longer or shorter.');
+  L.push('The camera stays still; Esc or T stops (one Undo for it all).');
+  return L.join('\n');}
 function edHelp(){
   const t=ED.tool,g=snapG();
   if(t==='select')return'Pick a tool above to build in the view. Grid '+g+'.';
