@@ -411,6 +411,7 @@ window.setEditorMode=function(on){window.__EDITON__=!!on;
          <button class="sm" id="bLadPause" disabled title="Freeze him exactly where he is, mid-animation; press again to carry on">Pause</button>
          <button class="sm" id="bLadFly" disabled title="Fly the camera to him, wherever he is now">Fly to</button>
          <button class="sm" id="bLadFollow" disabled title="The game's third-person camera behind his head (cg_cameradist 120, cg_cameraheight 18). Moving the camera by hand turns it off">Follow</button>
+         <button class="sm" id="bLadHideSel" title="Hide the selection's red highlight on the ladder (its tint, outline and box) so the climb is easier to see; the ladder stays selected. Press again to show it. It turns off when the ladder is deselected">Hide select</button>
        </div>
        <div class="row">
          <button class="sm" id="bLadSimUp" disabled title="From where he was spawned: he walks forward toward the ladder looking 45 degrees up (the game needs more than 35), gets on (ladder_up_geton), climbs a hand at a time (ladder_up_righthand, ladder_up_lefthand...) until he can get off the top (ladder_up_getoff), and lands there. Not from the top">&#9654; Simulate Up</button>
@@ -4701,14 +4702,14 @@ function drawSelection(vp){
   if(!selTriCount&&!markSelCount&&!MODELS.some(R=>R.nsel)&&!hovEdgeCount&&!hovBoxVerts)return;
   gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.depthMask(false);
   gl.enable(gl.POLYGON_OFFSET_FILL);gl.polygonOffset(-1,-2);gl.disable(gl.CULL_FACE);
-  const sc=hexRGB(TH.sel);
-  if(selTriCount){setCommon(PW,vp,2);gl.uniform4f(PW.u.uTint,sc[0],sc[1],sc[2],0.38);gl.bindVertexArray(B.vSel);
+  const sc=hexRGB(TH.sel),hs=selHidden();
+  if(selTriCount&&!hs){setCommon(PW,vp,2);gl.uniform4f(PW.u.uTint,sc[0],sc[1],sc[2],0.38);gl.bindVertexArray(B.vSel);
     gl.drawElements(gl.TRIANGLES,selTriCount,gl.UNSIGNED_INT,0);}
-  if(markSelCount){setCommon(PC,vp,2);gl.uniform4f(PC.u.uTint,sc[0],sc[1],sc[2],0.5);gl.bindVertexArray(B.vMarkSel);
+  if(markSelCount&&!hs){setCommon(PC,vp,2);gl.uniform4f(PC.u.uTint,sc[0],sc[1],sc[2],0.5);gl.bindVertexArray(B.vMarkSel);
     gl.drawElements(gl.TRIANGLES,markSelCount,gl.UNSIGNED_INT,0);}
   // a model's tint follows what is drawn of it: its alpha-tested leaves, its sprite version
   setCommon(PM,vp,2);dvUniforms();gl.uniform4f(PM.u.uTint,sc[0],sc[1],sc[2],0.45);gl.uniform1i(PM.u.uLit,0);gl.uniform3fv(PM.u.uFwd,camAxes().f);
-  for(const R of MODELS){if(!R.nsel)continue;gl.bindVertexArray(R.vaoSel);
+  for(const R of MODELS){if(!R.nsel||hs)continue;gl.bindVertexArray(R.vaoSel);
     for(const s of R.surfs){if(!surfOn(R,s))continue;gl.uniform1i(PM.u.uAuto2,s.lod?1:0);bindMat(PM,s.ti,2);
       gl.drawElementsInstanced(gl.TRIANGLES,s.count,gl.UNSIGNED_INT,s.first*4,R.nsel);}}
   gl.uniform1i(PM.u.uAuto2,0);gl.disable(gl.CULL_FACE);
@@ -4723,7 +4724,7 @@ function drawOutlines(vp){
   gl.enable(gl.BLEND);gl.blendFunc(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA);gl.depthMask(false);gl.enable(gl.DEPTH_TEST);
   const sc=hexRGB(TH.sel);
   gl.useProgram(PL);gl.uniformMatrix4fv(PL.u.uVP,false,vp);
-  if(selEdgeCount){
+  if(selEdgeCount&&!selHidden()){
     gl.bindVertexArray(B.vSelE);gl.disableVertexAttribArray(7);gl.vertexAttrib4f(7,sc[0],sc[1],sc[2],1);
     if(view.xray){gl.depthFunc(gl.GREATER);gl.uniform1f(PL.u.uAlpha,0.35);gl.drawElements(gl.LINES,selEdgeCount,gl.UNSIGNED_INT,0);}
     gl.depthFunc(gl.LEQUAL);gl.uniform1f(PL.u.uAlpha,1);gl.drawElements(gl.LINES,selEdgeCount,gl.UNSIGNED_INT,0);
@@ -4754,7 +4755,7 @@ let LINKS=[], ARROWS=[];
 function rebuildLines(){
   const H=[],L=[];
   const sc=hexRGB(TH.sel);
-  const selE=selectedEnts();
+  const selE=selHidden()?new Set():selectedEnts();   // Hide select: drawn as if not selected
   for(const X of ENTS){
     if(X.ei===0||!X.box)continue;
     const sel=selE.has(X.ei);
@@ -4789,15 +4790,19 @@ function rebuildLines(){
       const h1=[tip[0]-f[0]*t-u[0]*t,tip[1]-f[1]*t-u[1]*t,tip[2]-f[2]*t-u[2]*t], h2=[h1[0]+u[0]*2*t,h1[1]+u[1]*2*t,h1[2]+u[2]*2*t];
       ARROWS.push([c,tip,h1,h2,selE.has(X.ei)]);
     }
-    // a ladder: the way a climber looks at it, from the middle of its brushes
-    for(const X of ENTS){if(X.marker||!X.hasGeo||!X.box||!entShown(X.ei)||MAP.ents[X.ei].cls!=='func_ladder')continue;
+    // a selected ladder: the way a climber faces it, at its foot (2 units over the bottom of
+    // its brushes), from where he stands in front of it to its middle. Not drawn while
+    // SIMULATE's Hide select is on
+    const hsel=selHidden();
+    for(const X of ENTS){if(hsel||X.marker||!X.hasGeo||!X.box||!entShown(X.ei)||MAP.ents[X.ei].cls!=='func_ladder')continue;
+      if(!selE.has(X.ei)&&![...primsOfEnt(X.ei)].some(pi=>SEL.has('p'+pi)))continue;
       const y=ladderYaw(X.ei);if(y==null)continue;
-      const ax=anglesAxis([0,y,0]),f=ax[0],u=ax[2],o=X.box.origin,b=X.box;
-      const c=[o[0]+(b.mins[0]+b.maxs[0])/2,o[1]+(b.mins[1]+b.maxs[1])/2,o[2]+(b.mins[2]+b.maxs[2])/2];
+      const ax=anglesAxis([0,y,0]),f=ax[0],u=ax[1],o=X.box.origin,b=X.box;     // its head lies flat (u: left)
       const hw=Math.max(8,Math.min(32,Math.max(b.maxs[0]-b.mins[0],b.maxs[1]-b.mins[1])/2)),len=hw*2.5,t=hw*0.5;
-      const tip=[c[0]+f[0]*len,c[1]+f[1]*len,c[2]+f[2]*len];
+      const tip=[o[0]+(b.mins[0]+b.maxs[0])/2,o[1]+(b.mins[1]+b.maxs[1])/2,o[2]+b.mins[2]+2];
+      const c=[tip[0]-f[0]*len,tip[1]-f[1]*len,tip[2]];
       const h1=[tip[0]-f[0]*t-u[0]*t,tip[1]-f[1]*t-u[1]*t,tip[2]-f[2]*t-u[2]*t],h2=[h1[0]+u[0]*2*t,h1[1]+u[1]*2*t,h1[2]+u[2]*2*t];
-      ARROWS.push([c,tip,h1,h2,selE.has(X.ei)||[...primsOfEnt(X.ei)].some(pi=>SEL.has('p'+pi))]);}
+      ARROWS.push([c,tip,h1,h2,true]);}
     MOD.ents.forEach((m,i)=>{if(!modDrawn(i)||modHasModel(m))return;const kvl=modKvl(m);if(kvl.angle==null&&kvl.angles==null)return;   // a modelled entity gets axes at its origin instead (drawModify)
       const ax=anglesAxis(entAngles(kvl)),f=ax[0],u=ax[2],o=modOrigin(m),b=modBox(m);
       const c=[o[0]+(b.mins[0]+b.maxs[0])/2,o[1]+(b.mins[1]+b.maxs[1])/2,o[2]+(b.mins[2]+b.maxs[2])/2];
@@ -7998,6 +8003,14 @@ function rayTris(o,d,i0,n){
 // ============================================================================
 function isWorldlike(ei){return !!WORLDLIKE[MAP.ents[ei].cls];}
 function keyOfHit(h){return(h.ent>0&&!isWorldlike(h.ent))?'e'+h.ent:(h.prim>=0?'p'+h.prim:(h.ent>=0?'e'+h.ent:null));}
+// SIMULATE's Hide select: the selection's highlight is not drawn while the one thing it was
+// turned on for (the ladder: LAD.hideSel, its SEL key) is all that is selected; any other
+// selection turns it off
+function selHidden(){
+  if(typeof LAD==='undefined'||!LAD.hideSel)return false;
+  if(SEL.size===1&&SEL.has(LAD.hideSel))return true;
+  LAD.hideSel=null;return false;
+}
 function selectedEnts(){const s=new Set();for(const k of SEL)if(k[0]==='e')s.add(+k.slice(1));return s;}
 function selectedPrims(){const s=[];for(const k of SEL)if(k[0]==='p')s.push(+k.slice(1));return s;}
 let ENTPRIMS=null;
@@ -12462,7 +12475,7 @@ function actInit(){
 //  - ladder_getoff_top calls ensureoverladder at its frame 31 and ensureforwardoffladder at
 //    its last; then FINISHED_GET_OFF_LADDER lets go (movetype legs): he falls to the floor
 // When none of those can happen he hangs there for ever in the game: the climb has failed.
-const LAD={want:'',where:'',spawn:null,wantSim:'',res:null,warn:''};
+const LAD={want:'',where:'',spawn:null,wantSim:'',res:null,warn:'',hideSel:null};
 const LAD_DT=0.025,LAD_MINS=[-15,-15,0],LAD_MAXS=[15,15,94],LAD_EYE=82,LAD_RUN=250,LAD_MAX_T=90;
 const LAD_CLIP={geton_bottom:'ladder_up_geton',geton_top:'ladder_down_geton',up_left:'ladder_up_lefthand',up_right:'ladder_up_righthand',
   down_left:'ladder_down_lefthand',down_right:'ladder_down_righthand',getoff_top:'ladder_up_getoff',getoff_bottom:'ladder_down_getoff',run:'unarmed_run_forward'};
@@ -12770,6 +12783,7 @@ function ladPanel(f){
   const sw=LAD.spawn&&cc?LAD.spawn.where:'';
   $('bLadSimUp').disabled=!cc||busy||sw==='up';$('bLadSimDown').disabled=!cc||busy||sw==='down';
   $('bLadFly').disabled=!cc;$('bLadFollow').disabled=!cc;$('bLadFollow').classList.toggle('on',!!ACT.follow&&!!cc);
+  $('bLadHideSel').classList.toggle('on',selHidden());
   $('bLadPause').disabled=!cc;$('bLadPause').textContent=cc&&cc.pauseAt!=null?'Resume':'Pause';$('bLadPause').classList.toggle('on',!!cc&&cc.pauseAt!=null);
   let s='';
   if(!host)s='Actors need the Map Viewer: it builds them from the paks';
@@ -12798,6 +12812,8 @@ function ladInit(){
   $('bLadPause').onclick=()=>$('bActPause').onclick();
   $('bLadFly').onclick=()=>$('bActFly').onclick();
   $('bLadFollow').onclick=()=>$('bActFollow').onclick();
+  $('bLadHideSel').onclick=()=>{LAD.hideSel=selHidden()?null:SEL.size===1?[...SEL][0]:null;
+    lineDirty=true;$('bLadHideSel').blur();simPanel();requestDraw();};
   $('ladHum').onchange=()=>{const v=$('ladHum').value;ACT.hum=v;LS.set(ACT_LS_H,v);$('ladHum').blur();if(LAD.spawn&&ACT.cur)ladSpawn(LAD.spawn.where);};
 }
 // ---- drawing: the path's curve (while the section shows) and the box ----------------------

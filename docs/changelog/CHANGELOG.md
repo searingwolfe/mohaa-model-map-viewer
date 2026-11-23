@@ -3387,3 +3387,9 @@ look of the walk and the doors should be confirmed by eye in the launcher.
   TIKI_Anim_Time: (frames - 1) x frame time, because the ladder .skc headers don't set
   TAF_DELTADRIVEN (ladder_down_getoff 16 frames at 37.5 fps, 0.4 s; ladder_up_getoff 51
   frames at 60 fps, 0.83 s). End positions are unchanged.
+- SIMULATE's ladder row has **Hide select** next to Follow: while on (green) the selected
+  ladder's highlight (its tint, outline and box lines, `selHidden`) isn't drawn, so its red
+  doesn't cover the climber; the ladder stays selected. Any other selection turns it off.
+- A ladder's facing arrow shows only while the ladder is selected, at its foot (2 units over
+  the bottom of its brushes) instead of halfway up, pointing from where a climber stands to
+  the ladder; Hide select hides it with the rest of the highlight.

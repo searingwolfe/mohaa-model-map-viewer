@@ -375,6 +375,9 @@ click away: its targetname, origin, `setsize`, targets and ready-to-paste script
   standing idle the same way. Each starts again from the last spawn. When he can't finish (the ladder too short or too long, too
   close to a wall, something in the way, its origin far from it) the climb stops and the
   yellow note says why, with what to change.
+  **Pause**, **Fly to** and **Follow** work as for path nodes, and **Hide select** (green
+  while on) hides the ladder's red selection highlight and its facing arrow so the climb
+  is easier to watch; the ladder stays selected, and deselecting it turns Hide select off.
 * **Modify** (above Find): add entities, most of all AI path nodes: Add, then click on the
   map where it goes. A new node is drawn
   see-through until saved, its parameters edit as entity-lump text (applied as you type),
@@ -649,8 +652,9 @@ way here.
     `message`...), a `func_ladder`'s is its `angle`.
   * **func_ladder**: its `angle` is the way a climber looks at it (FuncLadder's
     SetLadderFacing). More info has a Ladder part (which way it faces, its 52-unit reach,
-    that its brushes become ladder contents, never drawn), and with Arrows on it gets a
-    facing arrow from the middle of its brushes, which follows a new `angle` at once.
+    that its brushes become ladder contents, never drawn), and with Arrows on, while it
+    is selected, a facing arrow at its foot shows the way a climber faces it (from where he
+    stands to the ladder); the arrow follows a new `angle` at once.
     Giving brushes a class with Classname says what that class still needs (a rotating
     door's origin brush, a ladder's or sliding door's `angle`...).
   * **▲ Terrain**: click a terrain triangle to cut it away (or click a cut one to fill it
