@@ -570,6 +570,48 @@ class Compile(unittest.TestCase):
             self.assertTrue(res["leak"] and all(len(p) == 3 for p in res["leak"]))
             self.assertTrue(os.path.isfile(os.path.join(d, "leaky.lin")))
 
+    def test_side_files(self):
+        """What Q3map leaves beside the map: a sealed room gets its .prt and .vis; the same
+        map leaking gets a .lin and loses the .prt; sealed again, the stale .lin goes. The
+        .vis is the .bsp's visibility lump alone, with Com_BlockChecksum in its header."""
+        import struct
+        room = E.starter_map("side")
+        i = room.index("{", room.index("{") + 1); j = room.index("}", i) + 1
+        with tempfile.TemporaryDirectory() as d:
+            src, res, work = self._compile(d, room, "side")
+            self.assertTrue(res["ok"], res.get("why"))
+            have = lambda ext: os.path.isfile(os.path.join(d, "side" + ext))
+            self.assertTrue(have(".prt")); self.assertTrue(have(".vis")); self.assertFalse(have(".lin"))
+            with open(res["bsp"], "rb") as f: bsp = f.read()
+            with open(os.path.join(d, "side.vis"), "rb") as f: vis = f.read()
+            self.assertEqual(vis[:4], b"2015")
+            self.assertEqual(struct.unpack_from("<i", vis, 4)[0], 19)
+            head = bytearray(vis[:236]); ck = struct.unpack_from("<I", head, 8)[0]; struct.pack_into("<I", head, 8, 0)
+            self.assertEqual(ck, self.MCO.block_checksum(bytes(head)))
+            lumps = [struct.unpack_from("<ii", vis, 12 + 8 * n) for n in range(28)]
+            self.assertEqual([n for n in range(28) if lumps[n] != (0, 0)], [15])
+            bo, bl = struct.unpack_from("<ii", bsp, 12 + 15 * 8)
+            vo, vl = lumps[15]
+            self.assertEqual(vis[vo:vo + vl], bsp[bo:bo + bl])
+            # the same map, leaking: its .lin, no .prt
+            with open(src, "w", newline="\n") as f: f.write(room[:i] + room[j:])
+            res = self.MCO.compile_map(src, self._Vfs({}), work, ("bsp",), log=lambda line: None)
+            self.assertTrue(res["ok"] and res["leak"])
+            self.assertTrue(have(".lin")); self.assertFalse(have(".prt"))
+            # sealed again: the old trail goes
+            with open(src, "w", newline="\n") as f: f.write(room)
+            res = self.MCO.compile_map(src, self._Vfs({}), work, ("bsp",), log=lambda line: None)
+            self.assertTrue(res["ok"]); self.assertIsNone(res["leak"])
+            self.assertFalse(have(".lin")); self.assertTrue(have(".prt"))
+
+    def test_md4(self):
+        """RFC 1320's test strings."""
+        md4 = lambda b: self.MCO._md4(b).hex()
+        self.assertEqual(md4(b""), "31d6cfe0d16ae931b73c59d7e0c089c0")
+        self.assertEqual(md4(b"abc"), "a448017aaf21d8525fc10ae87aa6729d")
+        self.assertEqual(md4(b"message digest"), "d9130a8164549fe818874806e1c7014b")
+        self.assertEqual(md4(b"1234567890" * 8), "e33b4ddc9c38f2199c3e7b164fcc0536")
+
     def test_bad_name(self):
         with tempfile.TemporaryDirectory() as d:
             with self.assertRaises(ValueError):

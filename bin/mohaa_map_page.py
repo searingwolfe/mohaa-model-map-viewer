@@ -11619,6 +11619,30 @@ function actWorld(sk,over){
   for(let i=0;i<NB;i++)res(i);
   return{R:R,T:T};
 }
+// The player's look pitch on his body, as PmoveAdjustAngleSettings (bg_pmove.cpp) sets the bone
+// controllers from the view pitch vp (degrees, + down): on the ground the head (Bip01 Head),
+// torso (Bip01 Spine2), arms (Bip01 Spine1) and pelvis (Bip01 Pelvis) share it; on a ladder
+// (PM_CLIMBWALL, cw) only the head turns, by half (the view held to 73 down, 80 up). The
+// skeletor turns each in the model's own axes about the bone (skelBone::GetDirtyTransform's
+// RotateBy), the bones under it going along, pelvis first.
+function actCtrlAngles(vp,cw){
+  if(!vp)return null;
+  if(cw){const v=Math.max(-80,Math.min(73,vp));return{head:v*0.5};}
+  const t2=0.9*vp*0.7,f=t2<=0?-0.1:0.3,fd=(1-f)*t2;
+  return{pelvis:f*t2,arms:fd*(vp<=0?0.4:0.3),torso:fd*(vp<=0?0.6:0.7),head:vp-t2};
+}
+function actCtrl(sk,w,vp,cw){
+  const A=actCtrlAngles(vp,cw);if(!A)return;
+  if(!sk.ctl){const ix=n=>sk.bn.indexOf(n),kids=sk.bn.map(()=>[]);
+    sk.bp.forEach((p,i)=>{if(p>=0)kids[p].push(i);});
+    const sub=i=>{const o=[],st=[i];while(st.length){const k=st.pop();o.push(k);for(const c of kids[k])st.push(c);}return o;};
+    sk.ctl=[['pelvis','bip01 pelvis'],['arms','bip01 spine1'],['torso','bip01 spine2'],['head','bip01 head']]
+      .map(([k,n])=>{const i=ix(n);return i<0?null:{k:k,i:i,sub:sub(i)};}).filter(Boolean);}
+  for(const C of sk.ctl){const a=A[C.k];if(!a)continue;
+    const rd=a*Math.PI/180,c=Math.cos(rd),s=Math.sin(rd),M=[c,0,s,0,1,0,-s,0,c],o=w.T[C.i].slice();
+    for(const d of C.sub){w.R[d]=actMmul(M,w.R[d]);
+      if(d!==C.i){const v=actMvec(M,[w.T[d][0]-o[0],w.T[d][1]-o[1],w.T[d][2]-o[2]]);w.T[d]=[o[0]+v[0],o[1]+v[1],o[2]+v[2]];}}}
+}
 // every vertex of the human for a pose, in the mesh's own space (its load_scale applied:
 // ModelBuilder writes the model that way), into b.out
 function actSkin(b,w){
@@ -12255,7 +12279,7 @@ function actPose(now){
   const c=ACT.cur;if(!c||!gl)return false;
   const b=c.b;if(b.state!=='ready'||!b.H)return false;
   if(c.pauseAt!=null)now=c.pauseAt;           // Pause: the clock stands still
-  let over=null,running=false,hand=0,mv=[0,0,0],pos=c.o,yaw=c.yaw;
+  let over=null,running=false,hand=0,mv=[0,0,0],pos=c.o,yaw=c.yaw,vp=c.vp||0,cw=false;
   if(c.go){
     const g=c.go,S=g.sim,t=Math.max(0,(now-g.t0)/1000),f=Math.min(S.n-1,t/S.DT),i=Math.floor(f),j=Math.min(S.n-1,i+1),u=f-i;
     g.tl=now;
@@ -12279,13 +12303,15 @@ function actPose(now){
     const poseOf=(c,t,it)=>{const r=c&&la?la.recs[c]:null;return r?actFrameAt(r,t):b.meta.idle?actFrameAt(b.meta.idle,it||0):null;};
     over=poseOf(A.c,same?A.t+(Bf.t-A.t)*u:A.t,same?(A.it||0)+((Bf.it||0)-(A.it||0))*u:A.it);
     if(A.b&&over){const w=same?A.w+((Bf.b?Bf.w:1)-A.w)*u:A.w,pf=poseOf(A.b.c,A.b.t,A.b.it);if(pf)over=actLerp(pf,over,w);}
+    vp=(A.vp||0)+(A.cw===Bf.cw?((Bf.vp||0)-(A.vp||0))*u:0);cw=!!A.cw;     // his look pitch (actCtrl)
     running=f<n-1;
-    if(!running&&!L.done){L.done=true;c.o=pos.slice();c.yaw=yaw;if(!A.c)c.lad=null;
+    if(!running&&!L.done){L.done=true;c.o=pos.slice();c.yaw=yaw;c.vp=A.vp||0;if(!A.c)c.lad=null;
       c.t0=now-(A.c?0:(A.it||0)*1000);simPanel();}      // the idle carries on from where it is
   }else if(b.idleTL&&b.meta.idle){
     over=actFrameAt(b.meta.idle,((now-c.t0)/1000)%Math.max(0.05,(b.meta.idle.frames.length-1)*(b.meta.idle.frameTime||0.05)));
   }
   const w=actWorld(b.sk,over);
+  if(vp)actCtrl(b.sk,w,vp,cw);
   actSkin(b,w);
   gl.bindBuffer(gl.ARRAY_BUFFER,b.H.vbP);gl.bufferSubData(gl.ARRAY_BUFFER,0,b.out);
   const ax=anglesAxis([0,yaw,0]),Rn=[ax[0][0],ax[1][0],ax[2][0], ax[0][1],ax[1][1],ax[2][1], ax[0][2],ax[1][2],ax[2][2]];
@@ -12644,10 +12670,13 @@ function ladSim(L,start,dir,recs,sc,P){
   // a frame: p, y, c (clip or null: standing, the idle at it), t; b/w: the pose it is
   // crossblending from and how far in (0..1) when a clip changed under 0.2 s ago
   let from=null,bt=0,it=0,late=0;
+  // his look pitch on each frame (vp, + down) and whether he is on the ladder (cw: PM_CLIMBWALL,
+  // only his head shows it); off the ladder after getting off he looks level again
+  let vpNow=pitch,cwNow=!!start.onLadder;
   const push=(c,t)=>{const P=F[F.length-1];
     if(P&&P.c!==c){from={c:P.c,t:P.t,it:P.it||0};bt=0;it=0;}
     else if(P){bt+=LAD_DT;if(!c)it+=LAD_DT;}
-    const f={p:pos.slice(),y:yaw,c:c,t:t};if(!c)f.it=it;
+    const f={p:pos.slice(),y:yaw,c:c,t:t,vp:vpNow,cw:cwNow};if(!c)f.it=it;
     if(from&&bt<LAD_BLEND-1e-9){f.b=from;f.w=bt/LAD_BLEND;}
     F.push(f);};
   const nextOf={geton:'idle_left',up_right:'idle_right',up_left:'idle_left',down_left:'idle_right',down_right:'idle_left',getoff_top:'fall',getoff_bottom:'fall'};
@@ -12677,7 +12706,7 @@ function ladSim(L,start,dir,recs,sc,P){
       const r=mm.ground?ladAt(L,pos,yaw,pitch):'he isn\'t on the floor';
       if(!r){
         // attachtoladder, then GET_ON_LADDER
-        pos=ladPosition(L,pos);yaw=L.yaw;
+        pos=ladPosition(L,pos);yaw=L.yaw;cwNow=true;
         cur='geton';clip=pos[2]+94>L.mx[2]?LAD_CLIP.geton_top:LAD_CLIP.geton_bottom;ct=0;state='clip';
         events.push({t:n*LAD_DT,what:'gets on ('+clip+')'});
         push(clip,0);continue;}
@@ -12704,7 +12733,7 @@ function ladSim(L,start,dir,recs,sc,P){
       late=0;
       {
         hold={c:clip,t:dur};state=nextOf[cur];
-        if(state==='fall'){mm.o=pos.slice();mm.vel=[0,0,0];mm.speed=0;mm.dd=[0,0,0];mm.ground=false;mm.walking=false;fall={z0:pos[2],n:0};
+        if(state==='fall'){cwNow=false;vpNow=0;mm.o=pos.slice();mm.vel=[0,0,0];mm.speed=0;mm.dd=[0,0,0];mm.ground=false;mm.walking=false;fall={z0:pos[2],n:0};
           events.push({t:n*LAD_DT,what:'lets go of the ladder'});}}
       continue;}
     if(state==='idle_left'||state==='idle_right'){
@@ -12741,6 +12770,22 @@ function ladSim(L,start,dir,recs,sc,P){
 }
 // ---- the buttons ----
 function ladSc(b){return b&&b.H&&b.H.M&&b.H.M.sc||1;}
+// the pitch box on a man standing at a spawn: looking down at the top, up at the bottom, by
+// LAD.pitch (+ down); none halfway up (he holds the ladder). After a climb that failed before
+// he got on, the way that climb looked
+function ladLivePitch(){
+  const R=LAD.res&&LAD.res.R,w=R?(LAD.res.dir==='up'?'down':'up'):LAD.spawn&&LAD.spawn.where;
+  return w==='up'?LAD.pitch:w==='down'?-LAD.pitch:0;
+}
+// a new pitch shows at once on a man standing still off the ladder who hasn't climbed it
+// (a spawn, or a climb that failed on the ground); not while a climb plays, nor on the ladder
+// or after getting off (he looks level then)
+function ladPitchShow(){
+  const c=ACT.cur,f=ladFocus();if(!c||!f||c.key!==f.key||!LAD.spawn)return;
+  if(c.lad)return;
+  const R=LAD.res&&LAD.res.R;if(R&&(R.ok||R.onLadder||R.F.some(x=>x.cw)))return;
+  c.vp=ladLivePitch();actPose(performance.now());requestDraw();
+}
 function ladSpawn(where){
   const f=ladFocus();if(!f){flash('Select a func_ladder first');return;}
   if(!ACT.lists){flash('The human list isn\'t here yet');return;}
@@ -12766,6 +12811,7 @@ function ladAnims(b){
   const recs=b.anims.get('ladder').recs,sp=ladSpawnSpot(L,LAD.where,recs,ladSc(b));
   LAD.spawn={where:LAD.where,p:sp.p,yaw:sp.yaw,onLadder:sp.onLadder};LAD.want='';
   ACT.cur={b:b,key:f.key,o:sp.p.slice(),yaw:sp.yaw,camYaw:0,t0:performance.now(),play:null,wantRole:'',lastIdle:0,go:null,plan:null,moved:false,wantGo:false,lad:null};
+  ACT.cur.vp=ladLivePitch();
   if(sp.onLadder)ACT.cur.lad={F:[{p:sp.p.slice(),y:sp.yaw,c:LAD_CLIP.up_right,t:0}],DT:LAD_DT,t0:performance.now(),done:true};
   actPose(performance.now());
   const w=LAD.wantSim;LAD.wantSim='';
@@ -12793,7 +12839,7 @@ function ladAdvice(R,L,dir){
   if(/higher|get off the top|98/.test(R.why))tips.push('Make the ladder reach the floor at the top (its top at the floor\'s height), with 98 units of room over the last rung');
   if(/floor isn't within|lower/.test(R.why))tips.push('Extend the ladder down to the floor (he gets off once the floor is within 40 units under him)');
   if(/4 seconds|walked|stopped walking/.test(R.why))tips.push('Check that the ladder is in front of him where he gets on, and that he can walk up to it');
-  if(/128 units along his view/.test(R.why))tips.push('Try another pitch (now '+fnum(R.pitch)+'): a player has to look at the ladder itself, and steeper or shallower can be what reaches it');
+  if(/128 units along his view/.test(R.why))tips.push('Try a higher pitch (now '+fnum(R.pitch)+'): a player has to look at the ladder itself, which may be higher or lower than the floor');
   if(/USE_LADDER needs/.test(R.why))tips.push('Set the pitch to 36 or more (50 is the default)');
   if(!tips.length)tips.push('Change the ladder\'s height, or place it further from the wall');
   return 'Recommendation: '+tips.join('. ')+'.';
@@ -12843,8 +12889,8 @@ function ladInit(){
     lineDirty=true;$('bLadHideSel').blur();simPanel();requestDraw();};
   {const v=ladPitchOf(LS.get(LAD_LS_P));LAD.pitch=v==null?LAD_PITCH:v;$('ladPitch').value=fnum(LAD.pitch);}
   // saved as typed (a valid number), tidied (clamped to 0..89) when he leaves the box
-  $('ladPitch').oninput=()=>{const v=ladPitchOf($('ladPitch').value);$('ladPitch').style.color=v==null?'var(--warn)':'';if(v!=null){LAD.pitch=v;LS.set(LAD_LS_P,String(v));}};
-  $('ladPitch').onchange=()=>{const v=ladPitchOf($('ladPitch').value);if(v!=null){LAD.pitch=v;LS.set(LAD_LS_P,String(v));}$('ladPitch').value=fnum(LAD.pitch);$('ladPitch').style.color='';};
+  $('ladPitch').oninput=()=>{const v=ladPitchOf($('ladPitch').value);$('ladPitch').style.color=v==null?'var(--warn)':'';if(v!=null){LAD.pitch=v;LS.set(LAD_LS_P,String(v));ladPitchShow();}};
+  $('ladPitch').onchange=()=>{const v=ladPitchOf($('ladPitch').value);if(v!=null){LAD.pitch=v;LS.set(LAD_LS_P,String(v));ladPitchShow();}$('ladPitch').value=fnum(LAD.pitch);$('ladPitch').style.color='';};
   $('ladPitch').onkeydown=e=>{e.stopPropagation();if(e.key==='Enter'||e.key==='Escape')$('ladPitch').blur();};
   $('ladHum').onchange=()=>{const v=$('ladHum').value;ACT.hum=v;LS.set(ACT_LS_H,v);$('ladHum').blur();if(LAD.spawn&&ACT.cur)ladSpawn(LAD.spawn.where);};
 }

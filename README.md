@@ -368,17 +368,19 @@ click away: its targetname, origin, `setsize`, targets and ready-to-paste script
   degrees by default, kept for next time; the game needs more than 35) until he can use it,
   gets him on (`ladder_up_geton`), climbs a hand at a time (`ladder_up_righthand`,
   `_lefthand`...) and gets him off the top; **Simulate Down** the same downwards, looking
-  down by the pitch. He starts up to 64 units behind the spawn, as a player walks up to it:
-  at some ladders' tops only a steeper pitch gets him on (mohdm7's trench ladder needs 50,
-  not 45). The clips' own movement carries him, with the player's box against walls,
-  playerclip and the floor, the game's tests for climbing on, getting off the top (98 units
-  of room over him) and the bottom (the floor within 40 under him), and its snaps to the
-  ladder. As in the game, each clip's last frame holds for one server frame (0.05 s) before
-  the next state starts, and each new clip crossblends in over 0.2 s; after getting off he
-  blends into his standing idle the same way. Each starts again from the last spawn. When
-  he can't finish (the ladder too short or too long, too close to a wall, something in the
-  way, its origin far from it) the climb stops and the yellow note says why, with what to
-  change.
+  down by the pitch. His body shows the pitch as a player's does (head, spine and pelvis
+  share it; on the ladder only the head turns, by half), and a new pitch shows at once on a
+  man standing at Spawn Top or Spawn Bottom; after getting off he looks level. He starts up
+  to 64 units behind the spawn, as a player walks up to it: at some ladders' tops only a
+  steeper pitch gets him on (mohdm7's trench ladder needs 50, not 45). The clips' own
+  movement carries him, with the player's box against walls, playerclip and the floor, the
+  game's tests for climbing on, getting off the top (98 units of room over him) and the
+  bottom (the floor within 40 under him), and its snaps to the ladder. As in the game, each
+  clip's last frame holds for one server frame (0.05 s) before the next state starts, and
+  each new clip crossblends in over 0.2 s; after getting off he blends into his standing
+  idle the same way. Each starts again from the last spawn. When he can't finish (the
+  ladder too short or too long, too close to a wall, something in the way, its origin far
+  from it) the climb stops and the yellow note says why, with what to change.
   **Pause**, **Fly to** and **Follow** work as for path nodes, and **Hide select** (green
   while on) hides the ladder's red selection highlight and its facing arrow so the climb is
   easier to watch; the ladder stays selected, and deselecting it turns Hide select off.
@@ -719,6 +721,13 @@ way here.
      built from is written beside it with the same name, so you can open it later and carry
      on. Nothing is written over the map you opened, over a `.map` or a `.bsp` that Compile
      didn't write, without asking (the old one is kept as `.bak`).
+     Beside the `.bsp` go the files EA's Q3map leaves there too: the `.prt` (portal file,
+     sealed maps; the game reads it for `r_showportal`), or the `.lin` leak trail when the
+     map leaks (the old one of either is removed first, so a fixed leak's trail doesn't
+     stay), and the `.vis` (the visibility on its own). The `.dcl`, `.pth` and `.min` are
+     the game's own: its decal editor writes the `.dcl` (after a compile the game ignores
+     its decals until you re-save them in the game, since the map's `map_time` changed),
+     it rebuilds the `.pth` (AI paths) itself, and the `.min` is its loading-screen info.
   4. **Start the game with the map when it's done**, as MBuilder does: the game in the
      folder the paks were loaded from (asked for once, if it isn't found there) starts with
      the command line given (developer, cheats, the console and `logfile 2` by default:

@@ -5,8 +5,10 @@ tools/build_ommap.py builds it).
 The compiler reads a game folder: scripts/ (the shaders) and maps/ (the .map). The paks
 hold the shaders, so a folder is made in the launcher's workspace with every shader script
 from the loaded paks and a copy of the map, and ommap is pointed at it (-gamedir). Its
-results (the .bsp, and the leak trail .lin when the map leaks) are copied back beside the
-map: the .bsp written atomically, an older one kept as .bak.
+results are copied back beside the map, as EA's Q3map leaves them: the .bsp written
+atomically (an older one kept as .bak), the portal file .prt (a sealed map) or the leak trail
+.lin (a leaking one), the old of either removed first, and the .vis (the visibility lump on
+its own, see vis_file).
 
 The steps are ommap's own: bsp (the .bsp from the .map, with the entities, brushes,
 patches, terrain and static models), vis (which areas see which; fastvis is quicker and
@@ -980,6 +982,78 @@ def static_model_vertices(vfs, bsp_data, log=print):
     return b"".join(out), missing
 
 
+# ---- the files EA's Q3map leaves beside the .bsp ------------------------------------------
+# Q3map (MBuilder runs it, then MOHlight, which only rewrites the .bsp) works in the game's
+# maps folder, so what it writes stays beside the map:
+#   <map>.prt  the portal file its vis step reads (written when the map is sealed); the game
+#              reads it only for r_showportal (tr_vis.cpp)
+#   <map>.lin  the leak trail (written when the map leaks)
+#   <map>.vis  a BSP-format file (ident "2015", version 19) holding only the visibility lump,
+#              written after every .bsp it writes, with the header's checksum
+#              (Com_BlockChecksum) set; Q3map has a reader for it that nothing calls, and
+#              the game doesn't read it
+# Before a build it deletes the old .prt and .lin, so neither outlives the map it was for.
+# The others beside a map are the game's own: the .dcl (the decals placed with its decal
+# editor, kept only while the .bsp's map_time matches: re-save them in the game after a
+# compile, R_LevelMarksLoad), the .pth (the AI's paths, rebuilt by the game when the
+# map_time changes) and the .min (the loading screen's map info).
+
+def _md4(data):
+    """MD4 (RFC 1320): hashlib's isn't there on most systems now (OpenSSL 3)."""
+    import struct as st
+    msg = bytearray(data)
+    n = len(msg) * 8
+    msg.append(0x80)
+    while len(msg) % 64 != 56:
+        msg.append(0)
+    msg += st.pack("<Q", n & 0xFFFFFFFFFFFFFFFF)
+    a, b, c, d = 0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476
+    rl = lambda x, k: ((x << k) | (x >> (32 - k))) & 0xFFFFFFFF
+    for o in range(0, len(msg), 64):
+        X = st.unpack("<16I", bytes(msg[o:o + 64]))
+        A, B, C, D = a, b, c, d
+        F = lambda x, y, z: (x & y) | (~x & z)
+        G = lambda x, y, z: (x & y) | (x & z) | (y & z)
+        H = lambda x, y, z: x ^ y ^ z
+        for i in range(16):
+            k, sh = i, (3, 7, 11, 19)[i % 4]
+            A = rl((A + F(B, C, D) + X[k]) & 0xFFFFFFFF, sh); A, B, C, D = D, A, B, C
+        for i in range(16):
+            k, sh = (i % 4) * 4 + i // 4, (3, 5, 9, 13)[i % 4]
+            A = rl((A + G(B, C, D) + X[k] + 0x5A827999) & 0xFFFFFFFF, sh); A, B, C, D = D, A, B, C
+        for i in range(16):
+            k, sh = (0, 8, 4, 12, 2, 10, 6, 14, 1, 9, 5, 13, 3, 11, 7, 15)[i], (3, 9, 11, 15)[i % 4]
+            A = rl((A + H(B, C, D) + X[k] + 0x6ED9EBA1) & 0xFFFFFFFF, sh); A, B, C, D = D, A, B, C
+        a, b, c, d = (a + A) & 0xFFFFFFFF, (b + B) & 0xFFFFFFFF, (c + C) & 0xFFFFFFFF, (d + D) & 0xFFFFFFFF
+    return st.pack("<4I", a, b, c, d)
+
+
+def block_checksum(data):
+    """Com_BlockChecksum (common/md4.c): the MD4 digest's four words XORed."""
+    w = struct.unpack("<4i", _md4(data))
+    return (w[0] ^ w[1] ^ w[2] ^ w[3]) & 0xFFFFFFFF
+
+
+def vis_file(bsp_data):
+    """The <map>.vis Q3map writes beside a .bsp (FUN_0043f38c in the decompile): a header of
+    28 lumps with only the visibility lump (15) set, its bytes after the header (padded to 4),
+    and the header's checksum (Com_BlockChecksum of the header with the field 0)."""
+    nl = 28
+    ident, ver = bsp_data[:4], struct.unpack_from("<i", bsp_data, 4)[0]
+    if ident != b"2015" or ver != 19 or len(bsp_data) < 12 + nl * 8:
+        return None
+    ofs, ln = struct.unpack_from("<ii", bsp_data, 12 + 15 * 8)
+    if ofs < 0 or ln < 0 or ofs + ln > len(bsp_data):
+        return None
+    vis = bsp_data[ofs:ofs + ln]
+    head = bytearray(12 + nl * 8)
+    head[0:4] = b"2015"
+    struct.pack_into("<ii", head, 4, 19, 0)
+    struct.pack_into("<ii", head, 12 + 15 * 8, len(head), len(vis))
+    struct.pack_into("<I", head, 8, block_checksum(bytes(head)))
+    return bytes(head) + vis + b"\0" * ((4 - len(vis) % 4) % 4)
+
+
 def compile_map(map_path, vfs, work, steps=STEPS, log=print, procs=None, origin_bsp=None, options=None):
     """Compile map_path: the steps in order, the results beside it. A dict: ok, bsp (its
     path), leak (the trail's points, or None), steps (those that ran), why (when not ok),
@@ -1001,6 +1075,8 @@ def compile_map(map_path, vfs, work, steps=STEPS, log=print, procs=None, origin_
     stem = os.path.splitext(os.path.basename(map_path))[0]
     out_bsp = os.path.join(os.path.dirname(copy), stem + ".bsp")
     out_lin = os.path.join(os.path.dirname(copy), stem + ".lin")
+    out_prt = os.path.join(os.path.dirname(copy), stem + ".prt")
+    side = os.path.splitext(os.path.abspath(map_path))[0]      # <map> beside the .map
     onlyents = "bsp" in steps and "-onlyents" in extra["bsp"]
     if onlyents:
         # MBuilder's Entities only: ommap rewrites the entity lump of the .bsp compiled before
@@ -1066,9 +1142,30 @@ def compile_map(map_path, vfs, work, steps=STEPS, log=print, procs=None, origin_
     with open(dest, "rb") as f:
         if f.read() != data:
             return dict(ok=False, why="%s reads back differently from what was written" % dest, steps=done)
-    if leak is not None:
-        shutil.copyfile(out_lin, os.path.splitext(os.path.abspath(map_path))[0] + ".lin")
-    return dict(ok=True, bsp=dest, leak=leak, steps=done, times=times)
+    wrote = []
+    if "bsp" in done and not onlyents:
+        # as Q3map: the old .prt and .lin go, then this build's (one or the other) is kept
+        for ext in (".lin", ".prt"):
+            try:
+                if os.path.isfile(side + ext):
+                    os.remove(side + ext)
+                    log("(removed the old %s%s)" % (stem, ext))
+            except OSError as e:
+                log("(couldn't remove the old %s%s: %s)" % (stem, ext, e))
+        for src_f, ext in ((out_lin if leak is not None else None, ".lin"), (out_prt, ".prt")):
+            if src_f and os.path.isfile(src_f):
+                shutil.copyfile(src_f, side + ext)
+                wrote.append(stem + ext)
+    vf = vis_file(data)
+    if vf is not None:
+        try:
+            MC.atomic_write_bytes(side + ".vis", vf)
+            wrote.append(stem + ".vis")
+        except OSError as e:
+            log("(couldn't write %s.vis: %s)" % (stem, e))
+    if wrote:
+        log("(also beside the map, as Q3map leaves them: %s)" % ", ".join(wrote))
+    return dict(ok=True, bsp=dest, leak=leak, steps=done, times=times, side=wrote)
 
 
 def _duration(sec):

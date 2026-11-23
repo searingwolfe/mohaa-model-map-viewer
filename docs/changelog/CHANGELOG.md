@@ -3412,6 +3412,25 @@ look of the walk and the doors should be confirmed by eye in the launcher.
   arrows and patch trim, draw planes and slopes, the Angles row and its gizmos, SIMULATE's
   ladder climb), and the updater's Git sync below. `VERSION` (`mohaa_launcher.py`, `mohaa_envcheck.py`) and
   `docs/version.txt` say 1.0.011; the updater finds it by the tag `v1.0.011`.
+- The ladder climber's body shows the pitch (`actCtrl`), as PmoveAdjustAngleSettings
+  (bg_pmove.cpp) sets the player's bone controllers from his view pitch: on the ground the
+  head gets 37% of it, the pelvis 30% (down) or -10% of 63% (up), and the rest goes to
+  Bip01 Spine2 and Spine1 (70/30 down, 60/40 up); on the ladder (PM_CLIMBWALL) only the head,
+  by half, the view held to 73 down and 80 up. Each turns in the model's axes about its bone
+  with the bones under it (skelBone_Rotation::GetDirtyTransform, RotateBy). A man standing at
+  Spawn Top / Bottom (or where a climb failed before he got on) takes a new pitch from the
+  box at once (`ladPitchShow`); Spawn Middle holds the ladder unturned; after getting off he
+  looks level. Checked on the real model: at 50 down the head's forward axis turns 50
+  degrees from its resting angle, at 89 straight down.
+- Compile leaves the files EA's Q3map leaves beside the map (checked in the decompiled
+  Q3map.exe; MBuilder only runs Q3map and MOHlight, and MOHlight only rewrites the .bsp):
+  the `.prt` portal file of a sealed map, the `.lin` of a leaking one (Q3map deletes the old
+  `.prt` and `.lin` before every build, so a fixed leak's trail no longer stays beside the
+  map), and the `.vis`: a BSP-format file (ident "2015", version 19) with only the
+  visibility lump, its header's checksum Com_BlockChecksum (MD4, written here as `_md4`:
+  hashlib has none with OpenSSL 3). Nothing reads the `.vis` (Q3map's loader for it is never
+  called; the game doesn't). The `.dcl`, `.pth` and `.min` are the game's (its decal editor,
+  PathSearch, the loading screen), not a compiler's. Tested: `test_side_files`, `test_md4`.
 - The updater keeps a Git clone in step (`_update_git_sync`): after installing a commit in a
   folder with `.git`, it runs `git fetch origin` and, when the branch has nothing GitHub
   lacks (`git merge-base --is-ancestor HEAD <commit>`), `git reset --mixed <commit>`, so
