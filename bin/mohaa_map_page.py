@@ -403,9 +403,9 @@ window.setEditorMode=function(on){window.__EDITON__=!!on;
          <select id="ladHum" style="flex:1;min-width:0" disabled title="The man who climbs the ladder: any actor model in the paks (models/human), unarmed, as the player is on a ladder (safeholster)"></select>
        </div>
        <div class="row">
-         <button class="sm" id="bLadUp" disabled title="Stand him at the top of the ladder, where ladder_up_getoff leaves a man who has climbed it, facing the ladder (its angle + 180)">Spawn up</button>
-         <button class="sm" id="bLadDown" disabled title="Stand him at the foot of the ladder, where ladder_down_getoff leaves a man who has climbed down it, facing the ladder (its angle)">Spawn down</button>
-         <button class="sm" id="bLadMid" disabled title="Put him on the ladder halfway up, holding on (left hand high, as LATCH_ONTO_LADDER and LADDER_IDLE_LEFT leave him): for a ladder whose ends go into the floor or the ceiling, which a player only gets on by jumping and pressing use">Spawn middle</button>
+         <button class="sm" id="bLadDown" disabled title="Stand him at the foot of the ladder, where ladder_down_getoff leaves a man who has climbed down it, facing the ladder (its angle)">Spawn Bottom</button>
+         <button class="sm" id="bLadUp" disabled title="Stand him at the top of the ladder, where ladder_up_getoff leaves a man who has climbed it, facing the ladder (its angle + 180)">Spawn Top</button>
+         <button class="sm" id="bLadMid" disabled title="Put him on the ladder halfway up, holding on (left hand high, as LATCH_ONTO_LADDER and LADDER_IDLE_LEFT leave him): for a ladder whose ends go into the floor or the ceiling, which a player only gets on by jumping and pressing use">Spawn Middle</button>
        </div>
        <div class="row">
          <button class="sm" id="bLadPause" disabled title="Freeze him exactly where he is, mid-animation; press again to carry on">Pause</button>
@@ -12710,7 +12710,7 @@ function ladAnims(b){
 }
 function ladRun(dir){
   const c=ACT.cur,f=ladFocus();if(!c||!f||c.key!==f.key||!LAD.spawn){flash('Spawn him at the ladder first');return;}
-  if(LAD.spawn.where===(dir==='up'?'up':'down')){flash(dir==='up'?'He is at the top already: Simulate Down, or Spawn down / middle':'He is at the bottom already: Simulate Up, or Spawn up / middle');return;}
+  if(LAD.spawn.where===(dir==='up'?'up':'down')){flash(dir==='up'?'He is at the top already: Simulate Down, or Spawn Bottom / Middle':'He is at the bottom already: Simulate Up, or Spawn Top / Middle');return;}
   const L=ladGeom(f.ei);if(!L)return;
   const la=c.b.anims.get('ladder');if(!la)return;
   // back where he was spawned, then the climb
@@ -12750,7 +12750,7 @@ function ladPanel(f){
   else if(ACT.listErr&&!ACT.lists)s=ACT.listErr;
   else if(!ACT.lists)s='Asking the launcher for the paks\' humans…';
   else if(busy)s='Building him and his ladder animations…';
-  else if(!cc)s='Spawn him at the top, the foot or the middle of the ladder, then Simulate Up or Down.';
+  else if(!cc)s='Spawn him at the bottom, the top or the middle of the ladder, then Simulate Up or Down.';
   else{
     s={up:'At the top of the ladder.',down:'At the foot of the ladder.',mid:'On the ladder, halfway up.'}[sw]||'';
     const R=LAD.res&&LAD.res.R;

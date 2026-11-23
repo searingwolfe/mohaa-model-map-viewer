@@ -360,9 +360,9 @@ click away: its targetname, origin, `setsize`, targets and ready-to-paste script
   him back on the node. The human and weapon are built from the paks only when chosen, each
   animation the first time it's needed. Needs the Map Viewer (not a bare browser).
   Select a `func_ladder` and the section climbs it with an unarmed **Human** as the player's
-  ladder states do (global/mike_torso.st, with OpenMoHAA's FuncLadder code): **Spawn up**
-  stands him where `ladder_up_getoff` leaves a climber at the top (facing the ladder),
-  **Spawn down** where `ladder_down_getoff` leaves him at its foot, **Spawn middle** puts
+  ladder states do (global/mike_torso.st, with OpenMoHAA's FuncLadder code): **Spawn Bottom**
+  stands him where `ladder_down_getoff` leaves a climber at its foot, **Spawn Top** where
+  `ladder_up_getoff` leaves him at the top (facing the ladder), **Spawn Middle** puts
   him on it halfway up (for a ladder whose ends go into the floor or ceiling). **Simulate
   Up** walks him at the ladder looking 45 degrees up until he can use it, gets him on
   (`ladder_up_geton`), climbs a hand at a time (`ladder_up_righthand`, `_lefthand`...) and

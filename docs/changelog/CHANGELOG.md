@@ -3377,3 +3377,4 @@ look of the walk and the doors should be confirmed by eye in the launcher.
   from unarmed_stand_alert_legs, as an armed man's idle takes <weapongroup>_stand_alert_legs;
   without them his legs kept the skeleton's base pose and he looked to stand on one foot.
   (The humans have no unarmed_stand_idle.)
+- SIMULATE's ladder row: Spawn Bottom first, then Spawn Top and Spawn Middle (were Spawn up / down / middle).
