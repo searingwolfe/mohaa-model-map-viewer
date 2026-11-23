@@ -919,15 +919,17 @@ function edTnRow(ei){
   return'<div class="row" style="gap:4px;align-items:center;margin-top:4px"><span style="width:118px" title="targetname: the name the level script and other entities call it by ($name; their target key names it)">'+
     (v!=null?'<b>targetname</b>':'targetname')+'</span><input type="text" data-spec="targetname" value="'+esc(v!=null?v:'')+'" placeholder="its $name" '+
     'title="The name the level script and other entities call it by: $name in the script, and a trigger\'s or path\'s target key names it. Letters, digits and _ (no spaces).\n\nEnter sets it; empty takes it away" style="flex:1;min-width:60px;padding:1px 3px;font:inherit;font-size:11px"></div>';}
-// under Class specs: Edit parameters (all its keys as text, Modify's editor) and Delete
-function edEntBtns(ei){
-  return'<div class="row" style="gap:4px;margin-top:6px">'+edBtn('bEdParm','Edit parameters','Every key of '+esc(entName(ei)).replace(/"/g,'&quot;')+' as text, in Modify\'s editor (Modify\'s Undo, Alt+Z, puts it back)')+
-    edBtn('bEdDelE','Delete','Delete it, every brush (Undo brings it back)')+'</div>';}
+// last, under Class specs (or Exact values when there are none): Edit parameters for a brush
+// entity (all its keys as text, Modify's editor) and Delete for whatever is selected
+function edEntBtns(){
+  const ei=edSpecEnt();if(ei<0&&!ED.sel)return'';
+  return'<div class="row" style="gap:4px;margin-top:6px">'+(ei>=0?edBtn('bEdParm','Edit parameters','Every key of '+esc(entName(ei)).replace(/"/g,'&quot;')+' as text, in Modify\'s editor (Modify\'s Undo, Alt+Z, puts it back)'):'')+
+    edBtn('bEdDelE','Delete',ei>=0?'Delete it, every brush (Undo brings it back)':'Delete the selection (Undo brings it back)')+'</div>';}
 function edSpecHtml(){
   if(typeof cspecGroups!=='function')return'';
   const ei=edSpecEnt();if(ei<0)return'';
   const cls=edClsOf(ei),G=cspecGroups(cls);
-  if(!G)return'<div class="co" style="margin-top:6px">Class specs: '+esc(cls)+' isn\'t a class the game code lists.</div>'+edTnRow(ei)+edEntBtns(ei);
+  if(!G)return'<div class="co" style="margin-top:6px">Class specs: '+esc(cls)+' isn\'t a class the game code lists.</div>'+edTnRow(ei);
   const val=cspecValues(ei);
   const row=k=>{const v=val.get(k.n.toLowerCase());
     return'<div class="row" style="gap:4px;align-items:center;margin-top:2px"><span style="width:118px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(k.n+': '+cspecArgs(k)+(k.d?'\n\n'+k.d:''))+'">'+
@@ -940,7 +942,7 @@ function edSpecHtml(){
     if(ED.specMore)for(const g of more){h+='<div class="co" style="margin-top:4px">'+esc(g.c)+'</div>';for(const k of g.keys)h+=row(k);}
     h+='</details>';}
   h+='<div class="co" style="margin-top:4px">Bold: set on this entity. Enter sets a key, empty takes it away (Modify\'s Undo, Alt+Z, puts it back).</div></details>';
-  return h+edEntBtns(ei);}
+  return h;}
 function edSpecSet(ei,k,v){
   v=String(v==null?'':v).trim();
   if(/["\r\n]/.test(v))throw new Error('a key\'s value can\'t hold quotes or line breaks');
@@ -2361,8 +2363,8 @@ function edSelSummary(){
   if(pr.kind===0){let bb=null;try{bb=edBounds(edFaces(pr));}catch(_e){}s='Brush '+ED.sel.bn+' of '+esc(who)+' - '+pr.d.faces.length+' faces'+(bb?', '+[0,1,2].map(k=>fmt(bb.mx[k]-bb.mn[k])).join(' x '):'');}
   else if(pr.kind===1)s='Patch '+ED.sel.bn+' of '+esc(who)+' - '+pr.d.w+' x '+pr.d.h+' points, '+esc(pr.d.tex);
   else s='Terrain '+ED.sel.bn+' - '+(pr.d.W-1)*64+' x '+(pr.d.H-1)*64+' units';
-  // a whole brush entity's Delete is under its Class specs, beside Edit parameters
-  return'<div class="row" style="gap:4px;align-items:center;margin-top:6px"><span style="flex:1"><b>'+s+'</b></span>'+(edSpecEnt()>=0?'':edBtn('bEdDelQ','Delete','Delete it (Undo brings it back)'))+'</div>';}
+  // Delete is last in the panel (edEntBtns), beside Edit parameters for a brush entity
+  return'<div class="row" style="gap:4px;align-items:center;margin-top:6px"><span style="flex:1"><b>'+s+'</b></span></div>';}
 // ==== part 2: corners and edges, patch points, textures, region, terrain blocks ===============
 const TEXPRESETS=[['','- tool textures -'],['common/caulk','caulk (unseen faces)'],['common/hint','hint (vis split)'],['common/vis','vis (MOHAA vis brush)'],
   ['common/skip','skip (hint brush sides)'],['common/clip','clip (blocks all)'],['common/playerclip','player clip'],['common/monster','AI clip'],
@@ -2757,6 +2759,7 @@ function edPanel(){
   }else h+='<div class="co" style="margin-top:4px">Select a brush, patch or terrain block to type its values here.</div>';
   h+='</details>';
   h+=edSpecHtml();
+  h+=edEntBtns();
   h+='<div class="co" id="edBrSt" style="margin-top:4px"></div>';
   el.innerHTML=h;
   edToolBind(el);

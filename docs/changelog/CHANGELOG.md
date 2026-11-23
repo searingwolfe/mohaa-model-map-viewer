@@ -3511,6 +3511,10 @@ look of the walk and the doors should be confirmed by eye in the launcher.
   window's own "already exists, replace it?" is off for it (`confirmoverwrite=False`), so
   the question is asked once, in the launcher's words. The questions' third button is
   shorter: "No, write as <name>.map.bak". Tested: `test_map_only_over_the_open_map`.
+- Edit map's Delete is last in the section for every selection (`edEntBtns`): under Class
+  specs beside Edit parameters for a brush entity, else alone under Exact values (a world
+  brush, a patch, a terrain block, some of an entity's brushes). It no longer sits on the
+  selection's line.
 - The updater keeps a Git clone in step (`_update_git_sync`): after installing a commit in a
   folder with `.git`, it runs `git fetch origin` and, when the branch has nothing GitHub
   lacks (`git merge-base --is-ancestor HEAD <commit>`), `git reset --mixed <commit>`, so

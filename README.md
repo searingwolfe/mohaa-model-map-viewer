@@ -659,8 +659,9 @@ way here.
     (a key change, so Save as .bsp keeps it; Undo puts it back), and Open door uses it at
     once. **SH** / **BT** mark keys only Spearhead / Breakthrough have. Under it,
     **Edit parameters** opens Modify's editor on all of the entity's keys as text, and
-    **Delete** deletes the whole entity (for a lone brush, patch or terrain block, Delete
-    stays beside the selection's line). A door that opens
+    **Delete** deletes the whole entity. Delete is always last in the section, under Class
+    specs or, for a world brush, a patch or a terrain block (nothing to edit but its
+    shape), under Exact values on its own. A door that opens
     to one side only usually needs the `angle` its neighbours have (Door::SetDir turns its
     direction from it), and `doortype metal` makes it take 1.5 s instead of 1. The same
     list, with the values set, is in the entity's (and its brushes') More info. Every
