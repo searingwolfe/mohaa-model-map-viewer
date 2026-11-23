@@ -157,9 +157,9 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
  #modErr{padding:0 12px 6px;color:var(--err);min-height:14px}
  #modList .li{height:22px;box-sizing:border-box;padding-top:0;padding-bottom:0}
  #modList .sw{width:10px;height:10px;border-radius:2px;flex:none;box-sizing:border-box}
- #modList .mtag{font-size:10px;padding:0 4px;border-radius:3px;border:1px solid var(--line);color:var(--dim);flex:none}
- #modList .mtag.nw{color:var(--accent);border-color:var(--accent)}
- #modList .mtag.ch{color:var(--warn);border-color:var(--warn)}
+ #modList .mtag,#listBox .mtag{font-size:10px;padding:0 4px;border-radius:3px;border:1px solid var(--line);color:var(--dim);flex:none}
+ #modList .mtag.nw,#listBox .mtag.nw{color:var(--accent);border-color:var(--accent)}
+ #modList .mtag.ch,#listBox .mtag.ch{color:var(--warn);border-color:var(--warn)}
  #infoHead{display:flex;align-items:center;gap:8px;padding:10px 12px 8px;border-bottom:1px solid var(--line)}
  #infoHead .t{flex:1;min-width:0;color:var(--accent);font-weight:bold;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
  #infoBody{overflow:auto;padding:8px 12px 12px;flex:1;min-height:0}
@@ -1585,7 +1585,12 @@ function matOf(te){
 // ============================================================================
 //  Entities: anchors, boxes, markers
 // ============================================================================
-function entName(ei){const e=MAP.ents[ei];const tn=e.kvl.targetname;return (e.kvl.classname||'?')+(tn?' $'+tn:'');}
+// A map entity's keys as they stand: its Modify row's (a targetname or key typed there, in
+// Class specs or Edit parameters, not saved yet) when it has one, else the map's
+function entKvlNow(ei){
+  try{if(typeof MOD!=='undefined'&&MOD.ents&&MOD.ents.length){const m=MOD.ents.find(x=>x.ei===ei&&!x.del);if(m)return modKvl(m);}}catch(_e){}
+  return MAP.ents[ei].kvl;}
+function entName(ei){const k=entKvlNow(ei);const tn=k.targetname;return (k.classname||MAP.ents[ei].kvl.classname||'?')+(tn?' $'+tn:'');}
 function buildEntities(){
   ENTS=[];
   const tnIndex=new Map();
@@ -2286,6 +2291,21 @@ function initMarkers(){
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,B.mSel);gl.bindVertexArray(null);
 }
 let markSelCount=0;
+// After Edit map rebuilds the entities from the text (buildEntities: new ENTS, and NF, the
+// pick ids' base, changes with the faces): the markers' buffers (each entity's mv0 / mvn,
+// its pick id) and each model's list of the entities drawn with it, made again. Without
+// this the new ENTS have no marker vertices, so path nodes and the other point entities
+// went undrawn after the first edit (their labels and arrows, made elsewhere, stayed).
+function entDrawRebuild(){
+  if(!gl)return;
+  for(const k of['mPos','mCol','mPick','mBox','mOl','mIdx','mSel'])if(B[k])gl.deleteBuffer(B[k]);
+  for(const k of['vMark','vMarkSel'])if(B[k])gl.deleteVertexArray(B[k]);
+  initMarkers();
+  for(const R of MODELS)R.inst=[];
+  for(const X of ENTS)if(X.model>=0&&MODELS[X.model])MODELS[X.model].inst.push(X.ei);
+  markSelCount=0;rebuildMarkers();
+  try{rebuildModels();}catch(err){console.error(err);}
+}
 function rebuildMarkers(){
   const idx=[];
   for(const X of ENTS)if(X.mvn&&entShown(X.ei))for(let k=0;k<X.mvn;k++)idx.push(X.mv0+k);
@@ -4903,8 +4923,11 @@ function draw2D(){
     // Selected ones always show, fully. With X-ray off, no label shows through a wall at
     // all: each needs a sight line to its spot, at any distance, selected ones too.
     const cand=[];lblOccluders();
+    // the map's entities with a Modify row the map still draws (a brush entity: its
+    // brushes): labelled with the row's keys, an EDIT badge when changed
+    const rowOf=new Map();for(const m of MOD.ents)if(m.ei!=null&&!m.del)rowOf.set(m.ei,m);
     for(const X of ENTS){if(X.ei===0||!X.anchor||!entVisible(X.ei))continue;
-      const sel=selE.has(X.ei), e=MAP.ents[X.ei], tn=e.kvl.targetname;
+      const sel=selE.has(X.ei), tn=(rowOf.has(X.ei)?modKvl(rowOf.get(X.ei)):MAP.ents[X.ei].kvl).targetname;
       if(!sel&&!tn&&(X.marker===2||(X.cat&C_STATIC)))continue;
       if(!sel&&X.hasGeo&&isWorldlike(X.ei))continue;          // func_group, detail: part of the world
       const d=Math.hypot(X.anchor[0]-cam.pos[0],X.anchor[1]-cam.pos[1],X.anchor[2]-cam.pos[2]);
@@ -4931,7 +4954,7 @@ function draw2D(){
         top=dx?xfP(dx,c):c;}
       else{const mb=X.mbox||X.box;top=mb?[X.anchor[0],X.anchor[1],X.anchor[2]+(X.marker?mb.maxs[2]+6:0)]:X.anchor;}
       const sp=project(top);if(!sp||sp[0]<-50||sp[0]>W+50||sp[1]<-20||sp[1]>H+20)continue;
-      const e=X.mod?X.e:MAP.ents[X.ei], tn=e.kvl.targetname;
+      const row=!X.mod&&rowOf.get(X.ei),e=X.mod?X.e:row?{cls:MAP.ents[X.ei].cls,kvl:modKvl(row)}:MAP.ents[X.ei], tn=e.kvl.targetname;
       let lim=tn?2048:700;const wall=tn?512:350;
       if(!view.xray){if(!lblSeen(X.mod?'m'+X.mod.id:X.ei,top))continue;}
       else if(d>=0&&d>wall*0.6&&!lblSeen(X.mod?'m'+X.mod.id:X.ei,top))lim=wall;
@@ -4939,7 +4962,7 @@ function draw2D(){
       if(al<0.04)continue;
       const txt=(e.kvl.classname||e.cls||'?')+nodeFlagTag(e)+(tn?'  $'+tn:'');
       // the badge: small bold capitals on a filled tab, inside the label's left end
-      const bg=X.badge||'';let bw=0;
+      const bg=X.badge||(row&&modEdited(row)?'EDIT':'');let bw=0;
       if(bg){ctx.font='bold 9px ui-monospace,Menlo,Consolas,monospace';bw=ctx.measureText(bg).width+8;ctx.font='11px ui-monospace,Menlo,Consolas,monospace';}
       const tw=ctx.measureText(txt).width, full=tw+(bw?bw+4:0), x0=sp[0]-full/2, r=[x0-4,sp[1]-16,full+8,14];
       if(d>=0&&taken.some(q=>r[0]<q[0]+q[2]&&q[0]<r[0]+r[2]&&r[1]<q[1]+q[3]&&q[1]<r[1]+r[3]))continue;
@@ -8921,7 +8944,7 @@ function updateSelPanel(){
       else{$('bLightOff').title='Turn the selected light'+(lights.length>1?'s':'')+' off, as if '+(lights.length>1?'they':'it')+' had never been there: the light '+(lights.length>1?'they':'it')+' gave the map (its lightmaps, vertex light, props and models) goes, the rest stays. Display\'s Lights off turns every light off'+(offN?'\nNow: '+offN+' of '+lights.length+' off':'');
         $('bLightOn').title='Turn the selected light'+(lights.length>1?'s':'')+' back on';}}}
   let s='';
-  if(n===1&&ents.length===1){const ei=ents[0],e=MAP.ents[ei],X=ENTS[ei];
+  if(n===1&&ents.length===1){const ei=ents[0],e={kvl:entKvlNow(ei)},X=ENTS[ei];
     s=e.kvl.classname+(e.kvl.targetname?'  $'+e.kvl.targetname:'')+'\nentity '+ei;
     if(X.box)s+='\norigin '+fvec(X.box.origin)+'\nsetsize '+fvec(X.box.mins)+' '+fvec(X.box.maxs)+(X.box.exact?'':'  (approx.)');}
   else if(n===1&&prims.length===1){const p=SC.prims[prims[0]];
@@ -8973,20 +8996,25 @@ function findGlob(pat){
   if(pat.indexOf('*')<0)return s=>s===pat;
   const r=new RegExp('^'+pat.split('*').map(x=>x.replace(/[.+?^${}()|[\]\\]/g,'\\$&')).join('.*')+'$');return s=>r.test(s);}
 const FIND_ALIAS={class:'classname',cls:'classname',tn:'targetname',name:'targetname',tex:'texture',shader:'texture',ent:'entity'};
-// does entity ei match term t?
-function findEnt(ei,t){
-  const e=MAP.ents[ei];
-  if(t.k==='word')return searchText(ei).includes(t.v);
+// Modify's rows of the map's entities, by entity, for one search (runFind): an entity with
+// one is matched on the row's keys (a targetname set in Edit map's Class specs, a key typed
+// in Edit parameters), not saved yet
+let FIND_ROWS=new Map();
+// does entity ei match term t? (ei -1 with e and org: one of Modify's new entities)
+function findEnt(ei,t,e0,org0){
+  const row=ei>0?FIND_ROWS.get(ei):null,e=e0||(row?{kv:row.kv,kvl:modKvl(row)}:MAP.ents[ei]);
+  if(t.k==='word')return(e0||row?e.kv.map(kv=>kv[0]+' '+kv[1]).join(' \u0001 ').toLowerCase():searchText(ei)).includes(t.v);
   if(t.k==='exact'){for(const kv of e.kv)if(String(kv[1]).toLowerCase()===t.v)return true;return false;}
   if(t.k==='has'){const key=FIND_ALIAS[t.key]||t.key;return e.kvl[key]!=null||e.kv.some(kv=>kv[0].toLowerCase()===key);}
-  if(t.k==='org'){const o=ENTS[ei].origin;return !!o&&Math.abs(o[0]-t.v[0])<0.01&&Math.abs(o[1]-t.v[1])<0.01&&Math.abs(o[2]-t.v[2])<0.01;}
+  if(t.k==='org'){const o=ei<0?org0:ENTS[ei].origin;return !!o&&Math.abs(o[0]-t.v[0])<0.01&&Math.abs(o[1]-t.v[1])<0.01&&Math.abs(o[2]-t.v[2])<0.01;}
   const key=FIND_ALIAS[t.key]||t.key,ok=findGlob(t.v);
   if(key==='texture')return false;
+  if(ei<0&&(key==='entity'||key==='entnum'))return false;
   // the world: $world, its entity number in the game (1022, ENTITYNUM_WORLD) and "world"
   if(ei===0&&((key==='targetname'&&ok('world'))||((key==='entnum'||key==='entity')&&ok(String(WORLD_ENTNUM)))))return true;
   if(key==='entity')return ok(String(ei));
   if(key==='entnum'){const R=gameEnts()[ei];return !!R&&R.num>=0&&!R.gone&&ok(String(R.num));}
-  if(key==='origin'){const v=parseVec(t.v,3),o=ENTS[ei].origin;return !!(v&&o)&&v.every((x,i)=>Math.abs(x-o[i])<0.01);}
+  if(key==='origin'){const v=parseVec(t.v,3),o=ei<0?org0:ENTS[ei].origin;return !!(v&&o)&&v.every((x,i)=>Math.abs(x-o[i])<0.01);}
   // the key as the game reads it ("$targetname" for targetname), else as written
   let val=e.kvl[key];if(val==null)for(const kv of e.kv)if(kv[0].toLowerCase()===key){val=kv[1];break;}
   return val!=null&&ok(String(val).toLowerCase());
@@ -9003,8 +9031,12 @@ function runFind(q){
   const T=findTerms(q);if(!T.length)return;
   const pos=T.filter(t=>!t.neg),neg=T.filter(t=>t.neg);
   const texOnly=pos.length&&pos.every(t=>t.k==='kv'&&(FIND_ALIAS[t.key]||t.key)==='texture');
+  FIND_ROWS=new Map();for(const m of MOD.ents)if(m.ei!=null&&!m.del)FIND_ROWS.set(m.ei,m);
   if(!texOnly)for(let ei=0;ei<MAP.ents.length;ei++){
     if(pos.every(t=>findEnt(ei,t))&&!neg.some(t=>findEnt(ei,t)))findRes.push({e:ei});}
+  // Modify's new entities (not in the map yet): found the same way, listed after the map's
+  if(!texOnly)MOD.ents.forEach((m,i)=>{if(modIsMap(m)||m.del)return;const e={kv:m.kv,kvl:modKvl(m)},o=modOrigin(m);
+    if(pos.every(t=>findEnt(-1,t,e,o))&&!neg.some(t=>findEnt(-1,t,e,o)))findRes.push({m:i});});
   // textures only when every term can say something of a texture
   if(pos.some(t=>t.k==='org'||t.k==='has'||(t.k==='kv'&&(FIND_ALIAS[t.key]||t.key)!=='texture')))return;
   for(const[ti,c]of texCounts()){const nm=TEX[ti].n.replace(/^textures\//,'').toLowerCase();
@@ -9051,15 +9083,24 @@ function renderList(){
   // hidden in yellow
   const shown=ei=>ei===0||entVisible(ei);
   // the targetname first, then the class; the tooltip has all of it (the row cuts it short)
-  const entRow=(ei,sub)=>{const e=MAP.ents[ei],X=ENTS[ei],sel=SEL.has('e'+ei)||(ei===0),hid=!shown(ei),tn=e.kvl.targetname,cls=e.kvl.classname||'?';
+  // a map entity Modify has changed (not saved yet): an "edited" tag, or "deleted"
+  const rowsNow=new Map();for(const m of MOD.ents)if(m.ei!=null)rowsNow.set(m.ei,m);
+  const modTag=ei=>{const m=ei>0?rowsNow.get(ei):null;if(!m)return'';
+    return m.del?'<span class="mtag ch" style="color:var(--err);border-color:var(--err)" title="deleted in Modify (not saved yet)">deleted</span>':
+      modEdited(m)?'<span class="mtag ch" title="changed in Modify or Edit map (not saved yet): not as the map has it">edited</span>':'';};
+  const entRow=(ei,sub)=>{const e={kvl:entKvlNow(ei)},X=ENTS[ei],sel=SEL.has('e'+ei)||(ei===0),hid=!shown(ei),tn=e.kvl.targetname,cls=e.kvl.classname||'?';
     const where=X.anchor?fvec(X.anchor):'';
     const tip=ei===0?'$world  worldspawn\nentity 0 in the .map, entity number '+WORLD_ENTNUM+' in the game\nclick: its keys (More info)':(tn?'$'+tn+'  ':'')+cls+'\nentity '+ei+(where?'\n'+where:'')+(hid?'\nhidden':'');
     return '<div class="li'+(sub?' sub':'')+(sel?' sel':'')+(hid?' hid':'')+'" data-e="'+ei+'" title="'+esc(tip)+'"><span class="sw" style="background:rgb('+X.col.map(v=>Math.round(v*255)).join(',')+')"'+
       (ei?' title="Shift+click: '+(hid?'show':'hide')+' this entity"':'')+'></span><span class="nm">'+
-      esc(ei===0?(sub?'$world':'$world  worldspawn'):sub?(tn?'$'+tn:'entity '+ei):(tn?'$'+tn+'  ':'')+cls)+'</span><span class="ct">'+esc(where)+'</span></div>';};
+      esc(ei===0?(sub?'$world':'$world  worldspawn'):sub?(tn?'$'+tn:'entity '+ei):(tn?'$'+tn+'  ':'')+cls)+'</span>'+modTag(ei)+'<span class="ct">'+esc(where)+'</span></div>';};
+  // one of Modify's new entities: a "new" tag; a click selects it in Modify and flies to it
+  const newRow=i=>{const m=MOD.ents[i],k=modKvl(m),tn=k.targetname,o=modOrigin(m),c=modColour(m),sel=modIsSel(i);
+    return '<div class="li'+(sel?' sel':'')+(m.hid?' hid':'')+'" data-fm="'+i+'" title="'+esc(modText(m)+'\n\nadded in Modify, not saved yet')+'"><span class="sw" style="background:rgb('+c.map(v=>Math.round(v*255)).join(',')+')"></span><span class="nm">'+
+      esc((tn?'$'+tn+'  ':'')+(k.classname||'?'))+'</span><span class="mtag nw" title="added in Modify, not saved yet">new</span><span class="ct">'+esc(fvec(o))+'</span></div>';};
   // the Entities tab: the targetname, else "entity" and its entity number; the number on the
   // right when the name doesn't give it. The tooltip has its class, numbers and origin.
-  const numRow=(ei,R)=>{const e=MAP.ents[ei],X=ENTS[ei],tn=e.kvl.targetname,sel=SEL.has('e'+ei),hid=!shown(ei);
+  const numRow=(ei,R)=>{const e={kvl:entKvlNow(ei)},X=ENTS[ei],tn=e.kvl.targetname,sel=SEL.has('e'+ei),hid=!shown(ei);
     const tip=(e.kvl.classname||'?')+(tn?' $'+tn:'')+'\nentity number '+R.num+', radnum '+R.rad+(X.anchor?'\n'+fvec(X.anchor):'')+(hid?'\nhidden':'');
     return '<div class="li'+(sel?' sel':'')+(hid?' hid':'')+'" data-e="'+ei+'" title="'+esc(tip)+'"><span class="sw" style="background:rgb('+X.col.map(v=>Math.round(v*255)).join(',')+')" title="Shift+click: '+(hid?'show':'hide')+' this entity"></span><span class="nm">'+
       esc(tn?'$'+tn:'entity '+R.num)+'</span><span class="ct">'+(tn?R.num:'')+'</span></div>';};
@@ -9082,6 +9123,7 @@ function renderList(){
     }
     let n=0;for(const r of findRes){if(++n>600){rows.push('<div class="co">... '+(findRes.length-600)+' more (Enter selects them all)</div>');break;}
       if(r.e!=null)rows.push(entRow(r.e,false));
+      else if(r.m!=null){if(MOD.ents[r.m])rows.push(newRow(r.m));}
       else rows.push(texRow(r.t));}
   }else if(curTab==='cls'){
     const cnt=classLists();
@@ -9162,6 +9204,7 @@ $('listBox').addEventListener('click',e=>{
     return;}
   const o=e.target.closest('[data-o]');if(o){const c=o.getAttribute('data-o');if(openCls.has(c))openCls.delete(c);else openCls.add(c);renderList();return;}
   if(!r)return;
+  if(r.hasAttribute('data-fm')){const i=+r.getAttribute('data-fm');if(MOD.ents[i]){modSelect(i);modFly();renderList();}return;}
   // Shift+click a green (selected) row: deselect that entity, every entity of the class, or
   // everything that uses the texture; the rest of the selection stays
   if(e.shiftKey&&r.classList.contains('sel')&&!(r.hasAttribute('data-e')&&+r.getAttribute('data-e')===0)){deselectRow(r);return;}
@@ -9479,7 +9522,7 @@ function infoModDyn(i){
   if(cls==='info_pathnode'){
     h+='<h4>AI paths (ai_showroutes)</h4>';
     const A=PA(),k=A&&A.mod?A.mod.indexOf(m):-1;
-    if(!A)h+='<div class="note">The paths are still being worked out.</div>';
+    if(!A)h+='<div class="note">'+(PA_PEND?'The paths are still being worked out.':'This map has no .pth for its version, so its paths are worked out here only when you ask: turn on AI routes (I).')+'</div>';
     else if(k<0)h+='<div class="note">'+(modBusy(i)?'Being edited: it joins the paths when you are done.':'Not in the paths.')+'</div>';
     else{const n=A.n0+k,pn=pnEnts(),fh=CVARS.ai_fallheight,C=A.c,out=new Map(),inn=new Map();
       for(let q=0;q<C.length;q+=9){const a=C[q]|0,bb=C[q+1]|0,f=C[q+2];if(a===n)out.set(bb,f);if(bb===n)inn.set(a,f);}
@@ -9502,7 +9545,7 @@ function infoModDyn(i){
 }
 function linkEnt(ei){return '<a data-sel="'+ei+'">'+esc(entName(ei))+'</a> <span class="co">(entity '+ei+')</span>';}
 function infoEntity(ei){
-  const e=MAP.ents[ei],X=ENTS[ei],cls=e.kvl.classname||'?',tn=e.kvl.targetname,b=X.box,def=X.def;
+  const e=MAP.ents[ei],X=ENTS[ei],cls=e.kvl.classname||'?',tn=entKvlNow(ei).targetname,b=X.box,def=X.def;
   let h='';
   h+='<div><span class="sw" style="background:rgb('+X.col.map(v=>Math.round(v*255)).join(',')+')"></span><b>'+esc(cls)+'</b>'+(tn?'  <span style="color:var(--accent)">$'+esc(tn)+'</span>':'')+'</div>';
   h+='<div class="note">'+(e.scr?'spawned by the level script ('+esc(scrWhere(e.scr.f,e.scr.l))+'), not in the .map':'entity '+ei+' in the .map')+(e.prims.length?' · '+e.prims.filter(p=>p&&p.kind===0).length+' brush(es)'+(e.patches.length?', '+e.patches.length+' patch(es)':'')+(e.terrains.length?', '+e.terrains.length+' terrain block(s)':''):'')+
@@ -9910,7 +9953,10 @@ function modAngSync(){
   const row=$('modAngRow');if(!row)return;const m=modAngFocus(),ids=['modAngP','modAngY','modAngR'];
   if(!m&&MROT.mode){MROT.mode=null;MROT.hov=-1;requestDraw();}
   const yo=m&&modYawOnly(m),a=m?entAngles(modKvl(m)):[0,0,0];
-  ids.forEach((id,k)=>{const el=$(id);el.disabled=!m||(yo&&k!==1);if(document.activeElement!==el)el.value=m?String(Math.round(a[k]*100)/100):'';});
+  // a yaw-only entity's pitch and roll: greyed out and empty (always 0 for it), titled why
+  ids.forEach((id,k)=>{const el=$(id),off=!!(yo&&k!==1);el.disabled=!m||off;el.style.opacity=el.disabled?'0.4':'';
+    el.title=off?(k===0?'pitch':'roll')+': a path node or other info_ entity only turns on its yaw':(k===0?'pitch':k===1?'yaw':'roll');
+    if(document.activeElement!==el)el.value=m&&!off?String(Math.round(a[k]*100)/100):'';});
   for(const[id,md]of[['bModRot','circle'],['bModAxes','rings']]){const b=$(id);b.disabled=!m;b.classList.toggle('on',MROT.mode===md);}}
 function modAngSet(){
   const m=modAngFocus();if(!m)return;const L=modAngRows(),yo=modYawOnly(m);
@@ -10113,6 +10159,9 @@ function modUndoGo(d){
   // a Copy not put down yet: Undo takes just that away
   if(MOD.placing){const cp=!!MOD.placing.copy;modPlaceCancel();if(cp&&d<0)return;}
   if(MOD.trim)modTrim(false);
+  // Edit map's Trim too: an Undo or Redo takes its selection away, and its keys would go on
+  // holding the camera's
+  try{const EA=window.MOHAA_EDITOR_API;if(EA&&EA.ED&&EA.ED.trim)EA.edTrim(false);}catch(_e){}
   if(MOD.linking)modLinkCancel();
   const from=d<0?MOD.undo:MOD.redo,to=d<0?MOD.redo:MOD.undo;
   if(!from.length){flash(d<0?'Nothing to undo in Modify':'Nothing to redo in Modify');return;}
@@ -10227,11 +10276,18 @@ function paGenerate(){
 }
 function paOk(){return !!PA();}
 function paDirty(){PA_C=null;ROUTES=null;PATHCELLS=null;NODELIST=null;requestDraw();}
-function PA(){
+// Whether the paths of a map with no .pth (or one for another version) may be worked out now:
+// only for what was asked for, AI routes (ai_showroutes, I), ai_shownode / ai_shownodenums,
+// or a Simulate run along them (PA(true)). Selecting a path node, its cards, Same error or
+// Modify's notes (a door edited, say) use them when they are there and don't start the work.
+function paWanted(){return !!(CVARS.ai_showroutes||CVARS.ai_shownode>0||CVARS.ai_shownodenums||CVARS.ai_showallnode);}
+function paReady(){return pathsOk()||!!PA_GEN;}
+function PA(want){
   if(PA_C)return PA_C;
   const nodes=[];MOD.ents.forEach((m,i)=>{if(!modIsMap(m)&&modIsNode(m)&&!modBusy(i))nodes.push(m);});
   // no .pth: work the map's paths out first, a moment later so the note shows before it
   if(!pathsOk()&&!PA_GEN){
+    if(!want&&!paWanted())return null;
     if(!PA_PEND){PA_PEND=true;flash((pathsStale()?'The .pth is for another version of this map':'No .pth for this map')+': working out its AI paths...');
       setTimeout(()=>{try{paGenerate();}finally{PA_PEND=false;paDirty();}},40);}
     return null;}
@@ -10796,6 +10852,14 @@ function drawModify(vp){
     const Cn=k=>[(k&1)?mx[0]:mn[0],(k&2)?mx[1]:mn[1],(k&4)?mx[2]:mn[2]],O=ol?[ol[0],ol[1],ol[2],1]:[0,0,0,0];
     for(let f=0;f<6;f++){const q=F[f],U=k=>{const u=[k&1?1:0,k&2?1:0,k&4?1:0];u[ax[f]]=0.5;return u;};
       for(const k of[q[0],q[1],q[2],q[0],q[2],q[3]]){const p=Cn(k),u=U(k);M.push(p[0],p[1],p[2],c[0],c[1],c[2],mk,u[0],u[1],u[2],O[0],O[1],O[2],O[3]);}}};
+  // a light: the map's diamond (initMarkers' marker 2): 8 out each way from its origin, the
+  // lower half darker, in its _color (buildEntities' rule)
+  const gem=(o,c)=>{const lo=[c[0]*0.75,c[1]*0.75,c[2]*0.75],r=8,v=[[o[0]+r,o[1],o[2]],[o[0],o[1]+r,o[2]],[o[0]-r,o[1],o[2]],[o[0],o[1]-r,o[2]]],
+      up=[o[0],o[1],o[2]+r],dn=[o[0],o[1],o[2]-r],push=(p,col)=>M.push(p[0],p[1],p[2],col[0],col[1],col[2],3,0.5,0.5,0.5,0,0,0,0);
+    for(let k=0;k<4;k++){const a=v[k],q=v[(k+1)%4];push(up,c);push(q,c);push(a,c);push(dn,lo);push(a,lo);push(q,lo);}};
+  const lightCol=m=>{const kv=modKvl(m),lc=parseVec(kv._color||kv.color,3);if(!lc)return[1,0.92,0.6];
+    const mx=Math.max(lc[0],lc[1],lc[2],1e-6);return lc.map(v=>Math.max(0.15,v/mx));};
+  const isLight=m=>{const c=(modCls(m)||'').toLowerCase();return c==='light'||c.startsWith('light_');};
   const Mb=[],Mn=[];       // still / being edited (fainter)
   // the trim arrows: white, red while it moves that way; out of each side of its box (from
   // the box's middle: a brush entity's origin can be at an edge, a door's hinge), and bigger
@@ -10819,10 +10883,10 @@ function drawModify(vp){
       return;}
     const o=modOrigin(m),b=modBox(m),X=modLook(m),c=X.mcol||X.col,sel=modIsSel(i),busy=modBusy(i);
     const mn=[o[0]+b.mins[0],o[1]+b.mins[1],o[2]+b.mins[2]],mx=[o[0]+b.maxs[0],o[1]+b.maxs[1],o[2]+b.maxs[2]];
-    const hasM=modHasModel(m);
-    if(!hasM){const st=M.length;mark(mn,mx,c,X.mk==null?1:X.mk,X.ol);(busy?Mb:Mn).push([st,M.length]);}
+    const hasM=modHasModel(m),lt=!hasM&&isLight(m);
+    if(!hasM){const st=M.length;if(lt)gem(o,lightCol(m));else mark(mn,mx,c,X.mk==null?1:X.mk,X.ol);(busy?Mb:Mn).push([st,M.length]);}
     const P=k=>[(k&1)?mx[0]:mn[0],(k&2)?mx[1]:mn[1],(k&4)?mx[2]:mn[2]];
-    if(!X.ol||hasM)for(const[a,d]of E)lin(P(a),P(d),[c[0]*0.6,c[1]*0.6,c[2]*0.6,0.8]);
+    if((!X.ol||hasM)&&!lt)for(const[a,d]of E)lin(P(a),P(d),[c[0]*0.6,c[1]*0.6,c[2]*0.6,0.8]);
     if(sel){const g=2,Q=k=>[(k&1)?mx[0]+g:mn[0]-g,(k&2)?mx[1]+g:mn[1]-g,(k&4)?mx[2]+g:mn[2]-g];for(const[a,d]of E)lin(Q(a),Q(d),[1,1,0.35,1]);}
     // a modelled entity: thin white axes at its origin, turned with its angles (as the
     // original's are), so the new origin can be seen exactly
@@ -10838,8 +10902,12 @@ function drawModify(vp){
     const gm={kv:(src?src.kv.filter(x=>x[0].toLowerCase()!=='origin'):[['classname',MOD.placing.cls]]).concat([['origin',g.join(' ')]])},b=modBox(gm),c=modColour(gm);
     const mn=[g[0]+b.mins[0],g[1]+b.mins[1],g[2]+b.mins[2]],mx=[g[0]+b.maxs[0],g[1]+b.maxs[1],g[2]+b.maxs[2]];
     const P=k=>[(k&1)?mx[0]:mn[0],(k&2)?mx[1]:mn[1],(k&4)?mx[2]:mn[2]],fc=[c[0],c[1],c[2],0.18];
+    if(isLight(gm)){const lc=lightCol(gm),gc=[lc[0],lc[1],lc[2],0.35],r=8,v=[[g[0]+r,g[1],g[2]],[g[0],g[1]+r,g[2]],[g[0]-r,g[1],g[2]],[g[0],g[1]-r,g[2]]],
+        up=[g[0],g[1],g[2]+r],dn=[g[0],g[1],g[2]-r];
+      for(let k=0;k<4;k++){const a=v[k],q=v[(k+1)%4];tri(up,q,a,gc);tri(dn,a,q,gc);lin(up,a,[1,1,1,0.85]);lin(dn,a,[1,1,1,0.85]);lin(a,q,[1,1,1,0.85]);}}
+    else{
     for(const q of[[0,2,3,1],[4,5,7,6],[0,1,5,4],[2,6,7,3],[0,4,6,2],[1,3,7,5]]){tri(P(q[0]),P(q[1]),P(q[2]),fc);tri(P(q[0]),P(q[2]),P(q[3]),fc);}
-    for(const[a,d]of E)lin(P(a),P(d),[1,1,1,0.85]);
+    for(const[a,d]of E)lin(P(a),P(d),[1,1,1,0.85]);}
     lin([g[0],g[1],mn[2]-24],[g[0],g[1],mx[2]+24],[1,1,1,0.6]);}}
   gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.depthMask(false);
   gl.enable(gl.BLEND);gl.blendFuncSeparate(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA,gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
@@ -12026,7 +12094,7 @@ function actRoute(c,goals){
   for(const g of goals){
     const to=actFloor(g.o);
     if(g.cls==='info_waypoint'){R.pts.push(to);R.straight++;R.legs.push({e:R.pts.length-1,straight:true});pos=to;continue;}
-    const A=routesOk()?PA():null;
+    const A=routesOk()?PA(true):null;
     if(!A){R.fail=(routesOk()?'the AI paths are still being worked out: try again in a moment':'this map has no path nodes')+' (to '+g.name+')';break;}
     const r=actFindPath(A,pos,to);
     if(!r.ok){R.fail=r.why+' (to '+g.name+')';break;}
@@ -12318,6 +12386,7 @@ function actPose(now){
   // the node moved by what the clip has stepped him (turned to his yaw): he leans out round the corner
   const hs0=b.H.M.sc||1,mw=actMvec(Rn,[mv[0]*hs0,mv[1]*hs0,mv[2]*hs0]),po=[pos[0]+mw[0],pos[1]+mw[1],pos[2]+mw[2]];
   c.at=po.slice();c.cyaw=yaw;                 // where he is now: Fly to and Follow go there
+  c.cvp=cw?Math.max(-80,Math.min(73,vp)):vp;  // and the way he looks (Follow's pitch)
   const lt=actLight(po);
   actInst(b.H,Rn,po,lt);
   const tg=(hand&&b.tagL>=0)?b.tagL:b.tag;
@@ -12355,13 +12424,16 @@ function actPause(){
 // along the view angles, 2 down (cg_cameraverticaldisplacement), the camera a 10-unit box
 // traced from his head so a wall keeps it out; when that leaves it under 40 units from his
 // head (up against a wall) the pitch is cranked up 2 degrees at a time until it is 40 away,
-// so it ends up over him. He looks level, along his heading.
-function actCamCalc(p,yaw){
+// so it ends up over him. It looks along his view: his heading, and the pitch he looks up or
+// down by (a ladder climber's pitch box; on the ladder held to 73 down and 80 up, as
+// PmoveAdjustViewAngleSettings_OnLadder holds the view), so it swings up behind him when he
+// looks down and down when he looks up, as the game's does.
+function actCamCalc(p,yaw,pitch){
   const H=[p[0],p[1],p[2]+82],ref=[H[0],H[1],H[2]+18],mn=[-5,-5,-5],mx=[5,5,5];
   const place=a=>{const f=anglesAxis([a[0],a[1],0])[0],n=[ref[0]-120*f[0],ref[1]-120*f[1],ref[2]-120*f[2]-2];
     try{const t=pgTrace(H,n,mn,mx,false);return t.startsolid&&t.allsolid?H.slice():t.end.slice();}catch(_e){return n;}};
   const dl=q=>{const d=[q[0]-H[0],q[1]-H[1],q[2]-H[2]];return d;};
-  let ang=[0,yaw],pos=place(ang),d=dl(pos);
+  let ang=[pitch||0,yaw],pos=place(ang),d=dl(pos);
   if(d[2]<40)d[2]=0;
   if(Math.hypot(d[0],d[1],d[2])<40){
     const orig=ang.slice();
@@ -12371,7 +12443,7 @@ function actCamCalc(p,yaw){
   return{pos:pos,pitch:ang[0],yaw:ang[1]};
 }
 function actFollowCam(c){
-  const v=actCamCalc(c.at,c.cyaw!=null?c.cyaw:c.yaw);
+  const v=actCamCalc(c.at,c.cyaw!=null?c.cyaw:c.yaw,c.cvp||0);
   flyAnim=null;cam.pos=v.pos;cam.yaw=((v.yaw%360)+360)%360;cam.pitch=v.pitch;cam.roll=0;camChanged();
 }
 function actTick2(now,c){

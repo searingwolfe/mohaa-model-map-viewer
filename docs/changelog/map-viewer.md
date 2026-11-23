@@ -647,7 +647,15 @@ while lights are turned off (Lights off, below).
 - **Planar faces** are the compiled polygons themselves (draw surfaces, lump 3), each
   tied to the `.map` face it came from, so the filters, Hide and selection still work on
   them. Picking always uses the `.map` faces. Editor textures (caulk, clips, triggers,
-  hints...) keep their `.map` faces.
+  hints...) keep their `.map` faces. A face or triangle soup is left out as nodraw only
+  when its shader script says `surfaceparm nodraw`, as `ParseFace` tests the shader the
+  renderer made, not the flags in the `.bsp`'s shader lump; a patch goes by the lump's
+  flags, as `ParseMesh` does (`_surface_nodraw`). A face retextured in an editor that kept
+  the nodraw flag of the face it was is drawn in game, and here.
+- **Edit map** draws the `.map`'s own faces at full brightness once its text differs from
+  the text the `.bsp` was decompiled into (the baked light belongs to that text). The
+  light is kept, and comes back as soon as Undo (or an edit that undoes another) brings
+  the text back to exactly that (`ED.litSave`, `ED.text0` in `edRebuild`).
 - **Lightmaps** (lump 2, 128x128 pages) are brightened as `R_ColorShiftLightingBytes`
   does with `r_mapOverBrightBits 1` (shift by one, scaled back if a channel overflows)
   and packed into one PNG; the page loads them into a texture array.

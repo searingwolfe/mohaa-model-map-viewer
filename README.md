@@ -381,9 +381,11 @@ click away: its targetname, origin, `setsize`, targets and ready-to-paste script
   idle the same way. Each starts again from the last spawn. When he can't finish (the
   ladder too short or too long, too close to a wall, something in the way, its origin far
   from it) the climb stops and the yellow note says why, with what to change.
-  **Pause**, **Fly to** and **Follow** work as for path nodes, and **Hide select** (green
-  while on) hides the ladder's red selection highlight and its facing arrow so the climb is
-  easier to watch; the ladder stays selected, and deselecting it turns Hide select off.
+  **Pause**, **Fly to** and **Follow** work as for path nodes (Follow's camera pitches with
+  him, as the game's third-person camera does: up behind him when he looks down, down when
+  he looks up), and **Hide select** (green while on) hides the ladder's red selection
+  highlight and its facing arrow so the climb is easier to watch; the ladder stays
+  selected, and deselecting it turns Hide select off.
 * **Modify** (above Find): add entities, most of all AI path nodes: Add, then click on the
   map where it goes. A new node is drawn
   see-through until saved, its parameters edit as entity-lump text (applied as you type),
@@ -413,7 +415,7 @@ click away: its targetname, origin, `setsize`, targets and ready-to-paste script
   script origins), drawn as a target link. **Grid** (+) draws a see-through 3D grid of MOHRadiant's sizes (1 to 512)
   that Add and Move snap to.
 * **Game cvars** (`` ` ``): the game's debugging cvars, working in the page:
-  `r_showtris`, `r_farplane`, `ai_showroutes` (from the map's `.pth`, or worked out when it has none), `sv_showentnums`,
+  `r_showtris`, `r_farplane`, `ai_showroutes` (from the map's `.pth`, or worked out when it has none: only once AI routes or another `ai_show...` cvar is turned on, or a Simulate run needs them, never just for selecting a node or editing an entity), `sv_showentnums`,
   `sv_showbboxes`, `g_entinfo`, `r_lightmap` and more; Reset at the top of the list sets them all back.
 * **MOHRadiant-style filters** (`Alt+1` … `Alt+0`, `Ctrl+D / H / M / R / T / P / K`) for
   caulk, clips, triggers, hints, AI nodes, lights, details, terrain, sky and more, with
@@ -439,6 +441,10 @@ click away: its targetname, origin, `setsize`, targets and ready-to-paste script
 * **Find** any class, targetname, key or texture (`Ctrl+F`), with `"exact"`, `$targetname`,
   `key: value`, `entity 25`, `( x y z )` and `-term` searches, or browse every class and
   texture the map uses; Shift+click a green (selected) row to deselect just that row.
+  It searches what isn't saved yet too: a map entity changed in Modify or Edit map (a
+  targetname set in Class specs, say) by its keys as they are now, tagged **edited**
+  (**deleted** for one deleted there), and Modify's new entities, tagged **new** (a click
+  selects one in Modify and flies to it).
 * **The world's keys** (`$world`, the worldspawn: entity 0 in the `.map`, entity number 1022
   in the game): hold the mouse over the stats line under the map's name ("decompiled from
   the .bsp", or "$world: N keys" for a `.map`) to see them all, and click it, its row in
@@ -579,7 +585,7 @@ way here.
     the key that points along it: its end goes out, the points between follow evenly (a
     sag stays) and the texture keeps its size; Shift+key shortens that end (Shift+A the left
     one, Shift+D the right). While Trim is on, a grey note above the tool's help lists the
-    keys. Esc or T stops, one Undo for it all. As Modify's trim, white arrows stand out of the selection's sides (Resize: each
+    keys. Holding a key keeps going: the steps its repeats ask for are done together once a frame, so the selection grows as you hold it, however big the map. Esc or T stops, one Undo for it all. As Modify's trim, white arrows stand out of the selection's sides (Resize: each
     brush's sides that a key pushes) and turn red as a key moves it that way (cyan as
     Shift pulls in); a big side gets a few, tiled from its middle, and they grow with
     distance so a giant brush shows them from far away. The camera keys stay still. **Delete** (the key, or the button beside the selection) deletes the selected
@@ -644,13 +650,17 @@ way here.
     origin brush (a copy of another door's, say), pick the door and **Move into**: the door
     then turns about that origin brush. Picking *the world* takes brushes back out of an
     entity. No entity is left with no brushes, and terrain stays in the world; one Undo.
-  * **Class specs** (below Exact values, with one brush entity's brush selected): every key
-    its class takes from the map, by class (a `func_rotatingdoor`: RotatingDoor's
+  * **Class specs** (below Exact values, with one brush entity's brush selected): its
+    **targetname** first (the `$name` the level script and other entities' `target` call it
+    by; no spaces, a leading `$` is dropped), then every key its class takes from the map, by class (a `func_rotatingdoor`: RotatingDoor's
     `openangle`, then Door's `doortype`, `time`, `wait`, `angle`, `alwaysaway`, the
     sounds...), and under *more* the general ones from ScriptSlave, Trigger and Entity.
     Bold keys are set on the entity; type a value and Enter sets it, empty takes it away
     (a key change, so Save as .bsp keeps it; Undo puts it back), and Open door uses it at
-    once. **SH** / **BT** mark keys only Spearhead / Breakthrough have. A door that opens
+    once. **SH** / **BT** mark keys only Spearhead / Breakthrough have. Under it,
+    **Edit parameters** opens Modify's editor on all of the entity's keys as text, and
+    **Delete** deletes the whole entity (for a lone brush, patch or terrain block, Delete
+    stays beside the selection's line). A door that opens
     to one side only usually needs the `angle` its neighbours have (Door::SetDir turns its
     direction from it), and `doortype metal` makes it take 1.5 s instead of 1. The same
     list, with the values set, is in the entity's (and its brushes') More info. Every
@@ -721,6 +731,14 @@ way here.
      built from is written beside it with the same name, so you can open it later and carry
      on. Nothing is written over the map you opened, over a `.map` or a `.bsp` that Compile
      didn't write, without asking (the old one is kept as `.bak`).
+     Compiling to the same folder and name as the `.map` you have open (with changes it
+     doesn't have yet) asks what to do: **Yes, and close the map** or **Yes, and re-open
+     the map** write your changes over it (the old one kept as `.bak`) and close it or open
+     it again once the compile is done; **No, write as .map.bak** keeps the
+     open `.map` as it is, puts your changes in `<name>.map.bak` and builds the `.bsp` from
+     them; **Cancel** does nothing. **Map file only** asks the same over the open `.map` (nothing
+     compiled: the `.bak` choice just writes your changes there), and **Replace it?** over
+     another `.map` already there.
      Beside the `.bsp` go the files EA's Q3map leaves there too: the `.prt` (portal file,
      sealed maps; the game reads it for `r_showportal`), or the `.lin` leak trail when the
      map leaks (the old one of either is removed first, so a fixed leak's trail doesn't
@@ -737,8 +755,12 @@ way here.
      shows the program it will start; **Browse...** picks another (or the one it couldn't
      find), kept for next time. Off Windows, `MOHAA.exe` is started through Wine.
 
-  The compile runs in the background (its lines and each step's time in the Output pane;
-  F9 offers to stop it), then offers to open the new `.bsp`, with its baked light.
+  The compile runs in the background (its lines and each step's time in the Output pane),
+  then offers to open the new `.bsp`, with its baked light. **Shift+Esc** (in the launcher or
+  on the page) or F9 again stops it, after asking: no `.bsp` is written, and the `.map` it
+  wrote to build from is put back as it was (removed if it made it; the `.map` you have open
+  is kept). A question that comes while the window is minimized (the compile finishing)
+  waits until you restore it, its taskbar button flashing.
 
   **Full vis in minutes, not hours.** On an open map (a beach, a town) full vis has to
   follow every path each portal might see through, which is why MBuilder can sit at 99% all

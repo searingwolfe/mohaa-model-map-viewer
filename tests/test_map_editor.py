@@ -709,6 +709,168 @@ class CompileFlow(unittest.TestCase):
         finally:
             E.filedialog.asksaveasfilename = real_save
 
+    def test_over_the_open_map(self):
+        """Compiled to the same folder and name as the .map the viewer has open, with text that
+        differs from it (the page's changes were "saved" into a .map compiled elsewhere): asked,
+        close / re-open write it (the old one kept as .bak) and close or re-open the map once
+        compiled; "bak" leaves it as it is and writes the new text as .map.bak, which the .bsp
+        is built from; Cancel writes nothing; the same text asks nothing."""
+        import queue
+        real_save = E.filedialog.asksaveasfilename
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                src = os.path.join(d, "rev4.map")
+                orig = E.starter_map("rev4")
+                with open(src, "w", newline="") as f: f.write(orig)
+                new = orig.replace('"classname" "worldspawn"', '"classname" "worldspawn"\n"message" "CHANGED"', 1)
+                app = E.EditApp.__new__(E.EditApp)
+                app.tk = None
+                app._compiling, app._pk3_paths = False, []
+                logged, js, answers, asked, did = [], [], [], [], []
+                app._last_build = (src, None, None, None, "")
+                app._tmp = os.path.join(d, "ws"); os.makedirs(app._tmp)
+                app._vfs, app._tex_ready = Compile._Vfs({}), True
+                app._cfg = {}
+                app._log_q, app._page_requests, app._webview = queue.Queue(), [], None
+                app._log_line = lambda m, tag="": logged.append(m)
+                app._save_config = lambda: None
+                app._page_js = js.append
+                def dlg(title, head, body, buttons):
+                    asked.append([b[0] for b in buttons]); return answers.pop(0) if answers else "cancel"
+                app._unsaved_dialog = dlg
+                app._close_file_ask = lambda: did.append("close")
+                app._path_var = type("V", (), {"set": lambda self, v: None})()
+                app._load = lambda p: did.append(("load", p))
+                app._compile_dialog = lambda what, game, world=None: dict(steps="bsp", where="ask")
+                E.filedialog.asksaveasfilename = lambda **k: os.path.join(d, "rev4.bsp")
+                body = lambda t: json.dumps({"changed": False, "edN": 3, "modKey": "k", "isBsp": False,
+                                             "mapText": t, "src": src})
+                def read(p):
+                    with open(p) as f: return f.read()
+                # Cancel: nothing written, nothing compiled
+                answers[:] = ["cancel"]; app._edit_compile(body(new))
+                self.assertEqual(asked[-1], ["close", "reopen", "bak", "cancel"])
+                self.assertFalse(app._compiling); self.assertEqual(read(src), orig)
+                # bak: the open .map as it was, the new text in .map.bak, the .bsp built from it
+                answers[:] = ["bak", "stay"]; app._edit_compile(body(new)); self._wait(app)
+                self.assertEqual(read(src), orig)
+                self.assertIn("CHANGED", read(src + ".bak"))
+                with open(os.path.join(d, "rev4.bsp"), "rb") as f: self.assertIn(b"CHANGED", f.read())
+                self.assertFalse(any("edCompiledSaved" in j for j in js))     # the page's changes aren't saved
+                # re-open: written over (the old kept as .bak), then the .map opened again
+                answers[:] = ["reopen"]; app._edit_compile(body(new)); self._wait(app)
+                self.assertIn("CHANGED", read(src)); self.assertEqual(read(src + ".bak"), orig)
+                self.assertEqual(did[-1], ("load", src))
+                # the same text as the file: nothing asked
+                n = len(asked); answers[:] = ["stay"]; app._edit_compile(body(new)); self._wait(app)
+                self.assertEqual(len(asked), n + 1)                           # only "Compiled"
+                # close: written, then the map closed (and the .bsp offered)
+                answers[:] = ["close", "stay"]; app._edit_compile(body(new.replace("CHANGED", "AGAIN"))); self._wait(app)
+                self.assertIn("AGAIN", read(src)); self.assertEqual(did[-1], "close")
+        finally:
+            E.filedialog.asksaveasfilename = real_save
+
+    def test_stop_puts_back(self):
+        """A compile stopped (Shift+Esc) before it finishes writes no .bsp, and the .map it wrote
+        beside it is put back: removed when it made it, its old bytes again when it replaced
+        one (and the .bak that made); the .map the viewer has open is never touched."""
+        import queue
+        real_save = E.filedialog.asksaveasfilename
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                src = os.path.join(d, "open", "room.map"); os.makedirs(os.path.dirname(src))
+                text = E.starter_map("room")
+                with open(src, "w", newline="") as f: f.write(text)
+                out = os.path.join(d, "out"); os.makedirs(out)
+                app = E.EditApp.__new__(E.EditApp)
+                app.tk = None
+                app._compiling, app._pk3_paths = False, []
+                logged = []
+                app._last_build = (src, None, None, None, "")
+                app._tmp = os.path.join(d, "ws"); os.makedirs(app._tmp)
+                app._vfs, app._tex_ready = Compile._Vfs({}), True
+                app._cfg = {}
+                app._log_q, app._page_requests, app._webview = queue.Queue(), [], None
+                app._log_line = lambda m, tag="": logged.append(m)
+                app._save_config = lambda: None
+                app._page_js = lambda j: None
+                app._unsaved_dialog = lambda *a: "yes"
+                app._compile_dialog = lambda what, game, world=None: dict(steps="all", where="ask")
+                E.filedialog.asksaveasfilename = lambda **k: os.path.join(out, "room.bsp")
+                body = json.dumps({"changed": True, "edN": 1, "modKey": "k", "mapText": text + "// changed\n", "src": src})
+                def run():
+                    app._edit_compile(body)
+                    self.assertTrue(app._compiling)
+                    app._edit_compile_stop(ask=False)
+                    self._wait(app)
+                # made here: removed
+                run()
+                self.assertEqual(sorted(os.listdir(out)), [])
+                self.assertTrue(any("stopped" in m for m in logged), logged)
+                # one that was there (Compile didn't write it): its bytes again, no .bak left
+                with open(os.path.join(out, "room.map"), "w") as f: f.write("mine")
+                run()
+                with open(os.path.join(out, "room.map")) as f: self.assertEqual(f.read(), "mine")
+                self.assertEqual(sorted(os.listdir(out)), ["room.map"])
+                with open(src, newline="") as f: self.assertEqual(f.read(), text)
+                app._edit_compile_stop(ask=False)
+                self.assertIn("no compile is running", logged[-1])
+        finally:
+            E.filedialog.asksaveasfilename = real_save
+
+    def test_map_only_over_the_open_map(self):
+        """"map file only" over the .map the viewer has open: the same question as Compile
+        asks (the save window's own replace question is off); "bak" writes the new text as
+        .map.bak and leaves the open one; re-open / close write it (the old kept as .bak), then
+        open it again or close it; another .map already there: "Replace it?"."""
+        import queue
+        real_save = E.filedialog.asksaveasfilename
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                src = os.path.join(d, "m.map"); orig = E.starter_map("m")
+                with open(src, "w", newline="") as f: f.write(orig)
+                new = orig.replace('"classname" "worldspawn"', '"classname" "worldspawn"\n"message" "NEW"', 1)
+                app = E.EditApp.__new__(E.EditApp)
+                app.tk = None
+                app._compiling, app._pk3_paths = False, []
+                logged, asked, answers, did, kw = [], [], [], [], []
+                app._last_build = (src, None, None, None, "")
+                app._tmp = os.path.join(d, "ws"); os.makedirs(app._tmp)
+                app._vfs, app._tex_ready = Compile._Vfs({}), True
+                app._cfg = {}
+                app._log_q, app._page_requests, app._webview = queue.Queue(), [], None
+                app._log_line = lambda m, tag="": logged.append(m)
+                app._save_config = lambda: None
+                app._page_js = lambda j: None
+                def dlg(title, head, body, buttons):
+                    asked.append([b[1] for b in buttons]); return answers.pop(0) if answers else "cancel"
+                app._unsaved_dialog = dlg
+                app._close_file_ask = lambda: did.append("close")
+                app._path_var = type("V", (), {"set": lambda self, v: None})()
+                app._load = lambda p: did.append(("load", p))
+                app._compile_dialog = lambda what, game, world=None: dict(steps="map", where="ask")
+                def save(**k): kw.append(k); return dest[0]
+                E.filedialog.asksaveasfilename = save
+                dest = [src]
+                def read(p):
+                    with open(p) as f: return f.read()
+                body = json.dumps({"changed": True, "edN": 1, "modKey": "k", "mapText": new, "src": src})
+                answers[:] = ["bak"]; app._edit_compile(body)
+                self.assertIs(kw[-1].get("confirmoverwrite"), False)
+                self.assertEqual(asked[-1], ["Yes, and close the map", "Yes, and re-open the map", "No, write as m.map.bak", "Cancel"])
+                self.assertEqual(read(src), orig); self.assertIn("NEW", read(src + ".bak"))
+                answers[:] = ["reopen"]; app._edit_compile(body)
+                self.assertIn("NEW", read(src)); self.assertEqual(read(src + ".bak"), orig); self.assertEqual(did[-1], ("load", src))
+                answers[:] = ["close"]; app._edit_compile(json.dumps(dict(json.loads(body), mapText=new + "// 2\n")))
+                self.assertIn("// 2", read(src)); self.assertEqual(did[-1], "close")
+                # another .map already there
+                dest[0] = os.path.join(d, "other.map")
+                with open(dest[0], "w") as f: f.write("x")
+                answers[:] = ["cancel"]; app._edit_compile(body)
+                self.assertEqual(asked[-1], ["Replace it", "Cancel"]); self.assertEqual(read(dest[0]), "x")
+        finally:
+            E.filedialog.asksaveasfilename = real_save
+
     def test_map_only_with_world_keys(self):
         """"map file only": the .map is written with the MAP box's worldspawn keys (its brushes
         kept), nothing compiled; the MAP box is given the map's own keys."""

@@ -3431,6 +3431,86 @@ look of the walk and the doors should be confirmed by eye in the launcher.
   hashlib has none with OpenSSL 3). Nothing reads the `.vis` (Q3map's loader for it is never
   called; the game doesn't). The `.dcl`, `.pth` and `.min` are the game's (its decal editor,
   PathSearch, the loading screen), not a compiler's. Tested: `test_side_files`, `test_md4`.
+- Trim (Move / Resize) with a key held: each repeat ran a whole edit and rebuild on its own,
+  and the page doesn't draw until every waiting repeat is done, so a held key looked stuck
+  and then jumped many steps at once. The repeats are now counted (`edTrimHeld`) and done
+  together once a frame as a single step of that many trim steps (`edTrimFlush`; when the
+  whole count can't be done, as a face pulled through its brush, as many as can be), so the
+  brush or wire grows while the key is held. On m3l1b (a rebuild of about 0.4 s headless),
+  a press and 15 waiting repeats now take two rebuilds instead of sixteen, and end 16 steps
+  longer with one Undo.
+- Edit map: path nodes and the other point entities stopped being drawn after the first
+  brush edit (a Trim step, an Undo or Redo), their labels and arrows still showing. The
+  editor's rebuild made the entities again (buildEntities: new ENTS) but kept the markers'
+  old buffers, so none of the new ENTS had marker vertices and none were drawn; their pick
+  ids (NF + 1 + entity) were stale too, and each model's list of the entities drawn with it
+  kept the old numbers. `entDrawRebuild` makes the markers' buffers and the models' lists
+  again after every rebuild. Checked on m3l1b: all 2,787 markers drawn after two Trim steps,
+  Alt+Z and Alt+Y.
+- Edit map's Trim goes off on Undo / Redo (Alt+Z / Alt+Y, which take the selection away) and
+  when a key is pressed with nothing selected (the key then goes to the camera), instead of
+  holding the camera's keys until Esc.
+- The AI paths of a map without a `.pth` for its version (any `.map`) are worked out only when
+  asked: AI routes (`ai_showroutes`, I), `ai_shownode`, `ai_shownodenums`, `ai_showallnode`,
+  or a Simulate run along them (`paWanted`, `PA(true)`). Selecting a path node (the
+  selection's Same error button), its More info and Modify's notes (after a door was
+  edited, say) called PA() and started the work; they now use the paths only when they are
+  there. More info says to turn AI routes on to see a node's paths.
+- Follow's camera takes the climber's look pitch (`actCamCalc`), as CG_OffsetThirdPersonView
+  backs the camera off along the whole view angles: 120 back from 18 over his head along a
+  view 50 down puts it up behind him, looking down. On the ladder the pitch is held to 73
+  down and 80 up, as the view is. It was always level.
+- Modify draws a new light (`light`, `light_*`) as the map draws its lights: the 8-unit
+  diamond of initMarkers' marker 2, the lower half darker, in its `_color` (buildEntities'
+  rule; pale yellow without one), see-through until saved, and the one being placed as a
+  diamond outline under the cursor. They were cubes.
+- Compile over the `.map` the viewer has open: after a compile into another folder (which
+  wrote the changes into the .map there and counted them saved), compiling into the open
+  map's own folder sent no text, so that .map wasn't written and the .bsp was built from it
+  as it was on disk, without the changes. The page now always sends its text
+  (`edCompileAsk`), and the launcher compares it with the file. When it differs it asks:
+  Yes, and close the map / Yes, and re-open the map (written over, the old one kept as
+  .bak; closed as Esc closes it, or opened again, once the compile is done; left open if the
+  compile fails), No, write the new .map as .map.bak (the open .map as it is, the .bsp
+  built from a copy of the new text: `compile_map(..., out_base=)`), or Cancel. The same
+  text asks nothing. "Map file only" writes nothing when the text is the file's already.
+  Tested: `test_over_the_open_map`.
+- Shift+Esc stops a running compile (`_edit_compile_stop`; in the launcher, and on the page,
+  which posts `mohaa-edit-compile-stop`; F9 again does the same), after asking. The
+  compiler is killed, or stopped before its next step when none is running (`compile_map(...,
+  stop=)`), and what the compile wrote beside the map before the compiler ran is put back
+  (`_edit_compile_undo`): the .map it builds from removed when it made it, its old bytes when
+  it replaced one, and the .bak that made; the .map the viewer has open is never touched. The
+  .bsp and its side files are only written when a compile finishes. Tested:
+  `test_stop_puts_back`.
+- A question asked while the launcher is minimized (Compiled: open the .bsp?, at the end of
+  a compile) waits until the window is restored, its taskbar button flashing
+  (`_wait_restored`, FlashWindowEx). The modal window was minimized with the launcher and
+  its grab kept the launcher from being restored, so it looked hung until killed.
+- Edit map's Class specs starts with the brush entity's **targetname** (`edTnRow`: Enter
+  sets it in its Modify row, empty takes it away; no spaces, a leading `$` dropped), and
+  under it a row with **Edit parameters** (Modify's text editor on all its keys,
+  `modEditOpen` on its row) and **Delete** (moved there from the selection's line for a
+  whole brush entity). Class specs is drawn again when Modify's editor closes, so it shows
+  what was typed there.
+- Modify's angles row: a path node's or other yaw-only info_ entity's pitch and roll boxes
+  are greyed out and empty (they were disabled but looked the same, holding 0), with a
+  tooltip saying why; with nothing selected all three are greyed.
+- A map entity renamed or re-keyed in its Modify row (Class specs, Edit parameters) shows the
+  new keys at once (`entKvlNow`): its label in the view (with the EDIT badge, as Modify's own
+  entities have), the selection's line, Find's lists and More info. A brush entity's label
+  came from the map's keys as loaded, since the map, not Modify, draws its brushes.
+- Find searches the keys as they stand: a map entity with a Modify row is matched on the
+  row's keys (`FIND_ROWS`; a targetname set in Edit map's Class specs is found by
+  `$name`), tagged "edited" ("deleted" for one deleted in Modify), and Modify's new
+  entities are found too, tagged "new" (`{m: i}` results; a click selects it in Modify and
+  flies to it). Find used the map's keys as loaded, and only the map's entities.
+- Compile's "map file only" asks over the .map the viewer has open what Compile asks there
+  (Yes, and close the map / Yes, and re-open the map / No, write as <name>.map.bak / Cancel;
+  nothing is compiled), and "Replace it?" over another .map already there. The save
+  window's own "already exists, replace it?" is off for it (`confirmoverwrite=False`), so
+  the question is asked once, in the launcher's words. The questions' third button is
+  shorter: "No, write as <name>.map.bak". Tested: `test_map_only_over_the_open_map`.
 - The updater keeps a Git clone in step (`_update_git_sync`): after installing a commit in a
   folder with `.git`, it runs `git fetch origin` and, when the branch has nothing GitHub
   lacks (`git merge-base --is-ancestor HEAD <commit>`), `git reset --mixed <commit>`, so
@@ -3439,3 +3519,29 @@ look of the walk and the doors should be confirmed by eye in the launcher.
   GitHub's, and the push was rejected until `git fetch` + `git reset --soft origin/main`.
   With local commits, no Git on PATH or no network, the Output pane says what to run
   instead. Tested against real repositories (`UpdaterGit` in tests/test_hardening.py).
+
+## Map Viewer: retextured faces lit, Undo back to the baked light (November 2026)
+
+- A `.bsp` compiled from a `.map` edited in Edit map (or MOHRadiant) showed some
+  retextured faces only with Full Brightness on: with the game's lighting they weren't
+  drawn at all, though the game draws them. A face that was nodraw (caulk) and was given a
+  real texture keeps the face's surface flags in the `.map` line (`... 67760 0`, which
+  holds `SURF_NODRAW` 0x80), the compiler carries them into the `.bsp`'s shader lump, and
+  `lit_payload` (and the `r_showtris` pass) left out every draw surface whose lump flags
+  say nodraw. The game doesn't: `ParseFace` (renderergl1/tr_bsp.c) tests the
+  `shader_t` that `R_FindShader` made from the shader script, so such a face is drawn;
+  only `ParseMesh` tests the lump's flags, for patches. Now the builder does the same
+  (`_surface_nodraw`): faces and triangle soups are nodraw only when their shader says
+  `surfaceparm nodraw`, patches by the lump. The user's `m3l1b.bsp`: 6773 lit polygons
+  before, 6822 after, which is every planar surface in it (49 faces were missing, such as
+  the bunker wall `blasted/dday_bunker_wall1crkdsml` at x -1472).
+- Edit map: an edit dropped the `.bsp`'s baked light for good (`LIT=null`), so undoing
+  back to the map as opened kept it at full brightness. The light is now kept
+  (`ED.litSave`), with the text it belongs to (`ED.text0`, taken before the first edit),
+  and `edRebuild` puts it back when the text is that text again: the same faces in the
+  same order, so the polygons, tied to them by number, fit. Full Brightness's button
+  follows (`syncButtons`). The note says so: "Undo back to the .bsp brings it back".
+  Tested headless on the user's `m3l1b.bsp`: a retexture drops the light, Undo brings it
+  back (101 lit draw runs), Redo drops it, Undo restores it again.
+- The launcher's check for a stale cached page now includes `mohaa_map_editor.js`: a change
+  to Edit map's page code alone didn't rebuild a page built before it.

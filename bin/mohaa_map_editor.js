@@ -427,6 +427,7 @@ function edGoto(n,sel){
   edRebuild(sel!==undefined?sel:(ED.all[Math.max(0,ED.n-1)]||{}).sel);
 }
 function edDo(at,del,ins,sel,what){
+  if(ED.text0==null)ED.text0=D.srcText;                       // the text the .bsp was made from
   if(ED.crlf==null)ED.crlf=/\r\n/.test(D.srcText.slice(0,20000));
   if(ED.crlf)ins=ins.replace(/\r?\n/g,'\r\n');               // the file's own line endings
   try{if(MOD.edit>=0)modEditClose(true);}catch(_e){}
@@ -480,14 +481,22 @@ infoPrim=function(pi){
 // written again in place, the lazily built tables thrown away so they are built anew.
 function edRebuild(sel){
   if(ED.carry)edCarryEnd();
-  if(LIT&&!ED.lit){ED.lit=true;LIT=null;
-    flash('The geometry changed: the view draws the .map now, without the .bsp\'s baked light. Compile... bakes it again');}
+  // The .bsp's baked light belongs to the text it was compiled from: once the text differs,
+  // the view draws the .map's own faces at full brightness. It is kept, and comes back as
+  // soon as Undo (or an edit that undoes another) brings the text back to that very text.
+  const back=ED.lit&&ED.litSave&&ED.text0!=null&&D.srcText===ED.text0;
+  if(LIT&&!ED.lit){ED.lit=true;ED.litSave=LIT;LIT=null;
+    flash('The map changed: the view draws the .map now, without the .bsp\'s baked light (Undo back to the .bsp brings it back; Compile... bakes it again)');}
   MAP=readMap(D.srcText);
   // (an Undo can take away an entity Copy added: nothing may point past the map's end)
   SEL.clear();lastHit=null;try{setHover.h=null;}catch(_e){}
   scriptEnts();spawnKeys();
   try{for(const ei of[...hidEnt])if(ei>=MAP.ents.length)hidEnt.delete(ei);}catch(_e){}
   SC=buildScene(MAP,texFor,null);NF=SC.nf;
+  // the same text as the .bsp's: the same faces in the same order, so its polygons, tied
+  // to them by number, fit again (LIT.rep, each polygon's face)
+  if(back){LIT=ED.litSave;ED.lit=false;try{CULL.uk=CULL.ub=null;}catch(_e){}
+    try{if(!fullBright)flash('Back to the .bsp as compiled: the game\'s own lighting again');}catch(_e){}}
   // the culling boxes are per face: a change that keeps the face count (a brush moved into a
   // new entity, a brush reshaped) still reorders or moves faces
   try{CULL.fk=CULL.fb=null;}catch(_e){}
@@ -511,7 +520,7 @@ function edRebuild(sel){
     gl.bindBuffer(gl.ARRAY_BUFFER,B.uv);gl.bufferData(gl.ARRAY_BUFFER,SC.uv,gl.STATIC_DRAW);
     gl.bindBuffer(gl.ARRAY_BUFFER,B.pick);gl.bufferData(gl.ARRAY_BUFFER,SC.pick,gl.STATIC_DRAW);
     gl.bindBuffer(gl.ARRAY_BUFFER,null);
-    rebuildWorld();rebuildMarkers();try{rebuildModels();}catch(_e){}
+    rebuildWorld();entDrawRebuild();      // the markers and models for the new ENTS
   }
   SEL.clear();lastHit=null;
   if(sel){const pi=SC.prims.findIndex(p=>p.ent===sel.ei&&p.bn===sel.bn);
@@ -519,6 +528,7 @@ function edRebuild(sel){
   else ED.sel=null;
   selectionChanged();
   try{brSync();}catch(_e){}
+  try{syncButtons();}catch(_e){}              // Full Brightness shows whether the baked light is there
   lineDirty=true;requestDraw();
   edPanel();
 }
@@ -678,14 +688,15 @@ function edTrim(on){
   ED.trim=!!on;edPanel();
   flash(on?(ED.tool==='move'?'Trim: W A S D / arrows move the selection, Space / C up and down':'Trim: W A S D / arrows / Space / C push the brush\'s face that way out, Shift+key pulls it in')+
     ', '+MOD_STEPS[MOD.stepI]+' at a time (Modify\'s trim step). Esc or T stops':'Trim off');}
-function edTrimKey(e){
+// m: how many steps at once (a held key's repeats, gathered by edTrimHeld)
+function edTrimKey(e,m){
   const kl=e.key.toLowerCase(),A=modAxes();let d=null;
   if(kl==='w'||kl==='arrowup')d=A.f;else if(kl==='s'||kl==='arrowdown')d=A.f.map(v=>-v);
   else if(kl==='d'||kl==='arrowright')d=A.r;else if(kl==='a'||kl==='arrowleft')d=A.r.map(v=>-v);
   else if(kl===' ')d=[0,0,1];else if(kl==='c')d=[0,0,-1];
   else if(kl==='escape'||kl==='t'){edTrim(false);return true;}
   if(!d)return CAM_KEYS_FREE.has(kl)||CAM_KEYS_RAD.has(kl);   // the camera stays put
-  const st=MOD_STEPS[MOD.stepI],keep=[...SEL],n0=MOD.undo.length;
+  const st=MOD_STEPS[MOD.stepI]*Math.max(1,m||1),keep=[...SEL],n0=MOD.undo.length;
   if(ED.tool==='move'){const c=edCopySet();if(c.pts)throw new Error('Trim moves brushes; Modify\'s Trim origin moves entities');
     if(!c.prims.length&&!c.ents.length)throw new Error('Select a brush first');
     const C=edCarryBuild(c),o=d.map(v=>v*st);edDoMany(edMoveOps(C,o),'Trim: moved '+o.map(fmt).join(' '));}
@@ -703,11 +714,35 @@ function edTrimKey(e){
   if(ED.trimN++>0&&MOD.undo.length>n0)MOD.undo.splice(n0,MOD.undo.length-n0);   // one Undo for the trim
   ED.tflash={k:edAxKey(d),t:performance.now(),pull:ED.tool==='resize'&&e.shiftKey};setTimeout(requestDraw,240);
   SEL.clear();for(const k of keep)SEL.add(k);selectionChanged();lineDirty=true;requestDraw();return true;}
+// A held key: each repeat would rebuild the map's text and view on its own, and the page
+// doesn't draw until every repeat waiting is done, so it looked stuck and then jumped. The
+// repeats are counted instead (edTrimHeld) and done together once a frame, as one step of
+// that many trim steps: what can be done shows each frame, however slow a rebuild is. When
+// the whole count can't be done (a face pulled through the brush), as many as can are.
+const ED_TRIM_DIRS=new Set(['w','a','s','d','arrowup','arrowdown','arrowleft','arrowright',' ','c']);
+let edTrimQ=null;
+function edTrimFlush(){
+  const q=edTrimQ;edTrimQ=null;if(!q||!ED.trim)return;
+  for(let m=q.n;m>=1;m--){
+    try{edTrimKey({key:q.key,shiftKey:q.sh},m);return;}
+    catch(err){if(m===1)flash(err.message);}}
+}
+function edTrimHeld(e){
+  const kl=e.key.toLowerCase();
+  if(edTrimQ&&(edTrimQ.kl!==kl||edTrimQ.sh!==e.shiftKey))edTrimFlush();     // another key: the last one's steps first
+  if(edTrimQ)edTrimQ.n++;
+  else{edTrimQ={kl:kl,key:e.key,sh:e.shiftKey,n:1};requestAnimationFrame(edTrimFlush);}
+}
 window.addEventListener('keydown',e=>{
   if(!ED.trim)return;
   if(!EON()||!(ED.tool==='move'||ED.tool==='resize')){ED.trim=false;return;}
   if(e.ctrlKey||e.altKey||e.metaKey)return;
   const tg=e.target&&e.target.tagName;if(tg==='INPUT'||tg==='TEXTAREA'||tg==='SELECT')return;
+  // nothing selected any more (a click on nothing, an Undo): Trim goes off and the key
+  // goes to the camera, so it never holds the camera's keys with nothing to trim
+  if(!edJoinPrims().length&&!(ED.tool==='move'&&SEL.size)){edTrimQ=null;edTrim(false);return;}
+  if(e.repeat&&ED_TRIM_DIRS.has(e.key.toLowerCase())){edTrimHeld(e);e.preventDefault();e.stopPropagation();return;}
+  if(edTrimQ)edTrimFlush();
   let took=false;try{took=edTrimKey(e);}catch(err){flash(err.message);took=true;}
   if(took){e.preventDefault();e.stopPropagation();}},true);
 // while trimming, the camera's keys are let go of too where the page would hear them
@@ -878,27 +913,38 @@ function edJoin(ti){
 function edSpecEnt(){
   const c=edClsTargets();if(!c||c.prims.length||c.ents.length!==1)return -1;
   const ei=c.ents[0];return MAP.ents[ei]&&!MAP.ents[ei].scr?ei:-1;}
+// its targetname, first: the name scripts and other entities call it by ($name), whatever the class
+function edTnRow(ei){
+  const v=cspecValues(ei).get('targetname');
+  return'<div class="row" style="gap:4px;align-items:center;margin-top:4px"><span style="width:118px" title="targetname: the name the level script and other entities call it by ($name; their target key names it)">'+
+    (v!=null?'<b>targetname</b>':'targetname')+'</span><input type="text" data-spec="targetname" value="'+esc(v!=null?v:'')+'" placeholder="its $name" '+
+    'title="The name the level script and other entities call it by: $name in the script, and a trigger\'s or path\'s target key names it. Letters, digits and _ (no spaces).\n\nEnter sets it; empty takes it away" style="flex:1;min-width:60px;padding:1px 3px;font:inherit;font-size:11px"></div>';}
+// under Class specs: Edit parameters (all its keys as text, Modify's editor) and Delete
+function edEntBtns(ei){
+  return'<div class="row" style="gap:4px;margin-top:6px">'+edBtn('bEdParm','Edit parameters','Every key of '+esc(entName(ei)).replace(/"/g,'&quot;')+' as text, in Modify\'s editor (Modify\'s Undo, Alt+Z, puts it back)')+
+    edBtn('bEdDelE','Delete','Delete it, every brush (Undo brings it back)')+'</div>';}
 function edSpecHtml(){
   if(typeof cspecGroups!=='function')return'';
   const ei=edSpecEnt();if(ei<0)return'';
   const cls=edClsOf(ei),G=cspecGroups(cls);
-  if(!G)return'<div class="co" style="margin-top:6px">Class specs: '+esc(cls)+' isn\'t a class the game code lists.</div>';
+  if(!G)return'<div class="co" style="margin-top:6px">Class specs: '+esc(cls)+' isn\'t a class the game code lists.</div>'+edTnRow(ei)+edEntBtns(ei);
   const val=cspecValues(ei);
   const row=k=>{const v=val.get(k.n.toLowerCase());
     return'<div class="row" style="gap:4px;align-items:center;margin-top:2px"><span style="width:118px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(k.n+': '+cspecArgs(k)+(k.d?'\n\n'+k.d:''))+'">'+
       (v!=null?'<b>'+esc(k.n)+'</b>':esc(k.n))+'</span>'+cspecBadge(k.v)+
       '<input type="text" data-spec="'+esc(k.n)+'" value="'+esc(v!=null?v:'')+'" placeholder="'+esc(cspecArgs(k))+'" title="'+esc(cspecArgs(k)+(k.d?'\n\n'+k.d:'')+'\n\nEnter sets it; empty takes the key away')+'" style="flex:1;min-width:60px;padding:1px 3px;font:inherit;font-size:11px"></div>';};
   const own=G.filter(g=>g.own),more=G.filter(g=>!g.own&&g.keys.length);
-  let h='<details id="edSpecs"'+(ED.specs!==false?' open':'')+' style="margin-top:6px"><summary style="cursor:pointer" title="The keys '+esc(cls)+' takes from the map, from OpenMoHAA\'s game code (its events: a key is sent to the entity as the event of that name). SH / BT: Spearhead / Breakthrough only.">Class specs: '+esc(cls)+'</summary>';
+  let h='<details id="edSpecs"'+(ED.specs!==false?' open':'')+' style="margin-top:6px"><summary style="cursor:pointer" title="The keys '+esc(cls)+' takes from the map, from OpenMoHAA\'s game code (its events: a key is sent to the entity as the event of that name). SH / BT: Spearhead / Breakthrough only.">Class specs: '+esc(cls)+'</summary>'+edTnRow(ei);
   for(const g of own){if(!g.keys.length)continue;h+='<div class="co" style="margin-top:4px">'+esc(g.c)+'</div>';for(const k of g.keys)h+=row(k);}
   if(more.length){h+='<details id="edSpecMore"'+(ED.specMore?' open':'')+' style="margin-top:4px"><summary style="cursor:pointer">more, from '+esc(more.map(g=>g.c).join(', '))+'</summary>';
     if(ED.specMore)for(const g of more){h+='<div class="co" style="margin-top:4px">'+esc(g.c)+'</div>';for(const k of g.keys)h+=row(k);}
     h+='</details>';}
   h+='<div class="co" style="margin-top:4px">Bold: set on this entity. Enter sets a key, empty takes it away (Modify\'s Undo, Alt+Z, puts it back).</div></details>';
-  return h;}
+  return h+edEntBtns(ei);}
 function edSpecSet(ei,k,v){
   v=String(v==null?'':v).trim();
   if(/["\r\n]/.test(v))throw new Error('a key\'s value can\'t hold quotes or line breaks');
+  if(k.toLowerCase()==='targetname'){v=v.replace(/^\$/,'');if(/\s/.test(v))throw new Error('a targetname can\'t hold spaces (the script names it $'+v.split(/\s/)[0]+'...)');}
   const m=modRowFor(ei),l=k.toLowerCase(),i=m.kv.findIndex(x=>x[0].toLowerCase()===l),cur=i>=0?m.kv[i][1]:null;
   if((cur==null&&v==='')||cur===v)return;
   modHist();
@@ -907,6 +953,9 @@ function edSpecSet(ei,k,v){
   try{if(DOOR_CLASSES[MAP.ents[ei].cls])doorsInit();}catch(_e){}
   flash((v===''?'"'+k+'" taken away':'"'+k+'" "'+v+'"')+' on '+entName(ei)+' (Save as .bsp keeps it without compiling)');
   edPanel();}
+// Modify's Edit parameters closed (opened here or there): Class specs shows the keys as they are now
+const _edModEditClose=modEditClose;
+modEditClose=function(){const r=_edModEditClose.apply(this,arguments);try{if(EON())edPanel();}catch(_e){}return r;};
 function edSpecBind(el){
   const sd=$('edSpecs');if(sd)sd.ontoggle=()=>{ED.specs=sd.open;};
   const sm=$('edSpecMore');if(sm)sm.ontoggle=()=>{const was=!!ED.specMore;ED.specMore=sm.open;if(sm.open&&!was)edPanel();};
@@ -2312,7 +2361,8 @@ function edSelSummary(){
   if(pr.kind===0){let bb=null;try{bb=edBounds(edFaces(pr));}catch(_e){}s='Brush '+ED.sel.bn+' of '+esc(who)+' - '+pr.d.faces.length+' faces'+(bb?', '+[0,1,2].map(k=>fmt(bb.mx[k]-bb.mn[k])).join(' x '):'');}
   else if(pr.kind===1)s='Patch '+ED.sel.bn+' of '+esc(who)+' - '+pr.d.w+' x '+pr.d.h+' points, '+esc(pr.d.tex);
   else s='Terrain '+ED.sel.bn+' - '+(pr.d.W-1)*64+' x '+(pr.d.H-1)*64+' units';
-  return'<div class="row" style="gap:4px;align-items:center;margin-top:6px"><span style="flex:1"><b>'+s+'</b></span>'+edBtn('bEdDelQ','Delete','Delete it (Undo brings it back)')+'</div>';}
+  // a whole brush entity's Delete is under its Class specs, beside Edit parameters
+  return'<div class="row" style="gap:4px;align-items:center;margin-top:6px"><span style="flex:1"><b>'+s+'</b></span>'+(edSpecEnt()>=0?'':edBtn('bEdDelQ','Delete','Delete it (Undo brings it back)'))+'</div>';}
 // ==== part 2: corners and edges, patch points, textures, region, terrain blocks ===============
 const TEXPRESETS=[['','- tool textures -'],['common/caulk','caulk (unseen faces)'],['common/hint','hint (vis split)'],['common/vis','vis (MOHAA vis brush)'],
   ['common/skip','skip (hint brush sides)'],['common/clip','clip (blocks all)'],['common/playerclip','player clip'],['common/monster','AI clip'],
@@ -2724,6 +2774,10 @@ function edPanel(){
   const dp=$('bEdDrop');if(dp)dp.onclick=()=>edDrop(!ED.drop);
   const lk=$('edLock');if(lk)lk.onchange=()=>{ED.lock=lk.checked;};
   on('bEdDelQ',()=>{if(!edDeleteSel())flash('Select a brush, patch or terrain block first');});
+  on('bEdDelE',()=>{if(!edDeleteSel())flash('Select a brush, patch or terrain block first');});
+  on('bEdParm',()=>{const ei=edSpecEnt();if(ei<0)throw new Error('select a brush entity first');
+    const i=MOD.ents.indexOf(modRowFor(ei));if(i<0)throw new Error('it has no Modify row');
+    if(MOD.edit>=0)modEditClose(true);modEditOpen(i);});
   on('bEdTrim',()=>edTrim());on('bEdTile',edTileSet);
   on('bEdAng',edAngTurn);on('bEdRotT',()=>edRotMode('rotate'));on('bEdAxesT',()=>edRotMode('axes'));
   el.querySelectorAll('input[id^="edTl"]').forEach(i=>i.addEventListener('change',()=>{try{ED.tileV=edTileRead();}catch(_e){}}));
@@ -2759,7 +2813,9 @@ function edCompileAsk(){
   if(MOD.trim)modTrim(false);
   const u=modUnsaved(),n=u?(u.nw||0)+(u.ch||0)+(u.br||0):0,changed=!!u||ED.n!==ED.saved;
   const req={unsaved:n,changed:changed,edN:ED.n,modKey:modSaveKey(),isBsp:D.kind==='bsp',name:D.name||'',src:D.srcFile||'',
-    mapText:(changed||D.kind==='bsp')?modMapText():null};
+    // always the text: "saved" can mean saved into a .map Compile wrote elsewhere, and the
+    // launcher compares it with the file it would compile from
+    mapText:modMapText()};
   if(post('mohaa-edit-compile\n'+JSON.stringify(req)))flash('Compile: choose how and where in the launcher');
   else flash('Compiling is done by the Map Viewer window (Edit map)');
 }
@@ -2772,6 +2828,10 @@ function edCompiledSaved(n,key,path){
   try{$('modStat').textContent=m;}catch(_e){}
 }
 window.edCompileAsk=edCompileAsk;window.edCompiledSaved=edCompiledSaved;
+// Shift+Esc: stop a compile that is running (the launcher asks first, and says when none is)
+window.addEventListener('keydown',e=>{
+  if(e.key!=='Escape'||!e.shiftKey||e.ctrlKey||e.altKey||e.metaKey)return;
+  if(post('mohaa-edit-compile-stop')){e.preventDefault();e.stopPropagation();}},true);
 function edSection(){
   const side=$('side');if(!side||$('edSect'))return;
   const s=document.createElement('div');s.className='sect';s.id='edSect';
@@ -2785,7 +2845,7 @@ function edSection(){
     (host?'Edit the map\'s level script (.scr) beside the map file: Save writes it (the old one kept as .bak) and builds the page again, so what it spawns is redrawn'
          :'The level script is edited from the Map Viewer window (Edit map), which reads and writes the file')+'">Level script...</button>'+
     '<button class="sm" id="bEdCmp"'+(host?'':' disabled')+' title="'+
-    (host?'Build a .bsp from the map as you see it, changes included: bsp + vis + light, saved where you choose (F9 in the launcher)'
+    (host?'Build a .bsp from the map as you see it, changes included: bsp + vis + light, saved where you choose (F9 in the launcher). Shift+Esc stops a compile that is running, putting back the .map it wrote'
          :'Compiling is done by the Map Viewer window (Edit map), which runs the compiler')+'">Compile...</button>'+
     '</div><div class="co" id="edNote" style="margin-top:6px"></div><div class="co" id="edNote2" style="margin-top:4px;color:var(--warn)"></div>'+
     '<h2 style="margin-top:8px">Brushes, patches and terrain</h2><div id="edBr" style="font-size:11px"></div>';

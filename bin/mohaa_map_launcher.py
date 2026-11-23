@@ -82,6 +82,7 @@ MAP_KEYS_LAUNCHER = {
             ML._kx("Ctrl+Shift+E", "Edit map on / off (the map editor)", ("Ctrl+Shift+E", "edit")),
             ML._kx("Ctrl+N", "New map: a starter room, opened in the map editor", ("Ctrl+N", "new map")),
             ML._kx("F9", "Compile map: the open .map into a .bsp (again: stop it)", ("F9", "compile")),
+            ML._kx("Shift+Esc", "Stop the compile that is running (asks first; the .map it wrote is put back)", ("Shift+Esc", "stop compile")),
             ML._kx("F1", "this window", ("F1", "keys", "the keyboard shortcuts (this window)")),
             ML._kx("F2", "the legend: colours, markers and editor surfaces", ("F2", "legend")),
             ML._kx("right-click", "on the Output console or the details panel: copy menu",
@@ -1088,8 +1089,8 @@ class MapApp(ML.App):
         baked page revision is current."""
         try:
             srcs = [os.path.abspath(__file__), MAP_BUILDER] + [os.path.join(HERE, n) for n in
-                    ("mohaa_map_page.py", "mohaa_bsp.py", "mohaa_entdefs.py", "mohaa_textures.py", "mohaa_view.py",
-                     os.path.join("data", "class_specs.json"))]
+                    ("mohaa_map_page.py", "mohaa_map_editor.js", "mohaa_bsp.py", "mohaa_entdefs.py", "mohaa_textures.py",
+                     "mohaa_view.py", os.path.join("data", "class_specs.json"))]
             newest = max((os.path.getmtime(s) for s in srcs if os.path.exists(s)), default=0)
             if os.path.getmtime(hp) < newest:
                 key = (hp, os.path.getmtime(hp))   # a pak map is checked twice per open: say it once
@@ -1475,11 +1476,42 @@ class MapApp(ML.App):
 
     DIALOG_WRAP = 520      # the choice windows' text wraps at this width (pixels), not one long line
 
+    def _wait_restored(self):
+        """A question asked while the window is minimized (a compile finishing, say) waits until
+        it is restored, its taskbar button flashing meanwhile. A modal window over a minimized
+        one is minimized with it, and its grab then kept the window from being restored: the
+        launcher looked hung (its preview showed, a click did nothing) until it was killed."""
+        try:
+            if self.state() != "iconic": return
+        except Exception:
+            MC.swallowed(); return
+        if sys.platform.startswith("win"):
+            try:
+                import ctypes
+                from ctypes import wintypes
+                class FLASHWINFO(ctypes.Structure):
+                    _fields_ = [("cbSize", wintypes.UINT), ("hwnd", wintypes.HWND), ("dwFlags", wintypes.DWORD),
+                                ("uCount", wintypes.UINT), ("dwTimeout", wintypes.DWORD)]
+                fi = FLASHWINFO(ctypes.sizeof(FLASHWINFO), int(self.wm_frame(), 16), 0x3 | 0xC, 0, 0)  # FLASHW_ALL | FLASHW_TIMERNOFG
+                ctypes.windll.user32.FlashWindowEx(ctypes.byref(fi))
+            except Exception:
+                MC.swallowed()
+        v = tk.BooleanVar(self, False)
+        def poll():
+            try:
+                if self.state() != "iconic": v.set(True); return
+            except Exception:
+                MC.swallowed(); v.set(True); return
+            self.after(250, poll)
+        poll()
+        self.wait_variable(v)
+
     def _unsaved_dialog(self, title, head, body, buttons):
         """A modal choice in the launcher's look (dark / light), or the system's own look
         with "Use old popup windows" on. buttons: (key, text, enabled); returns the key
         picked, "cancel" for Esc or the window's X. Cancel has the focus, so Enter or Space
         straight away doesn't throw anything away."""
+        self._wait_restored()
         old = ML.OLD_POPUPS
         w = tk.Toplevel(self); w.title(title)
         w.transient(self); w.resizable(False, False)

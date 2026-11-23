@@ -1054,8 +1054,12 @@ def vis_file(bsp_data):
     return bytes(head) + vis + b"\0" * ((4 - len(vis) % 4) % 4)
 
 
-def compile_map(map_path, vfs, work, steps=STEPS, log=print, procs=None, origin_bsp=None, options=None):
-    """Compile map_path: the steps in order, the results beside it. A dict: ok, bsp (its
+def compile_map(map_path, vfs, work, steps=STEPS, log=print, procs=None, origin_bsp=None, options=None,
+                out_base=None, stop=None):
+    """Compile map_path: the steps in order, the results beside it (or at out_base: the path
+    without extension the .bsp and its side files are written as, when the .map compiled is a
+    copy kept elsewhere). stop: a function saying whether the compile was stopped (checked
+    before each step: between two, no compiler is running for the stop to kill). A dict: ok, bsp (its
     path), leak (the trail's points, or None), steps (those that ran), why (when not ok),
     times ({step: seconds}). options: extra switches {"bsp": [...], "vis": [...], "light":
     [...]} (vis's go to fast vis too)."""
@@ -1076,11 +1080,11 @@ def compile_map(map_path, vfs, work, steps=STEPS, log=print, procs=None, origin_
     out_bsp = os.path.join(os.path.dirname(copy), stem + ".bsp")
     out_lin = os.path.join(os.path.dirname(copy), stem + ".lin")
     out_prt = os.path.join(os.path.dirname(copy), stem + ".prt")
-    side = os.path.splitext(os.path.abspath(map_path))[0]      # <map> beside the .map
+    side = os.path.abspath(out_base) if out_base else os.path.splitext(os.path.abspath(map_path))[0]   # <map> beside the .map
     onlyents = "bsp" in steps and "-onlyents" in extra["bsp"]
     if onlyents:
         # MBuilder's Entities only: ommap rewrites the entity lump of the .bsp compiled before
-        old = os.path.splitext(os.path.abspath(map_path))[0] + ".bsp"
+        old = side + ".bsp"
         if not os.path.isfile(old) and origin_bsp and os.path.isfile(origin_bsp):
             old = origin_bsp
         if not os.path.isfile(old):
@@ -1090,6 +1094,8 @@ def compile_map(map_path, vfs, work, steps=STEPS, log=print, procs=None, origin_
         log("(entities only: the entities of %s are replaced, its brushes, vis and light kept)" % old)
     done, leak = [], None
     for step in steps:
+        if stop and stop():
+            return dict(ok=False, why="the compile was stopped", steps=done)
         if step not in STEPS:
             return dict(ok=False, why="unknown step %r" % step, steps=done)
         if step in ("vis", "fastvis") and leak is not None:
@@ -1133,9 +1139,11 @@ def compile_map(map_path, vfs, work, steps=STEPS, log=print, procs=None, origin_
         done.append(step)
         if step == "bsp" and os.path.isfile(out_lin):
             leak = read_lin(out_lin)
+    if stop and stop():
+        return dict(ok=False, why="the compile was stopped", steps=done)
     if not os.path.isfile(out_bsp):
         return dict(ok=False, why="ommap wrote no .bsp", steps=done)
-    dest = os.path.splitext(os.path.abspath(map_path))[0] + ".bsp"
+    dest = side + ".bsp"
     with open(out_bsp, "rb") as f:
         data = f.read()
     MC.atomic_write_bytes(dest, data, backup=True)

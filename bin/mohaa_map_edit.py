@@ -236,6 +236,7 @@ class EditApp(MM.MapApp):
         MM.MapApp._build_ui(self)
         self.bind_all("<Control-n>", lambda e: (self._edit_new(), "break"))
         self.bind_all("<F9>", lambda e: (self._edit_compile(), "break"))
+        self.bind_all("<Shift-Escape>", lambda e: (self._edit_compile_stop() if getattr(self, "_compiling", False) else None))
 
     # ---- New map ------------------------------------------------------------------
     def _new_maps_dir(self):
@@ -777,10 +778,37 @@ class EditApp(MM.MapApp):
                            "digits, _ . or -", "err"); return
         same = os.path.normcase(os.path.abspath(dest)) == os.path.normcase(os.path.abspath(src))
         made = set(self._cfg.get("compile_written") or [])
-        if os.path.exists(dest) and os.path.normcase(dest) not in made:
-            head = (f"Write into {os.path.basename(dest)}, the map you opened?" if same
-                    else f"Replace {os.path.basename(dest)}?")
-            if self._unsaved_dialog("Save .map", head, f"The one there now is kept as {os.path.basename(dest)}.bak.",
+        if same and text is not None and os.path.isfile(dest):
+            try:
+                with open(dest, "r", encoding="latin-1", newline="") as f:
+                    if f.read() == text:
+                        self._log_line(f"Save .map: {os.path.basename(dest)} already holds this map; nothing written.", "dim")
+                        return
+            except OSError:
+                MC.swallowed()
+        nm, then = os.path.basename(dest), None
+        if same and os.path.isfile(dest):
+            # the .map the viewer has open: as Compile asks (the save window's own "replace?" is off)
+            then = self._unsaved_dialog(
+                "Save .map", f"You chose the same folder and name as {nm}, the .map you have open.",
+                f"Write your changes over {nm}? The one there now is kept as {nm}.bak.\n\n"
+                f"Or keep {nm} as it is: your changes go into {nm}.bak instead.",
+                [("close", "Yes, and close the map", True), ("reopen", "Yes, and re-open the map", True),
+                 ("bak", f"No, write as {nm}.bak", True), ("cancel", "Cancel", True)])
+            if then not in ("close", "reopen", "bak"):
+                self._log_line("Save .map: cancelled.", "dim"); return
+            if then == "bak":
+                try:
+                    if text is None:
+                        with open(src, "r", encoding="latin-1", newline="") as f: text = f.read()
+                    MC.atomic_write_text(dest + ".bak", text, encoding="latin-1", errors="replace", newline="")
+                except OSError as e:
+                    MC.swallowed(); self._log_line(f"Save .map: could not write {dest}.bak: {e}", "err"); return
+                self._log_line(f"Save .map: your changes are in {dest}.bak; {nm}, open in the viewer, is as it was "
+                               "(nothing compiled).", "ok")
+                return
+        elif os.path.exists(dest):
+            if self._unsaved_dialog("Save .map", f"Replace {nm}?", f"The one there now is kept as {nm}.bak.",
                                     [("yes", "Replace it", True), ("cancel", "Cancel", True)]) != "yes":
                 self._log_line("Save .map: cancelled.", "dim"); return
         try:
@@ -800,6 +828,10 @@ class EditApp(MM.MapApp):
             self._page_js("try{edCompiledSaved(%s,%s,%s)}catch(e){}" % (json.dumps(saved_info.get("edN")),
                                                                        json.dumps(saved_info.get("modKey")), json.dumps(dest)))
         self._log_line(f"Save .map: wrote {dest} (nothing compiled).", "ok")
+        if then == "reopen":
+            self._path_var.set(dest); self._load(dest)
+        elif then == "close":
+            self._close_file_ask()        # its changes are saved, so the page lets itself go
 
     def _start_game(self, bsp, gametype, cmdline):
         """Start the game with the map just compiled, as MBuilder does: its command line, then
@@ -842,14 +874,7 @@ class EditApp(MM.MapApp):
         (changes included) into a .bsp where the user chooses, on a worker thread."""
         if getattr(self, "_compiling", False):
             # F9 again while it runs: offer to stop it (vis can take an hour on a big map)
-            if self._unsaved_dialog("Compile", "A compile is running.", "Stop it? Nothing is written until a "
-                                    "compile finishes.",
-                                    [("stop", "Stop it", True), ("keep", "Keep going", True)]) == "stop":
-                for p in list(getattr(self, "_compile_procs", [])):
-                    try: p.kill()
-                    except OSError: MC.swallowed()
-                self._log_line("Compile: stopping.", "dim")
-            return
+            self._edit_compile_stop(); return
         src = self._last_build[0] if self._last_build else None
         wv = getattr(self, "_webview", None)
         page_up = wv is not None and getattr(wv, "core", None) is not None
@@ -949,9 +974,11 @@ class EditApp(MM.MapApp):
             try: os.makedirs(init, exist_ok=True)
             except OSError: MC.swallowed(); init = ML.DATADIR
             if map_only:
+                # the window's own "already exists, replace it?" is off: _edit_save_map_only asks
+                # (over the .map the viewer has open, with what to do next)
                 dest = filedialog.asksaveasfilename(parent=self, title="Save the .map as",
                                                     initialdir=init, initialfile=name + ".map", defaultextension=".map",
-                                                    filetypes=[("MOHAA map source", "*.map")])
+                                                    filetypes=[("MOHAA map source", "*.map")], confirmoverwrite=False)
             else:
                 dest = filedialog.asksaveasfilename(parent=self, title="Compile: save the .bsp as",
                                                     initialdir=init, initialfile=name + ".bsp", defaultextension=".bsp",
@@ -976,10 +1003,53 @@ class EditApp(MM.MapApp):
         write_text = text
         if text is None:
             write_text = None if same(map_out, src) else ""          # "": copy the file as it is
-        if write_text is not None and os.path.exists(map_out) and os.path.normcase(map_out) not in made:
-            head = (f"Write your changes into {os.path.basename(map_out)}, the map you opened?" if same(map_out, src)
-                    else f"Replace {os.path.basename(map_out)} beside it?")
-            if self._unsaved_dialog("Compile", head, f"The .bsp is built from a {os.path.basename(map_out)} beside it. "
+        compile_from, out_base, then = map_out, None, None
+        # what this compile writes beside the map before the compiler runs, with what was there
+        # (None: nothing), so a stopped compile puts it back (_edit_compile_undo); never the
+        # .map the viewer has open
+        undo = []
+        def keep(path):
+            if same(path, src) or any(same(path, q) for q, _o in undo): return
+            try:
+                with open(path, "rb") as f: undo.append((path, f.read()))
+            except FileNotFoundError: undo.append((path, None))
+            except OSError: MC.swallowed()
+        over_open = write_text is not None and is_map and same(map_out, src) and os.path.isfile(src)
+        if over_open:
+            # the .map the viewer has open, at the same place and name: only when the text differs
+            # (the page always sends it: "saved" may mean saved into a .map Compile wrote elsewhere)
+            try:
+                with open(src, "r", encoding="latin-1", newline="") as f:
+                    if f.read() == write_text: write_text = None
+            except OSError:
+                MC.swallowed()
+        if write_text is not None and over_open:
+            nm = os.path.basename(map_out)
+            then = self._unsaved_dialog(
+                "Compile", f"You chose the same folder and name as {nm}, the .map you have open.",
+                f"Write your changes over {nm}? The one there now is kept as {nm}.bak.\n\n"
+                f"Or keep {nm} as it is: your changes go into {nm}.bak instead, and the .bsp is built from them.",
+                [("close", "Yes, and close the map", True), ("reopen", "Yes, and re-open the map", True),
+                 ("bak", f"No, write as {nm}.bak", True), ("cancel", "Cancel", True)])
+            if then not in ("close", "reopen", "bak"):
+                self._log_line("Compile: cancelled.", "dim"); return
+            if then == "bak":
+                # the opened .map stays as it is: the new one is <name>.map.bak, and the compiler
+                # reads a copy of it (its results still go beside the .map)
+                pend = os.path.join(self._tmp, "pending", os.path.basename(map_out))
+                try:
+                    os.makedirs(os.path.dirname(pend), exist_ok=True)
+                    keep(map_out + ".bak")
+                    MC.atomic_write_text(map_out + ".bak", write_text, encoding="latin-1", errors="replace", newline="")
+                    MC.atomic_write_text(pend, write_text, encoding="latin-1", errors="replace", newline="")
+                except OSError as e:
+                    MC.swallowed(); self._log_line(f"Compile: could not write {map_out}.bak: {e}", "err"); return
+                self._log_line(f"Compile: your changes are in {map_out}.bak; {nm}, open in the viewer, is as it was.", "ok")
+                compile_from, out_base, write_text = pend, os.path.splitext(map_out)[0], None
+                changed = False                                     # the page's changes aren't in its .map
+        elif write_text is not None and os.path.exists(map_out) and os.path.normcase(map_out) not in made:
+            if self._unsaved_dialog("Compile", f"Replace {os.path.basename(map_out)} beside it?",
+                                    f"The .bsp is built from a {os.path.basename(map_out)} beside it. "
                                     f"The one there now is kept as {os.path.basename(map_out)}.bak.",
                                     [("yes", "Replace it", True), ("cancel", "Cancel", True)]) != "yes":
                 self._log_line("Compile: cancelled.", "dim"); return
@@ -988,6 +1058,8 @@ class EditApp(MM.MapApp):
                 with open(src, "r", encoding="latin-1", newline="") as f:
                     write_text = f.read()
             if write_text is not None:
+                keep(map_out)
+                if os.path.exists(map_out): keep(map_out + ".bak")
                 MC.atomic_write_text(map_out, write_text, encoding="latin-1", errors="replace", newline="",
                                      backup=os.path.exists(map_out))
                 made.add(os.path.normcase(map_out))
@@ -1001,7 +1073,8 @@ class EditApp(MM.MapApp):
         self._cfg["compile_written"] = sorted(made)[-200:]
         self._save_config()
         self._compiling = True
-        self._log_line(f"Compile: {map_out} ({' + '.join(steps)}) with {exe}", "ok")
+        self._compile_undo, self._compile_stopped = undo, False
+        self._log_line(f"Compile: {map_out} ({' + '.join(steps)}) with {exe}  (Shift+Esc stops it)", "ok")
         vfs, work = self._vfs, self._tmp
         procs = self._compile_procs = []
         saved = (info.get("edN"), info.get("modKey")) if changed else None
@@ -1015,19 +1088,66 @@ class EditApp(MM.MapApp):
             self._log_q.put(("dim", "  " + line))
         def work_fn():
             try:
-                res = MCO.compile_map(map_out, vfs, work, steps, log, procs, origin_bsp=origin, options=switches)
+                res = MCO.compile_map(compile_from, vfs, work, steps, log, procs, origin_bsp=origin, options=switches,
+                                      out_base=out_base, stop=lambda: getattr(self, "_compile_stopped", False))
             except Exception as e:
                 MC.swallowed()
                 res = dict(ok=False, why=str(e), steps=[])
-            self._page_requests.append(lambda r=res: self._edit_compiled(map_out, r, saved, after))
+            self._page_requests.append(lambda r=res: self._edit_compiled(map_out, r, saved, after,
+                                                                         then if then in ("close", "reopen") else None))
         threading.Thread(target=work_fn, daemon=True).start()
 
-    def _edit_compiled(self, src, res, saved=None, after=None):
+    def _edit_compile_stop(self, ask=True):
+        """Stop the compile that is running (Shift+Esc, or F9 again), asking first: vis can
+        take an hour on a big map. What it wrote beside the map before the compiler ran (the
+        .map it builds from, a .map.bak) is put back as it was once the compiler has stopped;
+        the .bsp and the files beside it are only written when a compile finishes."""
+        if not getattr(self, "_compiling", False):
+            self._log_line("Compile: no compile is running.", "dim"); return
+        if ask and self._unsaved_dialog("Compile", "A compile is running.",
+                                        "Stop it? The .bsp isn't written until it finishes, and the .map it wrote "
+                                        "to build from is put back as it was (the .map you have open is kept).",
+                                        [("stop", "Stop it", True), ("cancel", "Keep going", True)]) != "stop":
+            return
+        if not getattr(self, "_compiling", False):
+            return                                                  # it finished while asking
+        self._compile_stopped = True
+        for p in list(getattr(self, "_compile_procs", [])):
+            try: p.kill()
+            except OSError: MC.swallowed()
+        self._log_line("Compile: stopping.", "dim")
+
+    def _edit_compile_undo(self, undo):
+        """Put back what a stopped compile wrote: a file it made is deleted, one it replaced
+        gets its old bytes again."""
+        for path, old in reversed(undo):
+            try:
+                if old is None:
+                    if os.path.isfile(path):
+                        os.remove(path); self._log_line(f"Compile: removed {path} (made for the compile)", "dim")
+                else:
+                    MC.atomic_write_bytes(path, old); self._log_line(f"Compile: put back {path} as it was", "dim")
+            except OSError as e:
+                MC.swallowed(); self._log_line(f"Compile: couldn't put back {path}: {e}", "err")
+
+    def _edit_compiled(self, src, res, saved=None, after=None, then=None):
         """A compile finished (main thread): say how, show the leak trail, start the game when
-        asked, offer the .bsp."""
+        asked, offer the .bsp. then: "close" (the map, as the viewer's Esc, once it is done) or
+        "reopen" (the .map just written, in the viewer again), from the question asked when it
+        was compiled over the .map the viewer had open."""
         self._compiling = False
+        undo, self._compile_undo = getattr(self, "_compile_undo", None) or [], None
+        if not res.get("ok") and getattr(self, "_compile_stopped", False):
+            self._compile_stopped = False
+            self._log_line(f"Compile: stopped; {os.path.basename(src)} not compiled.", "err")
+            self._edit_compile_undo(undo)
+            return
         if not res.get("ok"):
-            self._log_line(f"Compile: {os.path.basename(src)} not compiled: {res.get('why')}", "err"); return
+            self._log_line(f"Compile: {os.path.basename(src)} not compiled: {res.get('why')}", "err")
+            if then:
+                self._log_line(f"Compile: {os.path.basename(src)} is saved with your changes; the map stays open "
+                               "since the compile didn't finish.", "dim")
+            return
         if saved:
             # the changes are in the .map written beside the .bsp: the page counts them saved
             self._page_js("try{edCompiledSaved(%s,%s,%s)}catch(e){}" % (json.dumps(saved[0]), json.dumps(saved[1]),
@@ -1055,6 +1175,11 @@ class EditApp(MM.MapApp):
         if "light" not in (res.get("steps") or []):
             self._log_line("Compile: no light step, so the .bsp has no lightmaps or light grid: "
                            "view it here, but compile with light before playing it in the game.", "warn")
+        if then == "reopen":
+            self._log_line(f"Compile: opening {os.path.basename(src)} again.", "dim")
+            self._path_var.set(src); self._load(src); return
+        if then == "close":
+            self._close_file_ask()        # its changes are saved, so the page lets itself go
         choice = self._unsaved_dialog("Compiled", f"{os.path.basename(res['bsp'])} is written.",
                                       f"Open it here in the Map Viewer now, with its baked light?\n\n"
                                       f"This doesn't start the game. {os.path.basename(src)}, the .map it was built "
@@ -1292,6 +1417,9 @@ class EditApp(MM.MapApp):
         if m.startswith("mohaa-edit-tex\n"):
             name = m.split("\n", 1)[1][:300]
             self._page_requests.append(lambda n=name: self._edit_tex(n))
+            return True
+        if m == "mohaa-edit-compile-stop":
+            self._page_requests.append(self._edit_compile_stop)
             return True
         if m == "mohaa-edit-compile" or m.startswith("mohaa-edit-compile\n"):
             body = m.split("\n", 1)[1] if "\n" in m else ""

@@ -2639,6 +2639,19 @@ def _layer(mode, lightmap_num):
     return lightmap_num if mode == "lm" else (-1 if mode == "v" else -2)
 
 
+def _surface_nodraw(sh, info, stype):
+    """Whether the game skips a draw surface as nodraw. A face or triangle soup goes by its
+    shader script: ParseFace tests the shader_t R_FindShader made (surfaceparm nodraw),
+    not the flags in the .bsp's shader lump, so a face whose brush side carries the nodraw
+    flag (a retextured face keeping a nodraw face's flags) is drawn all the same when its
+    shader has no "surfaceparm nodraw"; a texture with no script never is nodraw. A patch
+    goes by the lump's flags (ParseMesh tests s_worldData.shaders[...].surfaceFlags).
+    (renderergl1/tr_bsp.c ParseFace, ParseMesh)"""
+    if stype == MB.MST_PATCH:
+        return bool(sh["surface"] & MB.SURF_NODRAW)
+    return bool(info and shader_render_bits(info)[0] & TF_NODRAW)
+
+
 def lit_payload(bsp, stats, texs, blobs, shaders, vfs, ents, model_of, models, say=log):
     """Everything the page needs to draw the map with the game's lighting, or None when
     the .bsp has no lightmaps (the game then draws it full bright too)."""
@@ -2683,9 +2696,11 @@ def lit_payload(bsp, stats, texs, blobs, shaders, vfs, ents, model_of, models, s
             if s["type"] not in (MB.MST_PLANAR, MB.MST_TRIANGLE_SOUP) or s["numVerts"] < 3:
                 continue
             sh = bsp.shaders[s["shader"]] if 0 <= s["shader"] < len(bsp.shaders) else None
-            if sh is None or sh["surface"] & MB.SURF_NODRAW:
-                continue              # never drawn (ParseFace skips nodraw surfaces)
+            if sh is None:
+                continue
             ti, info = shader_info(sh["name"])
+            if _surface_nodraw(sh, info, s["type"]):
+                continue              # never drawn (ParseFace skips nodraw shaders)
             # triangle soups are always lit by vertex (ParseTriSurf)
             lmn = s["lightmapNum"] if s["type"] == MB.MST_PLANAR else nlm
             layer = _layer(_light_mode(info, lmn, nlm), lmn)
@@ -2971,7 +2986,7 @@ def vis_payload(bsp, stats, texs, blobs, say=log):
         kind = kinds.get(s["type"], 0) if own and sh else 0
         info = texs.info(sh["name"]) if kind else None
         bits = shader_render_bits(info)[0] if info else 0
-        if kind and (sh["surface"] & MB.SURF_NODRAW or bits & TF_NODRAW):
+        if kind and (_surface_nodraw(sh, info, s["type"]) or bits & TF_NODRAW):
             kind = 0                  # never drawn
         elif kind and (sh["surface"] & MB.SURF_SKY or bits & TF_SKY):
             # drawn as the sky box, which r_showtris doesn't outline; kind 4 keeps the
