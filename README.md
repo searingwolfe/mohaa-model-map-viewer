@@ -369,8 +369,10 @@ click away: its targetname, origin, `setsize`, targets and ready-to-paste script
   gets him off the top; **Simulate Down** the same downwards, looking 45 degrees down. The
   clips' own movement carries him, with the player's box against walls, playerclip and the
   floor, the game's tests for climbing on, getting off the top (98 units of room over him)
-  and the bottom (the floor within 40 under him), and its snaps to the ladder. Each starts
-  again from the last spawn. When he can't finish (the ladder too short or too long, too
+  and the bottom (the floor within 40 under him), and its snaps to the ladder. As in the
+  game, each clip's last frame holds for one server frame (0.05 s) before the next state
+  starts, and each new clip crossblends in over 0.2 s; after getting off he blends into his
+  standing idle the same way. Each starts again from the last spawn. When he can't finish (the ladder too short or too long, too
   close to a wall, something in the way, its origin far from it) the climb stops and the
   yellow note says why, with what to change.
 * **Modify** (above Find): add entities, most of all AI path nodes: Add, then click on the

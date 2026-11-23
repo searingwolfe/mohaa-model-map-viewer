@@ -3378,3 +3378,12 @@ look of the walk and the doors should be confirmed by eye in the launcher.
   without them his legs kept the skeleton's base pose and he looked to stand on one foot.
   (The humans have no unarmed_stand_idle.)
 - SIMULATE's ladder row: Spawn Bottom first, then Spawn Top and Spawn Middle (were Spawn up / down / middle).
+- Ladder climb timing: a clip's last frame no longer cuts straight to the next pose. As
+  Animate::PostAnimate / PreAnimate do, the done event (ANIMDONE_TORSO) reaches the state
+  machine one server frame later (0.05 s at sv_fps 20), so the last frame holds that long;
+  every clip change then crossblends over the tiki's default blendtime of 0.2 s
+  (tiki_parse.cpp), and after `ladder_down_getoff` / `ladder_up_getoff` he blends into his
+  standing idle instead of snapping to it. Clip lengths are unchanged and match
+  TIKI_Anim_Time: (frames - 1) x frame time, because the ladder .skc headers don't set
+  TAF_DELTADRIVEN (ladder_down_getoff 16 frames at 37.5 fps, 0.4 s; ladder_up_getoff 51
+  frames at 60 fps, 0.83 s). End positions are unchanged.

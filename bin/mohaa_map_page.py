@@ -12257,11 +12257,15 @@ function actPose(now){
     // a ladder climb (ladRun): its frames, the clip each shows; between frames, blended
     const L=c.lad,t=Math.max(0,(now-L.t0)/1000),n=L.F.length,f=Math.min(n-1,t/L.DT),i=Math.floor(f),j=Math.min(n-1,i+1),u=f-i,A=L.F[i],Bf=L.F[j];
     pos=[A.p[0]+(Bf.p[0]-A.p[0])*u,A.p[1]+(Bf.p[1]-A.p[1])*u,A.p[2]+(Bf.p[2]-A.p[2])*u];yaw=lerpAng(A.y,Bf.y,u);
-    const la=b.anims.get('ladder'),rec=A.c&&la?la.recs[A.c]:null;
-    if(rec)over=actFrameAt(rec,A.c===Bf.c?A.t+(Bf.t-A.t)*u:A.t);
-    else if(b.meta.idle)over=actFrameAt(b.meta.idle,0);
+    // a clip's pose, or standing (no clip): the idle at its time; a frame still crossblending
+    // from the clip before (b, w) mixes the two as the engine does
+    const la=b.anims.get('ladder'),same=A.c===Bf.c;
+    const poseOf=(c,t,it)=>{const r=c&&la?la.recs[c]:null;return r?actFrameAt(r,t):b.meta.idle?actFrameAt(b.meta.idle,it||0):null;};
+    over=poseOf(A.c,same?A.t+(Bf.t-A.t)*u:A.t,same?(A.it||0)+((Bf.it||0)-(A.it||0))*u:A.it);
+    if(A.b&&over){const w=same?A.w+((Bf.b?Bf.w:1)-A.w)*u:A.w,pf=poseOf(A.b.c,A.b.t,A.b.it);if(pf)over=actLerp(pf,over,w);}
     running=f<n-1;
-    if(!running&&!L.done){L.done=true;c.o=pos.slice();c.yaw=yaw;if(!A.c)c.lad=null;c.t0=now;simPanel();}
+    if(!running&&!L.done){L.done=true;c.o=pos.slice();c.yaw=yaw;if(!A.c)c.lad=null;
+      c.t0=now-(A.c?0:(A.it||0)*1000);simPanel();}      // the idle carries on from where it is
   }else if(b.idleTL&&b.meta.idle){
     over=actFrameAt(b.meta.idle,((now-c.t0)/1000)%Math.max(0.05,(b.meta.idle.frames.length-1)*(b.meta.idle.frameTime||0.05)));
   }
@@ -12592,7 +12596,14 @@ function ladDelta(rec,t0,t1,yaw,sc){
   const a=at(t0),b=at(t1),l=[(b[0]-a[0])*sc,(b[1]-a[1])*sc,(b[2]-a[2])*sc],f=ladFwd(yaw);
   return[f[0]*l[0]-f[1]*l[1],f[1]*l[0]+f[0]*l[1],l[2]];
 }
+// a clip's length, as TIKI_Anim_Time has it: (frames - 1) x frame time (the ladder .skc
+// headers don't carry TAF_DELTADRIVEN, which would add the last frame's time)
 const ladDur=rec=>Math.max(LAD_DT,(rec.frames.length-1)*(rec.frameTime||0.05));
+// When a clip ends, Animate::PostAnimate only flags it finished; the done event (ANIMDONE_TORSO)
+// fires in the next server frame's PreAnimate (sv_fps 20: 0.05 s), so the last frame is held
+// that long before the state moves on. Every new clip then crossblends in over the tiki's
+// default blendtime, 0.2 s (the old one held at where it stopped)
+const LAD_LATE=Math.round(0.05/LAD_DT),LAD_BLEND=0.2;
 // where the spawns put him: the foot of the ladder where ladder_down_getoff leaves him, its
 // top where ladder_up_getoff does (both from the spot 16 out from the ladder the idles keep
 // him on, dropped to the floor), or on it halfway up
@@ -12609,7 +12620,15 @@ function ladSim(L,start,dir,recs,sc){
   const F=[],up=dir==='up',pitch=up?-45:45,face=up?L.yaw:(L.yaw+180)%360,maxN=Math.round(LAD_MAX_T/LAD_DT);
   let pos=start.p.slice(),yaw=start.yaw,state=start.onLadder?'idle_left':'ground',clip='',ct=0,hold=start.onLadder?{c:LAD_CLIP.up_right,t:0}:null;
   let why='',ok=false,steps=0,lastZ=null,still=0,fall=null,events=[],walked=0;
-  const push=(c,t)=>F.push({p:pos.slice(),y:yaw,c:c,t:t});
+  // a frame: p, y, c (clip or null: standing, the idle at it), t; b/w: the pose it is
+  // crossblending from and how far in (0..1) when a clip changed under 0.2 s ago
+  let from=null,bt=0,it=0,late=0;
+  const push=(c,t)=>{const P=F[F.length-1];
+    if(P&&P.c!==c){from={c:P.c,t:P.t,it:P.it||0};bt=0;it=0;}
+    else if(P){bt+=LAD_DT;if(!c)it+=LAD_DT;}
+    const f={p:pos.slice(),y:yaw,c:c,t:t};if(!c)f.it=it;
+    if(from&&bt<LAD_BLEND-1e-9){f.b=from;f.w=bt/LAD_BLEND;}
+    F.push(f);};
   const nextOf={geton:'idle_left',up_right:'idle_right',up_left:'idle_left',down_left:'idle_right',down_right:'idle_left',getoff_top:'fall',getoff_bottom:'fall'};
   let cur='';            // the clip's state name (geton, up_right...)
   push(hold?hold.c:null,0);
@@ -12635,12 +12654,17 @@ function ladSim(L,start,dir,recs,sc){
       push(recs[LAD_CLIP.run]?LAD_CLIP.run:null,recs[LAD_CLIP.run]?(n*LAD_DT)%ladDur(recs[LAD_CLIP.run]):0);continue;}
     if(state==='clip'){
       const rec=recs[clip];if(!rec){why='the '+clip+' animation is missing';break;}
-      const dur=ladDur(rec),t1=Math.min(dur,ct+LAD_DT),mv=ladDelta(rec,ct,t1,yaw,sc);
-      const r=ladAnimMove(pos,mv);pos=r.p;
-      if(cur==='getoff_top'){const ft=rec.frameTime||0.05;if(ct<31*ft&&t1>=31*ft)pos=ladEnsureOver(L,pos);}
-      ct=t1;push(clip,ct);
-      if(ct>=dur-1e-9){
-        if(cur==='getoff_top')pos=ladEnsureFwd(L,pos);
+      const dur=ladDur(rec);
+      if(ct<dur-1e-9){
+        const t1=Math.min(dur,ct+LAD_DT),mv=ladDelta(rec,ct,t1,yaw,sc);
+        const r=ladAnimMove(pos,mv);pos=r.p;
+        if(cur==='getoff_top'){const ft=rec.frameTime||0.05;if(ct<31*ft&&t1>=31*ft)pos=ladEnsureOver(L,pos);
+          if(t1>=dur-1e-9)pos=ladEnsureFwd(L,pos);}          // its "last" frame command
+        ct=t1;push(clip,ct);continue;}
+      // ended: the last frame holds until the done event reaches the state machine
+      if(late<LAD_LATE){late++;push(clip,dur);continue;}
+      late=0;
+      {
         hold={c:clip,t:dur};state=nextOf[cur];
         if(state==='fall'){mm.o=pos.slice();mm.vel=[0,0,0];mm.speed=0;mm.dd=[0,0,0];mm.ground=false;mm.walking=false;fall={z0:pos[2],n:0};
           events.push({t:n*LAD_DT,what:'lets go of the ladder'});}}
@@ -12667,7 +12691,9 @@ function ladSim(L,start,dir,recs,sc){
     }
     if(state==='fall'){
       mmove();fall.n++;push(null,0);
-      if(mm.ground&&fall.n>2){ok=true;break;}
+      if(mm.ground&&fall.n>2){ok=true;
+        while(from&&bt<LAD_BLEND-1e-9)push(null,0);   // he stands there while the stand pose blends in
+        break;}
       if(fall.n*LAD_DT>4){why='He let go of the ladder and is still falling 4 seconds later: nothing to land on';break;}
       continue;}
   }
