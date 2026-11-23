@@ -397,6 +397,28 @@ window.setEditorMode=function(on){window.__EDITON__=!!on;
        </div>
        <div id="actSum" class="co" style="white-space:pre-line"></div>
      </div>
+     <div id="simLd" style="display:none">
+       <div class="row" style="align-items:center">
+         <span class="co">Human</span>
+         <select id="ladHum" style="flex:1;min-width:0" disabled title="The man who climbs the ladder: any actor model in the paks (models/human), unarmed, as the player is on a ladder (safeholster)"></select>
+       </div>
+       <div class="row">
+         <button class="sm" id="bLadUp" disabled title="Stand him at the top of the ladder, where ladder_up_getoff leaves a man who has climbed it, facing the ladder (its angle + 180)">Spawn up</button>
+         <button class="sm" id="bLadDown" disabled title="Stand him at the foot of the ladder, where ladder_down_getoff leaves a man who has climbed down it, facing the ladder (its angle)">Spawn down</button>
+         <button class="sm" id="bLadMid" disabled title="Put him on the ladder halfway up, holding on (left hand high, as LATCH_ONTO_LADDER and LADDER_IDLE_LEFT leave him): for a ladder whose ends go into the floor or the ceiling, which a player only gets on by jumping and pressing use">Spawn middle</button>
+       </div>
+       <div class="row">
+         <button class="sm" id="bLadPause" disabled title="Freeze him exactly where he is, mid-animation; press again to carry on">Pause</button>
+         <button class="sm" id="bLadFly" disabled title="Fly the camera to him, wherever he is now">Fly to</button>
+         <button class="sm" id="bLadFollow" disabled title="The game's third-person camera behind his head (cg_cameradist 120, cg_cameraheight 18). Moving the camera by hand turns it off">Follow</button>
+       </div>
+       <div class="row">
+         <button class="sm" id="bLadSimUp" disabled title="From where he was spawned: he walks forward toward the ladder looking 45 degrees up (the game needs more than 35), gets on (ladder_up_geton), climbs a hand at a time (ladder_up_righthand, ladder_up_lefthand...) until he can get off the top (ladder_up_getoff), and lands there. Not from the top">&#9654; Simulate Up</button>
+         <button class="sm" id="bLadSimDown" disabled title="From where he was spawned: he walks forward toward the ladder looking 45 degrees down (the game needs more than 35), gets on (ladder_down_geton), climbs down a hand at a time (ladder_down_lefthand, ladder_down_righthand...) until the floor is close under him (ladder_down_getoff), and stands there. Not from the bottom">&#9654; Simulate Down</button>
+       </div>
+       <div id="ladSum" class="co" style="white-space:pre-line"></div>
+       <div id="ladWarn" class="co" style="white-space:pre-line;color:var(--warn)"></div>
+     </div>
    </div>
    <div class="sect">
      <h2>Camera</h2>
@@ -447,7 +469,7 @@ window.setEditorMode=function(on){window.__EDITON__=!!on;
        <input type="color" id="gridcol" value="#6fd6e8" style="width:44px;height:22px;padding:1px;border:1px solid var(--line);border-radius:6px;background:var(--btn);cursor:pointer" title="Colour of the grid's lines and numbers (Grid, +). Remembered.">
        <button class="sm" id="bgReset" title="Return the backdrop and the grid to the theme's default colours">Default</button>
      </div>
-     <div class="row co" style="align-items:center"><button class="sm" id="bGrid" style="min-width:66px" title="Which planes the grid draws: Grid XY (flat, like the floor), Grid XZ and Grid YZ (upright), or Grid all (the whole 3D lattice). Click for the next. The grid itself turns on and off with Grid in the buttons above (+)">Grid XY</button><input type="range" id="gridSz" min="0" max="9" step="1" value="3" style="flex:1;min-width:0" title="Grid size: MOHRadiant's 1, 2, 4, 8, 16, 32, 64, 128, 256 or 512 units ({ and })"><span id="gridV" style="min-width:34px;text-align:right">8</span></div>
+     <div class="row co" style="align-items:center"><button class="sm" id="bGrid" style="min-width:66px" title="Which planes the grid draws: Grid XY (flat, like the floor), Grid XZ and Grid YZ (upright), or Grid all (the whole 3D lattice). Click for the next. The grid itself turns on and off with Grid in the buttons above (+)">Grid XY</button><input type="range" id="gridSz" min="0" max="9" step="1" value="3" style="flex:1;min-width:0" title="Grid size: MOHRadiant's 1, 2, 4, 8, 16, 32, 64, 128, 256 or 512 units ({ and }). While Grid is on, Modify's Add and Move snap the entity or node to the grid shown, and Edit map's Move and Resize snap the selected brushes to it"><span id="gridV" style="min-width:34px;text-align:right">8</span></div>
      <div class="row co" id="cvarRow"><button id="cvarBtn" title="The game's debugging cvars, doing here what they do in game: what the renderer draws from where the camera is (r_showtris, r_shownormals, r_lockpvs, r_showsky, r_farplane...), its lightmaps and light grid (r_lightmap, r_light_showgrid), entity numbers, boxes and info (sv_showentnums, sv_showbboxes, g_entinfo), cameras, rain and the AI's path nodes. Type a cvar and a value in its box as in the game's console. (` like the game's console key)"><span class="albl">&mdash; game cvars &mdash;</span><span class="acar">&#9668;</span></button><span id="cvarCount">none set</span></div>
    </div>
    <div class="sect">
@@ -486,10 +508,14 @@ window.setEditorMode=function(on){window.__EDITON__=!!on;
        <button class="sm" id="bModDel" title="Remove the entity&#10;&#10;Hotkey: Delete">Delete</button>
      </div>
      <div class="co" id="modScr" style="display:none;margin-top:6px;color:var(--warn)"></div>
-     <div class="row co" style="margin-top:6px">trim step <input type="range" id="modStep" min="0" max="13" step="1" value="4" title="How far one key press of Trim origin moves it, 1 to 50 units"><span id="modStepV" style="min-width:22px;text-align:right">5</span></div>
+     <div class="row co" style="margin-top:6px">trim step <input type="range" id="modStep" min="0" max="13" step="1" value="4" title="Trim step, 1 to 50 units: each key press of Trim origin moves the selected entity or node by this many units, step by step (and Edit map's Trim moves or resizes the selected brushes the same)"><span id="modStepV" style="min-width:22px;text-align:right">5</span></div>
+     <div class="row co" id="modAngRow" style="gap:3px;flex-wrap:wrap;align-items:center" title="The selected entity's angles: pitch, yaw, roll in degrees (Enter sets them on every selected entity). A path node or other info_ entity (not info_splinepath) only turns on its yaw. Rotate and Axes turn them with the mouse">angles
+       <input type="text" id="modAngP" title="pitch" style="width:36px;padding:1px 3px;font:inherit;font-size:11px"><input type="text" id="modAngY" title="yaw" style="width:36px;padding:1px 3px;font:inherit;font-size:11px"><input type="text" id="modAngR" title="roll" style="width:36px;padding:1px 3px;font:inherit;font-size:11px">
+       <button class="sm" id="bModRot" title="A circle round the selected entity, facing you: drag inside it to turn it about the line you look along (Shift: tumble it). A path node or other info_ entity: a flat circle that turns its yaw. Whole degrees, Ctrl: 15 at a time; letting go makes it (one Undo), Esc cancels">&#10227; Rotate</button>
+       <button class="sm" id="bModAxes" title="Three rings round the selected entity, the world's X (red), Y (green) and Z (blue): drag one to turn it about that axis. A path node or other info_ entity: only Z (its yaw). Whole degrees, Ctrl: 15 at a time; letting go makes it (one Undo), Esc cancels">&#8853; Axes</button></div>
      <div class="row" style="gap:4px;flex-wrap:wrap">
-       <button class="sm" id="bModSaveBsp" title="Save a copy of the .bsp with the new entities in its entity lump (everything else byte for byte) and a new &quot;map_time&quot;, so the game rebuilds the AI's .pth. Never over the original">Save as .bsp</button>
-       <button class="sm" id="bModSaveMap" title="Save the .map with the new entities added, as a new file">Save as .map</button>
+       <button class="sm" id="bModSaveBsp" title="Save a copy of the .bsp with the new entities in its entity lump (everything else byte for byte) and a new &quot;map_time&quot;, so the game rebuilds the AI's .pth. Never over the original.&#10;&#10;A quick save, not a compile: only entities and path nodes change (their keys, origins, angles; added, copied, deleted). Brushes, patches and terrain are copied as they were compiled, so once any of them is changed in Edit map this button is off: use Save as .map, then Compile... (Edit map) to build a new .bsp">Save as .bsp</button>
+       <button class="sm" id="bModSaveMap" title="Save the .map with the new entities added, as a new file.&#10;&#10;A quick save, not a compile: it writes the .map text (entities and path nodes, and the brushes, patches and terrain changed in Edit map), but the game plays a .bsp: Compile... (Edit map) builds one from it">Save as .map</button>
        <button class="sm" id="bModCopy" title="Copy the new entities as entity-lump text">Copy text</button>
      </div>
      <div class="co" id="modStat" style="margin-top:4px"></div>
@@ -1200,13 +1226,15 @@ function gridSave(){slidersPost();LS.set('mohaaMapViewerGrid',JSON.stringify({on
 // the planes drawn: one plane across two axes (its normal the third), or all three
 const GRID_MODES=['xy','xz','yz','all'];
 function gridNormal(){return GRID.mode==='xy'?2:GRID.mode==='xz'?1:GRID.mode==='yz'?0:-1;}
-function gridModeBtn(){$('bGrid').textContent='Grid '+(GRID.mode==='all'?'all':GRID.mode.toUpperCase());}
+function gridModeBtn(){$('bGrid').textContent='Grid '+(GRID.mode==='all'?'all':GRID.mode.toUpperCase());ctlCopiesSync();}
+// copies of these controls elsewhere (Edit map's panel) follow them: it sets ctlCopiesHook
+let ctlCopiesHook=null;function ctlCopiesSync(){if(ctlCopiesHook)try{ctlCopiesHook();}catch(_e){}}
 function setGridMode(m,quiet){GRID.mode=GRID_MODES.includes(m)?m:'xy';gridModeBtn();GRID.key='';gridSave();requestDraw();
   if(!quiet)flash('Grid '+(GRID.mode==='all'?'all: the whole 3D lattice':GRID.mode.toUpperCase()+': one plane')+(GRID.on?'':' (Grid is off: + turns it on)'));}
 function gridColour(c,save){GRID.col=c||null;$('gridcol').value=GRID.col||gridDefCol();GRID.key='';if(save!==false)gridSave();requestDraw();}
-function setGrid(on){GRID.on=!!on;{const b=$('d_grid');if(b)b.classList.toggle('on',GRID.on);}GRID.key='';gridSave();requestDraw();
+function setGrid(on){GRID.on=!!on;{const b=$('d_grid');if(b)b.classList.toggle('on',GRID.on);}GRID.key='';gridSave();requestDraw();ctlCopiesSync();
   flash(GRID.on?'Grid '+gridSize()+' on: Modify\'s Add and Move snap to it ({ and } change the size)':'Grid off');}
-function setGridSize(i,quiet){GRID.i=Math.max(0,Math.min(9,i|0));$('gridSz').value=GRID.i;$('gridV').textContent=gridSize();
+function setGridSize(i,quiet){GRID.i=Math.max(0,Math.min(9,i|0));$('gridSz').value=GRID.i;$('gridV').textContent=gridSize();ctlCopiesSync();
   GRID.key='';gridSave();requestDraw();if(!quiet)flash('Grid size '+gridSize()+(GRID.on?'':' (Grid is off: + turns it on)'));}
 $('bGrid').onclick=()=>setGridMode(GRID_MODES[(GRID_MODES.indexOf(GRID.mode)+1)%GRID_MODES.length]);
 $('gridSz').oninput=()=>setGridSize(+$('gridSz').value);
@@ -6710,8 +6738,23 @@ function pgBcont(ei,bn){
   if(!PG_BC){PG_BC=new Map();const B=D.bsp&&D.bsp.bcont;if(B)for(const k in B)for(const[b,c]of B[k])PG_BC.set(+k*65536+b,c);}
   const v=PG_BC.get(ei*65536+bn);return v==null?null:v;
 }
+// The player's collision (SIMULATE's ladder climber): what MASK_PLAYERSOLID stops, playerclip
+// included and monsterclip not; doors as they stand closed. pgTrace takes it while PG_MODE is
+// 'player'.
+const MASK_PLAYERSOLID=0x1|0x40000000|0x2000000|0x10000|0x2000|0x800|0x200|0x100;
+let PG_MODE='path',PGP=null;
+function pgEntSolidP(ei){
+  if(ei===0||WORLDLIKE[MAP.ents[ei].cls])return 0;
+  const cls=MAP.ents[ei].cls;
+  if(DOOR_CLASSES[cls])return ei;
+  return pgEntSolid(ei);
+}
 function pgSolids(){
+  if(PG_MODE==='player'){if(PGP)return PGP;return PGP=pgBuild(MASK_PLAYERSOLID,pgEntSolidP);}
   if(PG)return PG;
+  return PG=pgBuild(MASK_PATHSOLID,pgEntSolid);
+}
+function pgBuild(MASK,entSolid){
   const L=[],TC=[];
   const bevel=(pl,mn,mx)=>{pl.push([1,0,0,mx[0]],[-1,0,0,-mn[0]],[0,1,0,mx[1]],[0,-1,0,-mn[1]],[0,0,1,mx[2]],[0,0,-1,-mn[2]]);};
   // a patch triangle: a facet, front side only, with its edges and the axial bevels
@@ -6728,17 +6771,17 @@ function pgSolids(){
   const pt=v=>[SC.pos[v*3],SC.pos[v*3+1],SC.pos[v*3+2]];
   for(const p of SC.prims){
     if(!isFinite(p.mins[0])||p.kind===2)continue;
-    const ent=pgEntSolid(p.ent);if(ent<0)continue;
+    const ent=entSolid(p.ent);if(ent<0)continue;
     const pr=MAP.ents[p.ent].prims[p.bn];if(!pr||!pr.d)continue;
     if(p.kind===0){const faces=pr.d.faces;if(!faces.length)continue;
       // the brush's own contents (from the .bsp, where they differ from its first face's)
       const bc=pgBcont(p.ent,p.bn),c=pgCont(bc!=null?bc:faces[0].cont,texFor(faces[0].tex));
-      if(!(c&MASK_PATHSOLID))continue;
+      if(!(c&MASK))continue;
       const pl=[];for(const f of faces){const q=planeOf(f);if(q)pl.push(q);}
       if(!pl.length)continue;bevel(pl,p.mins,p.maxs);
       L.push({ent:ent,mn:p.mins.slice(),mx:p.maxs.slice(),pl:pl,patch:false,pi:SC.prims.indexOf(p)});}
     else if(p.kind===1){
-      if(!(pgCont(pr.d.cont,texFor(pr.d.tex))&MASK_PATHSOLID))continue;
+      if(!(pgCont(pr.d.cont,texFor(pr.d.tex))&MASK))continue;
       for(let f=p.f0;f<p.f1;f++){const i0=SC.faceI0[f],n=SC.faceIN[f]/3;
         for(let t=0;t<n;t++){if((t%4)>=2)continue;const q=i0+t*3;facet(ent,pt(SC.tri[q]),pt(SC.tri[q+1]),pt(SC.tri[q+2]));}}}
   }
@@ -6763,7 +6806,7 @@ function pgSolids(){
   const cells=new Map();
   L.forEach((B,i)=>{const x0=Math.floor(B.mn[0]/PG_CELL),x1=Math.floor(B.mx[0]/PG_CELL),y0=Math.floor(B.mn[1]/PG_CELL),y1=Math.floor(B.mx[1]/PG_CELL);
     for(let x=x0;x<=x1;x++)for(let y=y0;y<=y1;y++){const k=x*4096+y;let c=cells.get(k);if(!c){c=[];cells.set(k,c);}c.push(i);}});
-  return PG={L:L,TC:TC,cells:cells,stamp:new Uint32Array(L.length),sn:0};
+  return{L:L,TC:TC,cells:cells,stamp:new Uint32Array(L.length),sn:0};
 }
 // ---- terrain collision (cm_terrain.c, the original game's version)
 function pgTerPlane(pt,pl){
@@ -9828,6 +9871,76 @@ function modYaw(){
   modChanged(node);
   flash((L.length===1?modName(m):L.length+' entities')+': yaw '+yaw+' (Alt+R again: '+MOD_YAWS[(MOD_YAWS.indexOf(yaw)+1)%4]+')');
 }
+// ---- Angles (Modify): the selected entities' angles typed in, or turned with the mouse -----
+// A path node or any other info_ entity but info_splinepath only ever turns on its yaw (its
+// pitch and roll boxes are off, Rotate and Axes give it only the flat Z ring); everything
+// else gets all three. Each selected entity turns about its own origin (its box stays as it
+// is; its facing arrow, or its model, turns). An info_ entity with no pitch or roll is
+// written as "angle", anything else "angles" (the other key is taken out, as Yaw does).
+// A brush entity (a door's row with Edit map on) is left out: turn its brushes in Edit map.
+const MROT={mode:null,drag:null,hov:-1};
+function modYawOnly(m){const c=modCls(m);return c.startsWith('info_')&&c!=='info_splinepath';}
+function modAngRows(){return modSelEnts(false).filter(m=>!m.del&&!(typeof brRow==='function'&&brRow(m)));}
+function modAngFocus(){const L=modAngRows(),cur=MOD.ents[MOD.sel];return L.includes(cur)?cur:L[0]||null;}
+function modAngWrite(m,a){
+  const n=v=>{v=Math.round(v*100)/100;return Math.abs(v)<0.005?0:v;};
+  let p=n(a[0]),y=n(((a[1]%360)+360)%360),r=n(a[2]);if(y>=360)y=0;
+  if(modYawOnly(m)){p=0;r=0;}
+  const info=modCls(m).startsWith('info_'),one=info&&!p&&!r,drop=one?'angles':'angle';
+  if(one)modSetKv(m,'angle',String(y));else modSetKv(m,'angles',[p,y,r].map(String).join(' '));
+  const i=m.kv.findIndex(x=>x[0].toLowerCase()===drop);if(i>=0)m.kv.splice(i,1);}
+function modAngAxes(){const L=modAngRows();return L.length&&L.every(modYawOnly)?[[0,0,1]]:GZ_XYZ;}
+function modAngSync(){
+  const row=$('modAngRow');if(!row)return;const m=modAngFocus(),ids=['modAngP','modAngY','modAngR'];
+  if(!m&&MROT.mode){MROT.mode=null;MROT.hov=-1;requestDraw();}
+  const yo=m&&modYawOnly(m),a=m?entAngles(modKvl(m)):[0,0,0];
+  ids.forEach((id,k)=>{const el=$(id);el.disabled=!m||(yo&&k!==1);if(document.activeElement!==el)el.value=m?String(Math.round(a[k]*100)/100):'';});
+  for(const[id,md]of[['bModRot','circle'],['bModAxes','rings']]){const b=$(id);b.disabled=!m;b.classList.toggle('on',MROT.mode===md);}}
+function modAngSet(){
+  const m=modAngFocus();if(!m)return;const L=modAngRows(),yo=modYawOnly(m);
+  const v=['modAngP','modAngY','modAngR'].map(id=>parseFloat($(id).value));
+  if(!isFinite(v[1])||(!yo&&(!isFinite(v[0])||!isFinite(v[2])))){flash('angles: numbers, pitch yaw roll');modAngSync();return;}
+  if(MOD.edit>=0)modEditClose(true);
+  modHist();for(const x of L){const a0=entAngles(modKvl(x));modAngWrite(x,modYawOnly(x)?[0,v[1],0]:[yo?a0[0]:v[0],v[1],yo?a0[2]:v[2]]);}
+  modChanged(L.some(modIsNode));flash((L.length===1?modName(m):L.length+' entities')+': angles '+(yo?'yaw '+v[1]:v.join(' ')));}
+function modRotMode(md){MROT.mode=MROT.mode===md?null:md;MROT.hov=-1;
+  if(MROT.mode&&typeof ED!=='undefined'&&ED.rmode){ED.rmode=null;try{edPanel();}catch(_e){}}
+  modAngSync();requestDraw();
+  if(MROT.mode)flash(modAngAxes().length===1?'Drag the flat ring round the entity to turn its yaw':MROT.mode==='circle'?'Rotate: drag inside the circle round the entity (Shift: tumble)':'Axes: drag a ring to turn the entity about X, Y or Z');}
+// a path node's turn is its yaw only: Rotate is its flat ring too
+function modRotKind(){return modAngAxes().length===1?'rings':MROT.mode;}
+function modRotG(){const m=modAngFocus();return m?gzG(modOrigin(m)):null;}
+function modDrawRot(vp){if(!MROT.mode)return;const g=modRotG();if(!g)return;const D2=MROT.drag;
+  gzDraw(vp,g,modRotKind(),modAngAxes(),D2?D2.k:MROT.hov,!!D2);}
+function modRotApply(st){
+  for(const[x,a0]of st.rows){if(modYawOnly(x)){const d=Math.atan2(st.G[3],st.G[0])*180/Math.PI;modAngWrite(x,[0,a0[1]+d,0]);}
+    else modAngWrite(x,m3toAng(m3m(st.G,m3ang(a0))));}
+  modRender();requestDraw();
+  const m=modAngFocus(),a=m?entAngles(modKvl(m)):[0,0,0];flash('Turn '+st.what+': pitch '+a[0]+', yaw '+a[1]+', roll '+a[2]+' (let go to make it, Esc cancels)');}
+function modRotEnd(cancel){const st=MROT.drag;if(!st)return;MROT.drag=null;if(st.raf)cancelAnimationFrame(st.raf);
+  const same=st.rows.every(([x,a0])=>JSON.stringify(entAngles(modKvl(x)))===JSON.stringify(a0));
+  if(cancel||same){for(const[x,,kv]of st.rows)x.kv=kv;MOD.undo.pop();modRender();requestDraw();if(cancel)flash('Turn cancelled');return;}
+  modChanged(st.rows.some(([x])=>modIsNode(x)));}
+function modAngBind(){
+  ['modAngP','modAngY','modAngR'].forEach(id=>{const el=$(id);
+    el.addEventListener('keydown',e=>{e.stopPropagation();if(e.key==='Enter')el.blur();else if(e.key==='Escape'){el.dataset.esc='1';el.blur();}});
+    el.addEventListener('change',()=>{if(el.dataset.esc){delete el.dataset.esc;modAngSync();return;}modAngSet();});
+    el.addEventListener('blur',()=>{if(el.dataset.esc){delete el.dataset.esc;modAngSync();}});});
+  $('bModRot').onclick=()=>modRotMode('circle');$('bModAxes').onclick=()=>modRotMode('rings');}
+// (registered as the page loads, before Edit map's: a press on Modify's gizmo is its)
+window.addEventListener('mousedown',e=>{
+    if(!MROT.mode||e.button!==0||e.target!==glcv||MOD.placing||MOD.trim)return;
+    const g=modRotG();if(!g)return;const r=glcv.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
+    const st=gzStart(g,modRotKind(),modAngAxes(),x,y,e.shiftKey);if(!st)return;
+    if(MOD.edit>=0)modEditClose(true);
+    st.rows=modAngRows().map(m=>[m,entAngles(modKvl(m)),m.kv.map(p=>p.slice())]);modHist();MROT.drag=st;
+    e.stopImmediatePropagation();e.preventDefault();requestDraw();},true);
+window.addEventListener('mousemove',e=>{
+    if(!MROT.mode)return;const r=glcv.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top,st=MROT.drag;
+    if(st){e.stopImmediatePropagation();if(st.raf)return;st.raf=requestAnimationFrame(()=>{st.raf=0;if(MROT.drag!==st)return;st.G=st.turn(x,y,e);modRotApply(st);});return;}
+    if(modRotKind()==='rings'&&e.target===glcv&&!e.buttons){const k=gzRingHit(modRotG(),modAngAxes(),x,y);if(k!==MROT.hov){MROT.hov=k;requestDraw();}}},true);
+window.addEventListener('mouseup',e=>{if(!MROT.drag||e.button!==0)return;e.stopImmediatePropagation();modRotEnd(false);requestDraw();},true);
+window.addEventListener('keydown',e=>{if(!MROT.drag||e.key!=='Escape')return;e.stopImmediatePropagation();e.preventDefault();modRotEnd(true);},true);
 function modOrigin(m){return parseVec(modKv(m,'origin'),3)||[0,0,0];}
 function modCls(m){return(modKv(m,'classname')||'').toLowerCase();}
 function modSf(m){return parseInt(modKv(m,'spawnflags')||'0',10)|0;}
@@ -10655,6 +10768,7 @@ let PMODT=null,PMODM=null;
 // bold spawnflags outline), but see-through until saved; then their lines (selection box,
 // facing, target, trim arrows) and the outline of one being placed.
 function drawModify(vp){
+  try{modDrawRot(vp);}catch(_e){}
   if((!MOD.ents.length&&!MOD.ghost)||!gl)return;
   const T=[],L=[],M=[];
   const tri=(a,b,c,col)=>{for(const p of[a,b,c])T.push(p[0],p[1],p[2],p[0],p[1],p[2],col[0],col[1],col[2],col[3]);};
@@ -10737,6 +10851,62 @@ function drawModify(vp){
   if(LA.length)drawTrimArrows(vp,LA);
   gl.disable(gl.BLEND);gl.depthMask(true);
 }
+// ---- the turn gizmos (Edit map's Angles and Modify's) ---------------------------------------
+// As the Model Viewer's Rotate and Axes: a circle round the middle, facing the camera (drag
+// inside it: a turn about the line looked along; Shift: tumble, left / right about the
+// screen's up line, up / down about its side line), or rings about given axes (drag one: a
+// turn about it). Whole degrees, Ctrl: 15s. Turns are 3x3 matrices, row-major; angles are an
+// entity's pitch yaw roll (anglesAxis: the columns forward, left, up).
+const m3v=(M,v)=>[M[0]*v[0]+M[1]*v[1]+M[2]*v[2],M[3]*v[0]+M[4]*v[1]+M[5]*v[2],M[6]*v[0]+M[7]*v[1]+M[8]*v[2]];
+const m3m=(A,B2)=>{const R=new Array(9);for(let r=0;r<3;r++)for(let c=0;c<3;c++)R[r*3+c]=A[r*3]*B2[c]+A[r*3+1]*B2[3+c]+A[r*3+2]*B2[6+c];return R;};
+const M3I=[1,0,0,0,1,0,0,0,1];
+function m3axis(a,t){const c=Math.cos(t),s_=Math.sin(t),C1=1-c,[x,y,z]=a;
+  return[c+x*x*C1,x*y*C1-z*s_,x*z*C1+y*s_, y*x*C1+z*s_,c+y*y*C1,y*z*C1-x*s_, z*x*C1-y*s_,z*y*C1+x*s_,c+z*z*C1];}
+function m3ang(a){const[f,l,u]=anglesAxis(a);return[f[0],l[0],u[0],f[1],l[1],u[1],f[2],l[2],u[2]];}
+function m3toAng(M){const D2=180/Math.PI,p=-Math.asin(Math.max(-1,Math.min(1,M[6])))*D2,y=Math.atan2(M[3],M[0])*D2,r=Math.atan2(M[7],M[8])*D2;
+  const c=v=>{v=Math.round(v*100)/100;return Math.abs(v)<0.005?0:v;};return[c(p),c(y),c(r)];}
+const GZ_R=70,GZ_RING=60,GZ_AXC=[[0.95,0.3,0.3,1],[0.35,0.85,0.35,1],[0.35,0.55,1,1]],GZ_HOT=[0.95,0.8,0.38,1],GZ_XYZ=[[1,0,0],[0,1,0],[0,0,1]];
+// the middle on screen and how many world units a pixel is there
+function gzG(C){if(!C)return null;const sp=project(C);if(!sp)return null;return{C:C,sp:sp,px:sp[2]*Math.tan(fovX*Math.PI/360)*2/W};}
+function gzPerp(a){const t=Math.abs(a[2])<0.9?[0,0,1]:[1,0,0],u=vnorm(vcross(t,a));return[u,vcross(a,u)];}
+function gzRingPts(g,a,R){const[u,v]=gzPerp(a),out=[];
+  for(let i=0;i<=48;i++){const t=i/48*Math.PI*2,c=Math.cos(t)*R,s_=Math.sin(t)*R;out.push([g.C[0]+u[0]*c+v[0]*s_,g.C[1]+u[1]*c+v[1]*s_,g.C[2]+u[2]*c+v[2]*s_]);}
+  return out;}
+function gzSegDist(px,py,a,b){const dx=b[0]-a[0],dy=b[1]-a[1],l2=dx*dx+dy*dy;let t=l2?((px-a[0])*dx+(py-a[1])*dy)/l2:0;t=Math.max(0,Math.min(1,t));return Math.hypot(px-a[0]-t*dx,py-a[1]-t*dy);}
+function gzRingHit(g,axes,x,y){if(!g)return -1;let best=-1,bd=8;
+  axes.forEach((a,k)=>{const P=gzRingPts(g,a,GZ_RING*g.px).map(project);
+    for(let i=0;i+1<P.length;i++)if(P[i]&&P[i+1]){const d=gzSegDist(x,y,P[i],P[i+1]);if(d<bd){bd=d;best=k;}}});
+  return best;}
+// which way a positive turn about a goes on screen round sp, seen at point q
+function gzTurnSign(a,C,q,sp){const p0=project(q),p1=project(vadd3(C,m3v(m3axis(a,0.05),vsub(q,C))));if(!p0||!p1)return 1;
+  let da=Math.atan2(p1[1]-sp[1],p1[0]-sp[0])-Math.atan2(p0[1]-sp[1],p0[0]-sp[0]);while(da>Math.PI)da-=2*Math.PI;while(da<-Math.PI)da+=2*Math.PI;return da>=0?1:-1;}
+const vadd3=(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]],vmul3=(a,k)=>[a[0]*k,a[1]*k,a[2]*k];
+// a press at x y: a turn to drag (its .turn(x, y, event) gives the turn so far), or null
+// when the press misses the circle or the rings. mode: 'circle' or 'rings' (axes).
+function gzStart(g,mode,axes,x,y,shift){
+  if(!g)return null;
+  const st={C:g.C,sp:g.sp,x0:x,y0:y,G:M3I.slice(),acc:0,al:Math.atan2(y-g.sp[1],x-g.sp[0]),k:-1};
+  const ring=(axis,sign)=>(mx,my,ev)=>{const a=Math.atan2(my-st.sp[1],mx-st.sp[0]);let d=a-st.al;while(d>Math.PI)d-=2*Math.PI;while(d<-Math.PI)d+=2*Math.PI;st.acc+=d;st.al=a;
+    const sn=ev&&ev.ctrlKey?15:1;return m3axis(axis,Math.round(st.acc*sign*180/Math.PI/sn)*sn*Math.PI/180);};
+  if(mode==='rings'){const k=gzRingHit(g,axes,x,y);if(k<0)return null;const a=axes[k],q=vadd3(g.C,vmul3(gzPerp(a)[0],GZ_RING*g.px));
+    st.k=k;st.axis=a;st.what='about '+(a[2]>0.9?'Z':a[1]>0.9?'Y':a[0]>0.9?'X':'its axis');st.turn=ring(a,gzTurnSign(a,g.C,q,g.sp));return st;}
+  if(Math.hypot(x-g.sp[0],y-g.sp[1])>GZ_R)return null;
+  const A=camAxes(),len=30*g.px;
+  if(shift){const probe=vsub(g.C,vmul3(A.f,len)),p0=project(probe);
+    const sg=(ax,i)=>{const p1=project(vadd3(g.C,m3v(m3axis(ax,0.05),vsub(probe,g.C))));return p0&&p1&&p1[i]<p0[i]?-1:1;};
+    const sx=sg(A.u,0),sy=sg(A.r,1);
+    st.what='tumbled';st.turn=(mx,my)=>{const k=Math.PI/180*0.6;return m3m(m3axis(A.r,sy*(my-st.y0)*k),m3axis(A.u,sx*(mx-st.x0)*k));};return st;}
+  st.axis=A.f;st.what='about the view';st.turn=ring(A.f,gzTurnSign(A.f,g.C,vadd3(g.C,vmul3(A.r,len)),g.sp));return st;}
+// draws it (as the trim arrows: faint where something is in front)
+function gzDraw(vp,g,mode,axes,hot,busy){
+  if(!g||!gl)return;const L=[];
+  const lin=(p,q,c)=>{L.push(p[0],p[1],p[2],q[0],q[1],q[2],c[0],c[1],c[2],c[3],q[0],q[1],q[2],p[0],p[1],p[2],c[0],c[1],c[2],c[3]);};
+  if(mode==='circle'){const A=camAxes(),R=GZ_R*g.px,sc=hexRGB(TH.sel),c=busy?GZ_HOT:[sc[0],sc[1],sc[2],1];
+    for(let i=0;i<64;i+=2){const p=t=>vadd3(g.C,vadd3(vmul3(A.r,Math.cos(t)*R),vmul3(A.u,Math.sin(t)*R)));lin(p(i/64*Math.PI*2),p((i+1)/64*Math.PI*2),c);}}
+  else axes.forEach((a,k)=>{const P=gzRingPts(g,a,GZ_RING*g.px),w=Math.abs(a[0])>0.9?0:Math.abs(a[1])>0.9?1:2,c=hot===k?GZ_HOT:GZ_AXC[w];
+    for(let i=0;i+1<P.length;i++)lin(P[i],P[i+1],c);});
+  drawTrimArrows(vp,L);gl.disable(gl.BLEND);gl.depthMask(true);}
+
 // trim arrows (lines as drawModify's): faint where walls are in front of them, so the ones
 // behind a door frame or under a floor can still be seen, then full where nothing is
 function drawTrimArrows(vp,LA){
@@ -10823,6 +10993,7 @@ function modRender(){
   $('bModAdd').classList.toggle('on',!!MOD.placing&&MOD.placing.move==null);
   const has=MOD.ents[MOD.sel]!=null;
   for(const id of['bModEdit','bModMove','bModTrim','bModYaw','bModLink','bModEye','bModFly','bModSf','bModDel'])$(id).disabled=!has;
+  try{modAngSync();}catch(_e){}
   $('bModLink').classList.toggle('on',!!MOD.linking);
   const nsel=modSelCount();
   $('bModDup').disabled=!nsel&&!(MOD.placing&&MOD.placing.copy);
@@ -11023,7 +11194,8 @@ function modInit(){
   $('bModSaveMap').onclick=()=>modSave('map');
   $('bModCopy').onclick=()=>{copyText(modCopyText());flash('The new and changed entities are copied');};
   const st=$('modStep');st.value=MOD.stepI;$('modStepV').textContent=MOD_STEPS[MOD.stepI];
-  st.oninput=()=>{MOD.stepI=+st.value;$('modStepV').textContent=MOD_STEPS[MOD.stepI];slidersPost();};
+  st.oninput=()=>{MOD.stepI=+st.value;$('modStepV').textContent=MOD_STEPS[MOD.stepI];slidersPost();ctlCopiesSync();};
+  modAngBind();
   // as the Find lists: Shift+click a row's square hides / shows it, Shift+click the selected
   // (green) row deselects it
   $('modList').addEventListener('click',e=>{const r=e.target.closest('[data-mi]');if(!r)return;const i=+r.dataset.mi;
@@ -11172,12 +11344,12 @@ function lerpAng(a,b,u){let d=b-a;d=((d%360)+540)%360-180;return a+d*u;}
 // ---- the panel -----------------------------------------------------------------------------
 function simPanel(){
   if(!$('simSect')||!MAP)return;
-  const key=simFocus(),nf=(!key&&!SIM.run)?actFocus():null,show=!!key||SIM.run||!!nf;
+  const key=simFocus(),nf=(!key&&!SIM.run)?actFocus():null,lf=(!key&&!SIM.run&&!nf)?ladFocus():null,show=!!key||SIM.run||!!nf||!!lf;
   $('simSect').style.display=show?'':'none';
-  // a path node shows the actor's controls instead of the spline's
-  $('simSpl').style.display=nf?'none':'';$('simNd').style.display=nf?'':'none';
-  actPanel(nf);
-  if(!show||nf){SIM.chain=null;return;}
+  // a path node shows the actor's controls instead of the spline's; a func_ladder the climber's
+  $('simSpl').style.display=nf||lf?'none':'';$('simNd').style.display=nf?'':'none';$('simLd').style.display=lf?'':'none';
+  if(lf)ladPanel(lf);else actPanel(nf);
+  if(!show||nf||lf){SIM.chain=null;return;}
   if(key&&(!SIM.chain||SIM.chain.key!==key||!SIM.run))SIM.chain=simChain(key);
   const ch=SIM.run?SIM.rc:SIM.chain;
   $('bSim').disabled=SIM.run||!SIM.chain;$('bSimReset').disabled=!SIM.run;
@@ -11596,13 +11768,14 @@ function actEsc(x){return String(x).replace(/&/g,'&amp;').replace(/</g,'&lt;').r
 function actFill(){
   const H=$('actHum'),W=$('actWpn');if(!H||!W)return;
   const L=ACT.lists;
-  if(!L){H.innerHTML='';W.innerHTML='';H.disabled=W.disabled=true;return;}
+  if(!L){H.innerHTML='';W.innerHTML='';H.disabled=W.disabled=true;const LH=$('ladHum');if(LH){LH.innerHTML='';LH.disabled=true;}return;}
   const lh=LS.get(ACT_LS_H)||ACT.hum||ACT_DEF_H,lw=LS.get(ACT_LS_W)||ACT.wpn||ACT_DEF_W;
   H.innerHTML=L.h.map(p=>'<option value="'+actEsc(p)+'">'+actEsc(actLabel(p))+'</option>').join('');
   W.innerHTML=L.w.map(x=>'<option value="'+actEsc(x[0])+'" title="animations: '+actEsc(x[1])+'">'+actEsc(actLabel(x[0]))+' ('+actEsc(x[1])+')</option>').join('');
   H.value=L.h.includes(lh)?lh:(L.h.includes(ACT_DEF_H)?ACT_DEF_H:L.h[0]);
   W.value=L.w.some(x=>x[0]===lw)?lw:(L.w.some(x=>x[0]===ACT_DEF_W)?ACT_DEF_W:L.w[0][0]);
   ACT.hum=H.value;ACT.wpn=W.value;H.disabled=W.disabled=false;
+  const LH=$('ladHum');if(LH){LH.innerHTML=H.innerHTML;LH.value=H.value;LH.disabled=false;}
 }
 window.MOHAA_SIM_ACTORS=function(h,w,why){
   ACT.asked=false;
@@ -11638,10 +11811,10 @@ window.MOHAA_SIMACTOR=async function(k,meta,b64){
     const P=await decodePacket(String(b64||''));
     const ti=(P.tex||[]).map(t=>simTexIndex(t,P));
     const mk=M=>{if(!M)throw new Error('the build sent no model');return Object.assign({},M,{s:M.s.map(s=>{const c=s.slice();c[2]=ti[s[2]]!=null?ti[s[2]]:0;return c;})});};
-    const HM=mk((P.models||[])[meta.mi]),WM=mk((P.models||[])[meta.wi]);
+    const HM=mk((P.models||[])[meta.mi]),WM=meta.wi>=0?mk((P.models||[])[meta.wi]):null;     // unarmed: no weapon
     const sk=HM.sk;if(!sk)throw new Error('the human came without skin weights');
     const prev=gl.getParameter(gl.VERTEX_ARRAY_BINDING);gl.bindVertexArray(null);
-    try{b.H=modelR(HM,P);b.Wp=modelR(WM,P);}finally{gl.bindVertexArray(prev);}
+    try{b.H=modelR(HM,P);b.Wp=WM?modelR(WM,P):null;}finally{gl.bindVertexArray(prev);}
     b.sk={bn:sk.bn,bp:sk.bp,base:P.f32(sk.base),wc:P.bytes(sk.wc),wb:P.u32(sk.wb),ww:P.f32(sk.ww),wo:P.f32(sk.wo)};
     const nv=b.H.pos.length/3;
     if(b.sk.wc.length!==nv)throw new Error('the skin has '+b.sk.wc.length+' vertices, the mesh '+nv);
@@ -11650,14 +11823,15 @@ window.MOHAA_SIMACTOR=async function(k,meta,b64){
     b.out=new Float32Array(nv*3);
     b.meta=meta;b.idleTL=meta.idle?actTimeline({seq:['idle'],recs:{idle:meta.idle}}):null;
     b.state='ready';
-    if(b.tag<0)flash('Simulate: this human has no '+(meta.tag||'tag_weapon_right')+': the weapon is left out');
+    if(b.tag<0&&WM)flash('Simulate: this human has no '+(meta.tag||'tag_weapon_right')+': the weapon is left out');
   }catch(e){b.state='fail';b.why=String(e&&e.message||e);actFree(b);flash('Simulate: the actor can\'t be drawn ('+b.why+')');}
-  if(ACT.want===b.key)actSpawnNow();
+  if(ACT.want===b.key){if(LAD.want)ladBuilt(b);else actSpawnNow();}
   simPanel();requestDraw();
 };
 window.MOHAA_SIMACT_ANIM=function(k,role,out){
   const b=ACT.byK.get(k);if(!b)return;
-  b.anims.set(role,{tl:actTimeline(out),seq:out.seq});
+  b.anims.set(role,{tl:actTimeline(out),seq:out.seq,recs:out.recs});
+  if(role==='ladder'){ladAnims(b);simPanel();return;}
   if(ACT.cur&&ACT.cur.b===b&&ACT.cur.wantRole===role){const c=ACT.cur;c.wantRole='';if(c.wantGo){c.wantGo=false;actGoStart();}else actPlay(role);}
   simPanel();
 };
@@ -11665,7 +11839,8 @@ window.MOHAA_SIMACT_FAIL=function(k,role,why){
   const b=ACT.byK.get(k);
   if(!role){if(b){b.state='fail';b.why=String(why||'not built');if(ACT.want===b.key)ACT.want=null;}}
   else if(b){if(!b.anims.has(role)&&b.meta)b.meta.roles[role]=String(why||'not built');
-    if(ACT.cur&&ACT.cur.b===b)ACT.cur.wantRole='';}
+    if(ACT.cur&&ACT.cur.b===b)ACT.cur.wantRole='';
+    if(role==='ladder'){LAD.want='';LAD.wantSim='';LAD.warn='Can\'t climb: '+String(why||'not built');}}
   ACT.msg=String(why||'not built');flash('Simulate: '+ACT.msg);simPanel();
 };
 // ---- spawn and simulate -----------------------------------------------------------------------
@@ -12062,7 +12237,7 @@ function actInst(R,M,p,c){
 // weapon on his hand, both placed on the node
 function actPose(now){
   const c=ACT.cur;if(!c||!gl)return false;
-  const b=c.b;if(b.state!=='ready'||!b.H||!b.Wp)return false;
+  const b=c.b;if(b.state!=='ready'||!b.H)return false;
   if(c.pauseAt!=null)now=c.pauseAt;           // Pause: the clock stands still
   let over=null,running=false,hand=0,mv=[0,0,0],pos=c.o,yaw=c.yaw;
   if(c.go){
@@ -12078,6 +12253,15 @@ function actPose(now){
     if(pa){over=pa.p;hand=pa.h;mv=pa.m;}
     running=t<c.play.tl.total;
     if(!running&&c.play.done!==true){c.play.done=true;simPanel();}
+  }else if(c.lad){
+    // a ladder climb (ladRun): its frames, the clip each shows; between frames, blended
+    const L=c.lad,t=Math.max(0,(now-L.t0)/1000),n=L.F.length,f=Math.min(n-1,t/L.DT),i=Math.floor(f),j=Math.min(n-1,i+1),u=f-i,A=L.F[i],Bf=L.F[j];
+    pos=[A.p[0]+(Bf.p[0]-A.p[0])*u,A.p[1]+(Bf.p[1]-A.p[1])*u,A.p[2]+(Bf.p[2]-A.p[2])*u];yaw=lerpAng(A.y,Bf.y,u);
+    const la=b.anims.get('ladder'),rec=A.c&&la?la.recs[A.c]:null;
+    if(rec)over=actFrameAt(rec,A.c===Bf.c?A.t+(Bf.t-A.t)*u:A.t);
+    else if(b.meta.idle)over=actFrameAt(b.meta.idle,0);
+    running=f<n-1;
+    if(!running&&!L.done){L.done=true;c.o=pos.slice();c.yaw=yaw;if(!A.c)c.lad=null;c.t0=now;simPanel();}
   }else if(b.idleTL&&b.meta.idle){
     over=actFrameAt(b.meta.idle,((now-c.t0)/1000)%Math.max(0.05,(b.meta.idle.frames.length-1)*(b.meta.idle.frameTime||0.05)));
   }
@@ -12091,14 +12275,14 @@ function actPose(now){
   const lt=actLight(po);
   actInst(b.H,Rn,po,lt);
   const tg=(hand&&b.tagL>=0)?b.tagL:b.tag;
-  if(tg>=0){
+  if(tg>=0&&b.Wp){
     // the weapon: its mesh is in its own space, scaled by its own load_scale; the tag's
     // matrix (the main hand's, or the other's while a clip has it there) turns it into the
     // human's space and the tag's position (the human's scale applied) places it.
     // ATT_BASE_ANG of the Model Viewer's attachments is the identity.
     const hs=b.H.M.sc||1,tp=actMvec(Rn,[w.T[tg][0]*hs,w.T[tg][1]*hs,w.T[tg][2]*hs]);
     actInst(b.Wp,actMmul(Rn,w.R[tg]),[po[0]+tp[0],po[1]+tp[1],po[2]+tp[2]],lt);
-  }else b.Wp.n=0;
+  }else if(b.Wp)b.Wp.n=0;
   return running||!c.play;
 }
 // each frame: true when the picture changed (the idle's pose every ACT_IDLE_DT ms)
@@ -12116,6 +12300,7 @@ function actPause(){
   else{const d=now-c.pauseAt;c.pauseAt=null;
     if(c.go){c.go.t0+=d;c.go.tl+=d;}
     if(c.play)c.play.t0+=d;
+    if(c.lad)c.lad.t0+=d;
     c.t0+=d;}
   simPanel();requestDraw();
 }
@@ -12147,6 +12332,8 @@ function actTick2(now,c){
   if(c.pauseAt!=null)return false;
   if(c.go){actPose(now);return true;}
   if(c.play&&c.play.done!==true){actPose(now);return true;}
+  if(c.lad&&!c.lad.done){actPose(now);return true;}
+  if(c.lad)return false;                     // held on the ladder: the pose stays
   if(now-c.lastIdle<ACT_IDLE_DT)return false;
   c.lastIdle=now;
   if(c.play){return false;}                  // finished: the last frame stays until Reset
@@ -12242,6 +12429,350 @@ function actInit(){
   $('actHum').onchange=ch;$('actWpn').onchange=ch;
   ACT.hum=LS.get(ACT_LS_H)||'';ACT.wpn=LS.get(ACT_LS_W)||'';
   actFill();
+  ladInit();
+}
+// ---- SIMULATE on a func_ladder: an unarmed man climbs it as a player does ---------------------
+// The player's ladder states (global/mike_torso.st) and the code they call (OpenMoHAA
+// fgame/player.cpp, player_conditionals.cpp, misc.cpp FuncLadder), frame by frame
+// (LAD_DT), with his box ( -15 -15 0, 15 15 94 ) against what stops a player (PG_MODE
+// 'player': MASK_PLAYERSOLID) and the ladder's own brushes for the MASK_LADDER traces:
+//  - on the ground he walks forward (the ladder's angle to go up, the other way to go down),
+//    looking 45 up (USE_LADDER needs LOOKING_UP "35") or 45 down (!LOOKING_UP "-35"), until
+//    AT_LADDER: a line from his eye (82 up) along the view, 12 back to 128 ahead, meets the
+//    ladder, and CanUseLadder: within 52 units of its origin, facing it, the spot below (or
+//    above) free (Player::CondLadder, FuncLadder::CanUseLadder)
+//  - attachtoladder puts him at the ladder (PositionOnLadder: 29 out at the bottom, 26 past
+//    it at the top, 16 out between) facing its angle; GET_ON_LADDER plays ladder_geton_top
+//    when his head is over the ladder's top (AT_TOP_OF_LADDER), else ladder_geton_bottom
+//  - on it (movetype climbwall) the clips' own frame deltas move him (PlayerAnimDelta,
+//    scaled by the model's scale, turned to his yaw), through AnimMove: a move that hits
+//    something is tried straight up then across, and stops where it is blocked
+//  - each LADDER_IDLE_LEFT / RIGHT snaps him 16 out from the ladder on a 16-unit height
+//    (tweakladderpos: AdjustPositionOnLadder), then: going up, GET_OFF_LADDER_TOP when
+//    CAN_GET_OFF_LADDER_TOP (no ladder or wall 12 back to 28 ahead at 86 up; 98 units clear
+//    over him; 16 more clear ahead up there), else LADDER_UP_RIGHT (from the left idle) or
+//    _LEFT when CAN_CLIMB_UP_LADDER (the ladder 12 back to 28 ahead at 86 up, 16 clear above
+//    him); going down, GET_OFF_LADDER_BOTTOM when CAN_GET_OFF_LADDER_BOTTOM (the world
+//    within 40 under him), else LADDER_DOWN_LEFT / _RIGHT when CAN_CLIMB_DOWN_LADDER (16
+//    clear under him: the game doesn't ask for ladder there)
+//  - ladder_getoff_top calls ensureoverladder at its frame 31 and ensureforwardoffladder at
+//    its last; then FINISHED_GET_OFF_LADDER lets go (movetype legs): he falls to the floor
+// When none of those can happen he hangs there for ever in the game: the climb has failed.
+const LAD={want:'',where:'',spawn:null,wantSim:'',res:null,warn:''};
+const LAD_DT=0.025,LAD_MINS=[-15,-15,0],LAD_MAXS=[15,15,94],LAD_EYE=82,LAD_RUN=250,LAD_MAX_T=90;
+const LAD_CLIP={geton_bottom:'ladder_up_geton',geton_top:'ladder_down_geton',up_left:'ladder_up_lefthand',up_right:'ladder_up_righthand',
+  down_left:'ladder_down_lefthand',down_right:'ladder_down_righthand',getoff_top:'ladder_up_getoff',getoff_bottom:'ladder_down_getoff',run:'unarmed_run_forward'};
+// the selected func_ladder: {key, ei}
+function ladFocus(){
+  if(!MAP||selAll().n>1)return null;
+  const m=MOD.ents[MOD.sel];let ei=-1;
+  if(m){if(!modIsMap(m))return null;ei=m.ei;}else ei=selFocusEnt();
+  if(!(ei>0)||!MAP.ents[ei])return null;
+  const mm=MOD.ents.find(x=>x.ei===ei);if(mm&&mm.del)return null;
+  const cls=mm&&modEdited(mm)?modCls(mm):String(MAP.ents[ei].cls||MAP.ents[ei].kvl.classname||'').toLowerCase();
+  return cls==='func_ladder'?{key:'L'+ei,ei:ei}:null;
+}
+// the ladder as the game has it: its origin (entityBox: origin brush, "origin", else the middle),
+// its box, its facing (the "angle": SetLadderFacing; none leaves the facing a zero vector) and
+// its brushes' planes (not the origin brush), moved with Modify's row
+function ladGeom(ei){
+  const b=entityBox(ei);if(!b)return null;
+  let t=[0,0,0];try{const dx=doorXf(ei);if(dx&&dx.t)t=dx.t;}catch(_e){}
+  const O=[b.origin[0]+t[0],b.origin[1]+t[1],b.origin[2]+t[2]];
+  const mn=[0,1,2].map(k=>O[k]+b.mins[k]),mx=[0,1,2].map(k=>O[k]+b.maxs[k]);
+  const y=ladderYaw(ei),F=y==null?[0,0,0]:[Math.cos(y*Math.PI/180),Math.sin(y*Math.PI/180),0];
+  const B=[];
+  for(const pr of MAP.ents[ei].prims){if(!pr||pr.kind!==0||!pr.d)continue;
+    if(pr.d.faces.some(f=>/(^|\/)common\/origin$/i.test(f.tex)))continue;
+    const pl=[];for(const f of pr.d.faces){const q=planeOf(f);if(q)pl.push([q[0],q[1],q[2],q[3]+q[0]*t[0]+q[1]*t[1]+q[2]*t[2]]);}
+    if(pl.length)B.push(pl);}
+  return{ei:ei,O:O,mn:mn,mx:mx,yaw:y==null?0:y,hasYaw:y!=null,F:F,B:B,how:b.how};
+}
+function ladTr(s,e,mins,maxs){const was=PG_MODE;PG_MODE='player';try{return pgTrace(s,e,mins||LAD_MINS,maxs||LAD_MAXS,false);}finally{PG_MODE=was;}}
+function ladClear(s,e){const t=ladTr(s,e);return t.f>=1&&!t.startsolid;}
+// a MASK_LADDER line: how far it gets (f) and whether what stops it is this ladder
+function ladRay(L,s,e){
+  let lf=1;
+  for(const pl of L.B){let en=-1,lv=1,miss=false;
+    for(const q of pl){const d1=s[0]*q[0]+s[1]*q[1]+s[2]*q[2]-q[3],d2=e[0]*q[0]+e[1]*q[1]+e[2]*q[2]-q[3];
+      if(d1>0&&d2>0){miss=true;break;}
+      if(d1<=0&&d2<=0)continue;
+      const f=d1/(d1-d2);if(d1>d2){if(f>en)en=f;}else if(f<lv)lv=f;}
+    if(miss||en<0||en>lv)continue;
+    if(en<lf)lf=en;}
+  const w=ladTr(s,e,[0,0,0],[0,0,0]),wf=w.startsolid?0:w.f;
+  return{f:Math.min(lf,wf),ladder:lf<1&&lf<=wf};
+}
+const ladFwd=y=>[Math.cos(y*Math.PI/180),Math.sin(y*Math.PI/180),0];
+// FuncLadder::CanUseLadder: '' or why not
+function ladCanUse(L,pos,yaw){
+  const F=L.F,dx=L.O[0]-pos[0],dy=L.O[1]-pos[1];
+  if(Math.hypot(dx,dy)>52)return'he is '+Math.round(Math.hypot(dx,dy))+' units from the ladder\'s origin ( '+L.O.map(fnum).join(' ')+' ), more than the 52 it reaches';
+  const uf=ladFwd(yaw),dot=uf[0]*F[0]+uf[1]*F[1],vd=[pos[0]-L.O[0],pos[1]-L.O[1]];
+  if(pos[2]+94>L.mx[2]){
+    if(dot>0.15||F[0]*vd[0]+F[1]*vd[1]<0)return'at its top he must face back toward it, standing past it';
+    const st=[L.O[0]+F[0]*26,L.O[1]+F[1]*26,L.mx[2]+16],t1=ladTr(st,[st[0],st[1],st[2]-16]),t2=ladTr(t1.end,t1.end);
+    return t2.startsolid?'the spot where he gets on at the top (26 past it, over its top) is blocked':'';}
+  if(dot<-0.15||F[0]*vd[0]+F[1]*vd[1]>0)return'he must face it from the side behind its angle';
+  const st=[L.O[0]-F[0]*29,L.O[1]-F[1]*29,L.mn[2]+16],t=ladTr(st,[st[0],st[1],st[2]-16]);
+  return t.allsolid?'the spot where he gets on at the bottom (29 out from it) is blocked by a solid object':'';
+}
+// Player::CondLadder (AT_LADDER) with CanUseLadder: '' or why not
+function ladAt(L,pos,yaw,pitch){
+  const d=anglesAxis([pitch,yaw,0])[0],v=[pos[0],pos[1],pos[2]+LAD_EYE];
+  const r=ladRay(L,[v[0]-d[0]*12,v[1]-d[1]*12,v[2]-d[2]*12],[v[0]+d[0]*128,v[1]+d[1]*128,v[2]+d[2]*128]);
+  if(!r.ladder)return'the ladder isn\'t within 128 units along his view';
+  return ladCanUse(L,pos,yaw);
+}
+// FuncLadder::PositionOnLadder
+function ladPosition(L,pos){
+  const F=L.F;let v;
+  if(pos[2]+94>L.mx[2])v=[L.O[0]+F[0]*26,L.O[1]+F[1]*26,L.mx[2]+2];
+  else if(L.mn[2]+32>pos[2])v=[L.O[0]-F[0]*29,L.O[1]-F[1]*29,L.mn[2]+2];
+  else v=[L.O[0]-F[0]*16,L.O[1]-F[1]*16,pos[2]+8];
+  let t=ladTr(v,v);
+  if(t.allsolid)t=ladTr([pos[0],pos[1],pos[2]+4],[L.O[0]-F[0]*16,L.O[1]-F[1]*16,pos[2]+4]);
+  return t.end.slice();
+}
+// FuncLadder::AdjustPositionOnLadder (tweakladderpos)
+function ladAdjust(L,pos){
+  const F=L.F,h=(Math.trunc(pos[2]+8))&~15;
+  if(Math.hypot(pos[0]-L.O[0],pos[1]-L.O[1])===16&&pos[2]===h)return pos.slice();
+  const vp=[L.O[0]-F[0]*16,L.O[1]-F[1]*16,h],vs=[vp[0]-F[0]*16,vp[1]-F[1]*16,h];
+  let t=ladTr(vs,vp);if(t.allsolid||t.startsolid)t=ladTr(pos,vp);
+  return t.end.slice();
+}
+// FuncLadder::EnsureOverLadder / EnsureForwardOffLadder
+function ladEnsureOver(L,pos){
+  if(pos[2]-L.mx[2]>=8)return pos;
+  const vp=[pos[0],pos[1],L.mx[2]+16];let t=ladTr([pos[0]-L.F[0]*16,pos[1]-L.F[1]*16,pos[2]],vp);
+  if(t.startsolid||t.allsolid)t=ladTr(L.O,vp);
+  return t.end.slice();
+}
+function ladEnsureFwd(L,pos){
+  if(pos[2]-L.mx[2]>=8)return pos;
+  const vp=[pos[0],pos[1],L.mx[2]+16];let t=ladTr([vp[0]-L.F[0]*16,vp[1]-L.F[1]*16,vp[2]],vp);
+  if(t.allsolid||t.startsolid)t=ladTr(pos,vp);
+  return t.end.slice();
+}
+// the conditions the idle states test ('' when true, else why not)
+function ladCanUp(L,pos,yaw){
+  const f=ladFwd(yaw),s=[pos[0]-f[0]*12,pos[1]-f[1]*12,pos[2]+94-8];
+  if(!ladRay(L,s,[s[0]+f[0]*40,s[1]+f[1]*40,s[2]]).ladder)return'the ladder doesn\'t reach his hands any higher';
+  return ladClear(pos,[pos[0],pos[1],pos[2]+16])?'':'something solid is right over his head';
+}
+function ladCanDown(pos){return ladClear(pos,[pos[0],pos[1],pos[2]-16])?'':'something solid is right under his feet';}
+function ladCanOffTop(L,pos,yaw){
+  const f=ladFwd(yaw),s=[pos[0]-f[0]*12*1.005,pos[1]-f[1]*12*1.005,pos[2]+94-8];
+  if(ladRay(L,s,[s[0]+f[0]*40,s[1]+f[1]*40,s[2]]).f<1)return'the ladder (or a wall) is still in front of his hands';
+  const up=[pos[0],pos[1],pos[2]+98];
+  if(!ladClear(pos,up))return'there isn\'t 98 units of room over him to climb off (a ceiling or a beam)';
+  return ladClear(up,[up[0]+f[0]*16,up[1]+f[1]*16,up[2]])?'':'the floor at the top is blocked in front of him (a wall within 16 units)';
+}
+function ladCanOffBottom(pos){
+  const t=ladTr(pos,[pos[0],pos[1],pos[2]-40]);
+  return t.f<1&&t.ent<=0;
+}
+// Player::AnimMove under climbwall
+function ladAnimMove(pos,mv){
+  let t=ladTr(pos,[pos[0]+mv[0],pos[1]+mv[1],pos[2]+mv[2]]);
+  if(t.f>=1)return{p:t.end.slice(),blocked:false};
+  t=ladTr(pos,[pos[0],pos[1],pos[2]+mv[2]]);
+  if(t.f<1)return{p:pos.slice(),blocked:true};
+  const o=t.end.slice();t=ladTr(o,[o[0]+mv[0],o[1]+mv[1],o[2]]);
+  return{p:t.end.slice(),blocked:t.f<1};
+}
+// a clip's movement between two of its times: x ahead, y left, z up (its frame deltas'
+// running sum, the model's scale applied), turned to yaw
+function ladDelta(rec,t0,t1,yaw,sc){
+  const d=rec&&rec.dl;if(!d)return[0,0,0];
+  const ft=rec.frameTime||0.05,last=rec.frames.length-1;
+  const at=t=>{const x=Math.max(0,Math.min(last,t/ft)),i=Math.floor(x),j=Math.min(last,i+1),u=x-i;
+    return[d[i*3]+(d[j*3]-d[i*3])*u,d[i*3+1]+(d[j*3+1]-d[i*3+1])*u,d[i*3+2]+(d[j*3+2]-d[i*3+2])*u];};
+  const a=at(t0),b=at(t1),l=[(b[0]-a[0])*sc,(b[1]-a[1])*sc,(b[2]-a[2])*sc],f=ladFwd(yaw);
+  return[f[0]*l[0]-f[1]*l[1],f[1]*l[0]+f[0]*l[1],l[2]];
+}
+const ladDur=rec=>Math.max(LAD_DT,(rec.frames.length-1)*(rec.frameTime||0.05));
+// where the spawns put him: the foot of the ladder where ladder_down_getoff leaves him, its
+// top where ladder_up_getoff does (both from the spot 16 out from the ladder the idles keep
+// him on, dropped to the floor), or on it halfway up
+function ladSpawnSpot(L,where,recs,sc){
+  const F=L.F,on=[L.O[0]-F[0]*16,L.O[1]-F[1]*16];
+  if(where==='mid'){const z=(L.mn[2]+L.mx[2])/2;return{p:ladAdjust(L,[on[0],on[1],z]),yaw:L.yaw,onLadder:true};}
+  const rec=recs[where==='up'?LAD_CLIP.getoff_top:LAD_CLIP.getoff_bottom],dv=rec?ladDelta(rec,0,ladDur(rec),L.yaw,sc):[0,0,0];
+  const x=on[0]+dv[0],y=on[1]+dv[1],top=where==='up'?L.mx[2]+24:L.mn[2]+24;
+  const t=ladTr([x,y,top],[x,y,top-4096]);
+  return{p:t.allsolid?[x,y,top]:t.end.slice(),yaw:where==='up'?(L.yaw+180)%360:L.yaw,onLadder:false};
+}
+// the climb, frame by frame: {F: frames {p, y (yaw), c (clip name or null), t}, ok, msg, why}
+function ladSim(L,start,dir,recs,sc){
+  const F=[],up=dir==='up',pitch=up?-45:45,face=up?L.yaw:(L.yaw+180)%360,maxN=Math.round(LAD_MAX_T/LAD_DT);
+  let pos=start.p.slice(),yaw=start.yaw,state=start.onLadder?'idle_left':'ground',clip='',ct=0,hold=start.onLadder?{c:LAD_CLIP.up_right,t:0}:null;
+  let why='',ok=false,steps=0,lastZ=null,still=0,fall=null,events=[],walked=0;
+  const push=(c,t)=>F.push({p:pos.slice(),y:yaw,c:c,t:t});
+  const nextOf={geton:'idle_left',up_right:'idle_right',up_left:'idle_left',down_left:'idle_right',down_right:'idle_left',getoff_top:'fall',getoff_bottom:'fall'};
+  let cur='';            // the clip's state name (geton, up_right...)
+  push(hold?hold.c:null,0);
+  // on the ground at the start: settle on the floor first
+  const mm={o:pos.slice(),vel:[0,0,0],speed:0,ft:LAD_DT,dd:[0,0,0],ground:false,walking:false,gn:[0,0,1],mins:LAD_MINS,maxs:LAD_MAXS,hit:false,hitO:[0,0,0],obn:[0,0,0]};
+  const mmove=()=>{const was=PG_MODE;PG_MODE='player';try{pgMmove(mm);}finally{PG_MODE=was;}pos=mm.o.slice();};
+  if(state==='ground'){for(let i=0;i<40&&!mm.ground;i++)mmove();if(F.length)F[0].p=pos.slice();}
+  for(let n=0;n<maxN;n++){
+    if(state==='ground'){
+      yaw=face;
+      // USE_LADDER: ONGROUND FORWARD LOOKING_UP "35" (or !LOOKING_UP "-35") ... AT_LADDER
+      const r=mm.ground?ladAt(L,pos,yaw,pitch):'he isn\'t on the floor';
+      if(!r){
+        // attachtoladder, then GET_ON_LADDER
+        pos=ladPosition(L,pos);yaw=L.yaw;
+        cur='geton';clip=pos[2]+94>L.mx[2]?LAD_CLIP.geton_top:LAD_CLIP.geton_bottom;ct=0;state='clip';
+        events.push({t:n*LAD_DT,what:'gets on ('+clip+')'});
+        push(clip,0);continue;}
+      if(walked>=LAD_RUN*4){why='He walked 4 seconds toward the ladder without getting on: '+r;break;}
+      // he walks forward (sv_runspeed 250)
+      const o0=pos.slice();mm.o=pos.slice();mm.dd=ladFwd(yaw);mm.speed=LAD_RUN;mmove();walked+=Math.hypot(pos[0]-o0[0],pos[1]-o0[1]);
+      if(n>8&&Math.hypot(pos[0]-o0[0],pos[1]-o0[1])<0.5&&mm.ground){why='He is stopped walking toward the ladder before he can get on: '+r;break;}
+      push(recs[LAD_CLIP.run]?LAD_CLIP.run:null,recs[LAD_CLIP.run]?(n*LAD_DT)%ladDur(recs[LAD_CLIP.run]):0);continue;}
+    if(state==='clip'){
+      const rec=recs[clip];if(!rec){why='the '+clip+' animation is missing';break;}
+      const dur=ladDur(rec),t1=Math.min(dur,ct+LAD_DT),mv=ladDelta(rec,ct,t1,yaw,sc);
+      const r=ladAnimMove(pos,mv);pos=r.p;
+      if(cur==='getoff_top'){const ft=rec.frameTime||0.05;if(ct<31*ft&&t1>=31*ft)pos=ladEnsureOver(L,pos);}
+      ct=t1;push(clip,ct);
+      if(ct>=dur-1e-9){
+        if(cur==='getoff_top')pos=ladEnsureFwd(L,pos);
+        hold={c:clip,t:dur};state=nextOf[cur];
+        if(state==='fall'){mm.o=pos.slice();mm.vel=[0,0,0];mm.speed=0;mm.dd=[0,0,0];mm.ground=false;mm.walking=false;fall={z0:pos[2],n:0};
+          events.push({t:n*LAD_DT,what:'lets go of the ladder'});}}
+      continue;}
+    if(state==='idle_left'||state==='idle_right'){
+      pos=ladAdjust(L,pos);yaw=L.yaw;push(hold?hold.c:null,hold?hold.t:0);
+      steps++;
+      // no progress over two climbs: blocked
+      if(lastZ!=null&&(up?pos[2]-lastZ<4:lastZ-pos[2]<4)){if(++still>=2){why=(up?'He can\'t climb any higher here: ':'He can\'t climb any lower here: ')+'a clip\'s move is blocked by something solid (the ladder is too close to a wall, or something is in the way)';break;}}
+      else still=0;
+      lastZ=pos[2];
+      const left=state==='idle_left';
+      if(up){
+        const off=ladCanOffTop(L,pos,yaw);
+        if(!off){cur='getoff_top';clip=LAD_CLIP.getoff_top;ct=0;state='clip';events.push({t:n*LAD_DT,what:'gets off the top'});continue;}
+        const cu=ladCanUp(L,pos,yaw);
+        if(!cu){cur=left?'up_right':'up_left';clip=LAD_CLIP[cur];ct=0;state='clip';continue;}
+        why='He is stuck on the ladder '+fnum(pos[2]-L.mn[2])+' units up: he can\'t climb higher ('+cu+') and can\'t get off the top ('+off+')';break;}
+      else{
+        if(ladCanOffBottom(pos)){cur='getoff_bottom';clip=LAD_CLIP.getoff_bottom;ct=0;state='clip';events.push({t:n*LAD_DT,what:'gets off at the bottom'});continue;}
+        const cd=ladCanDown(pos);
+        if(!cd){cur=left?'down_left':'down_right';clip=LAD_CLIP[cur];ct=0;state='clip';continue;}
+        why='He is stuck on the ladder '+fnum(pos[2]-L.mn[2])+' units up: '+cd+', and the floor isn\'t within 40 units under him to get off';break;}
+    }
+    if(state==='fall'){
+      mmove();fall.n++;push(null,0);
+      if(mm.ground&&fall.n>2){ok=true;break;}
+      if(fall.n*LAD_DT>4){why='He let go of the ladder and is still falling 4 seconds later: nothing to land on';break;}
+      continue;}
+  }
+  if(!ok&&!why)why='The climb didn\'t end within '+LAD_MAX_T+' seconds';
+  const fallen=fall?fall.z0-pos[2]:0;
+  return{F:F,ok:ok,why:why,steps:steps,secs:F.length*LAD_DT,end:pos.slice(),fallen:fallen,events:events,onLadder:!ok&&state!=='ground'&&state!=='fall'};
+}
+// ---- the buttons ----
+function ladSc(b){return b&&b.H&&b.H.M&&b.H.M.sc||1;}
+function ladSpawn(where){
+  const f=ladFocus();if(!f){flash('Select a func_ladder first');return;}
+  if(!ACT.lists){flash('The human list isn\'t here yet');return;}
+  const hum=$('ladHum').value;ACT.hum=hum;LS.set(ACT_LS_H,hum);
+  const b=actGet(hum,'');ACT.want=b.key;ACT.node=f.key;LAD.want=f.key;LAD.where=where;LAD.warn='';LAD.res=null;
+  if(b.state==='ready')ladBuilt(b);else if(b.state==='fail'){LAD.want='';flash('Simulate: '+b.why);}
+  simPanel();requestDraw();
+}
+// the actor is built: his ladder clips next (built once)
+function ladBuilt(b){
+  ACT.want=null;
+  if(b.anims.has('ladder')){ladAnims(b);return;}
+  const why=b.meta&&b.meta.roles&&b.meta.roles.ladder;
+  if(why){LAD.want='';LAD.warn='Can\'t climb: '+why;simPanel();return;}
+  if(!simPost('mohaa-sim-actor-anim\n'+JSON.stringify({k:b.k,role:'ladder'}))){LAD.want='';flash('Actors need the Map Viewer');}
+  simPanel();
+}
+// his clips are here: put him where the spawn button said
+function ladAnims(b){
+  const f=ladFocus();
+  if(!LAD.want||!f||f.key!==LAD.want){LAD.want='';return;}
+  const L=ladGeom(f.ei);if(!L){LAD.want='';flash('Simulate: the ladder has no box');return;}
+  const recs=b.anims.get('ladder').recs,sp=ladSpawnSpot(L,LAD.where,recs,ladSc(b));
+  LAD.spawn={where:LAD.where,p:sp.p,yaw:sp.yaw,onLadder:sp.onLadder};LAD.want='';
+  ACT.cur={b:b,key:f.key,o:sp.p.slice(),yaw:sp.yaw,camYaw:0,t0:performance.now(),play:null,wantRole:'',lastIdle:0,go:null,plan:null,moved:false,wantGo:false,lad:null};
+  if(sp.onLadder)ACT.cur.lad={F:[{p:sp.p.slice(),y:sp.yaw,c:LAD_CLIP.up_right,t:0}],DT:LAD_DT,t0:performance.now(),done:true};
+  actPose(performance.now());
+  const w=LAD.wantSim;LAD.wantSim='';
+  if(w)ladRun(w);
+  simPanel();requestDraw();
+}
+function ladRun(dir){
+  const c=ACT.cur,f=ladFocus();if(!c||!f||c.key!==f.key||!LAD.spawn){flash('Spawn him at the ladder first');return;}
+  if(LAD.spawn.where===(dir==='up'?'up':'down')){flash(dir==='up'?'He is at the top already: Simulate Down, or Spawn down / middle':'He is at the bottom already: Simulate Up, or Spawn up / middle');return;}
+  const L=ladGeom(f.ei);if(!L)return;
+  const la=c.b.anims.get('ladder');if(!la)return;
+  // back where he was spawned, then the climb
+  let R;try{R=ladSim(L,LAD.spawn,dir,la.recs,ladSc(c.b));}catch(e){flash('Simulate: '+(e&&e.message||e));return;}
+  LAD.res={dir:dir,R:R,L:L};
+  LAD.warn=R.ok?'':R.why+'\n'+ladAdvice(R,L,dir);
+  c.o=LAD.spawn.p.slice();c.yaw=LAD.spawn.yaw;c.pauseAt=null;
+  c.lad={F:R.F,DT:LAD_DT,t0:performance.now(),done:false};
+  actPose(performance.now());simPanel();requestDraw();
+}
+function ladAdvice(R,L,dir){
+  const tips=[];
+  if(/52 it reaches|origin/.test(R.why))tips.push('Give the ladder an origin brush (common/origin) in its middle, so its origin is at the ladder, not at '+L.O.map(fnum).join(' ')+' ('+L.how+')');
+  if(/face|facing/.test(R.why))tips.push('Check its "angle": a climber looks that way to climb it, standing on the side behind it');
+  if(/blocked|in the way|too close|solid/.test(R.why))tips.push('Move the ladder further from the wall (he hangs 16 units out from its origin, and is 30 wide) or clear what is in his way');
+  if(/higher|get off the top|98/.test(R.why))tips.push('Make the ladder reach the floor at the top (its top at the floor\'s height), with 98 units of room over the last rung');
+  if(/floor isn't within|lower/.test(R.why))tips.push('Extend the ladder down to the floor (he gets off once the floor is within 40 units under him)');
+  if(/4 seconds|walked|stopped walking/.test(R.why))tips.push('Check that the ladder is in front of him where he gets on, and that he can walk up to it');
+  if(!tips.length)tips.push('Change the ladder\'s height, or place it further from the wall');
+  return 'Recommendation: '+tips.join('. ')+'.';
+}
+function ladPanel(f){
+  const host=simHost(),c=ACT.cur;
+  if(host&&!ACT.lists&&!ACT.asked){ACT.asked=true;if(!simPost('mohaa-sim-actors'))ACT.asked=false;}
+  // another ladder (or a node) than the climber's: he goes
+  if(c&&c.key!==f.key){ACT.cur=null;ACT.want=null;ACT.pick=null;ACT.follow=false;LAD.spawn=null;LAD.res=null;LAD.warn='';
+    for(const b of ACT.built.values()){if(b.H)b.H.n=0;if(b.Wp)b.Wp.n=0;}requestDraw();}
+  const cc=ACT.cur&&ACT.cur.key===f.key?ACT.cur:null,busy=!!LAD.want,L=ladGeom(f.ei);
+  const run=!!cc&&!!cc.lad&&!cc.lad.done&&cc.pauseAt==null;
+  for(const id of['bLadUp','bLadDown','bLadMid'])$(id).disabled=!host||!ACT.lists||busy;
+  const sw=LAD.spawn&&cc?LAD.spawn.where:'';
+  $('bLadSimUp').disabled=!cc||busy||sw==='up';$('bLadSimDown').disabled=!cc||busy||sw==='down';
+  $('bLadFly').disabled=!cc;$('bLadFollow').disabled=!cc;$('bLadFollow').classList.toggle('on',!!ACT.follow&&!!cc);
+  $('bLadPause').disabled=!cc;$('bLadPause').textContent=cc&&cc.pauseAt!=null?'Resume':'Pause';$('bLadPause').classList.toggle('on',!!cc&&cc.pauseAt!=null);
+  let s='';
+  if(!host)s='Actors need the Map Viewer: it builds them from the paks';
+  else if(ACT.listErr&&!ACT.lists)s=ACT.listErr;
+  else if(!ACT.lists)s='Asking the launcher for the paks\' humans…';
+  else if(busy)s='Building him and his ladder animations…';
+  else if(!cc)s='Spawn him at the top, the foot or the middle of the ladder, then Simulate Up or Down.';
+  else{
+    s={up:'At the top of the ladder.',down:'At the foot of the ladder.',mid:'On the ladder, halfway up.'}[sw]||'';
+    const R=LAD.res&&LAD.res.R;
+    if(R){s=run?'Climbing '+LAD.res.dir+'…':R.ok?'Climbed '+LAD.res.dir+' in '+R.secs.toFixed(1)+' s ('+R.steps+' holds), standing at ( '+R.end.map(fnum).join(' ')+' ).':'The climb '+LAD.res.dir+' failed (below).';
+      if(R.ok&&R.fallen>48)s+='\nHe fell '+fnum(R.fallen)+' units after letting go.';
+      if(R.events.length)s+='\n'+R.events.map(e=>e.t.toFixed(1)+' s: '+e.what).join('\n');}
+    if(cc.pauseAt!=null)s='Paused: Resume carries on\n'+s;
+  }
+  if(L){s+=(s?'\n':'')+'Ladder: '+(L.hasYaw?'"angle" '+fnum(L.yaw):'no "angle" (the game leaves it without a facing)')+', '+fnum(L.mx[2]-L.mn[2])+' units tall ( '+fnum(L.mn[2])+' to '+fnum(L.mx[2])+' ), origin ( '+L.O.map(fnum).join(' ')+' ) from '+L.how+'.';
+    if(!L.B.length)s+='\nIt has no brushes the viewer can trace (the climb can\'t find it).';}
+  if(cc)s+='\nHe is removed when the ladder is deselected.';
+  $('ladSum').textContent=s;
+  $('ladWarn').textContent=LAD.warn||'';
+}
+function ladInit(){
+  if(!$('bLadUp'))return;
+  $('bLadUp').onclick=()=>ladSpawn('up');$('bLadDown').onclick=()=>ladSpawn('down');$('bLadMid').onclick=()=>ladSpawn('mid');
+  $('bLadSimUp').onclick=()=>ladRun('up');$('bLadSimDown').onclick=()=>ladRun('down');
+  $('bLadPause').onclick=()=>$('bActPause').onclick();
+  $('bLadFly').onclick=()=>$('bActFly').onclick();
+  $('bLadFollow').onclick=()=>$('bActFollow').onclick();
+  $('ladHum').onchange=()=>{const v=$('ladHum').value;ACT.hum=v;LS.set(ACT_LS_H,v);$('ladHum').blur();if(LAD.spawn&&ACT.cur)ladSpawn(LAD.spawn.where);};
 }
 // ---- drawing: the path's curve (while the section shows) and the box ----------------------
 // ai_showpath, as PathSearch::ShowNodes draws it (navigate.cpp) while he runs a path: the whole

@@ -359,17 +359,41 @@ click away: its targetname, origin, `setsize`, targets and ready-to-paste script
   to** and **Follow** (the game's third-person camera) help watch him, and **Respawn** puts
   him back on the node. The human and weapon are built from the paks only when chosen, each
   animation the first time it's needed. Needs the Map Viewer (not a bare browser).
+  Select a `func_ladder` and the section climbs it with an unarmed **Human** as the player's
+  ladder states do (global/mike_torso.st, with OpenMoHAA's FuncLadder code): **Spawn up**
+  stands him where `ladder_up_getoff` leaves a climber at the top (facing the ladder),
+  **Spawn down** where `ladder_down_getoff` leaves him at its foot, **Spawn middle** puts
+  him on it halfway up (for a ladder whose ends go into the floor or ceiling). **Simulate
+  Up** walks him at the ladder looking 45 degrees up until he can use it, gets him on
+  (`ladder_up_geton`), climbs a hand at a time (`ladder_up_righthand`, `_lefthand`...) and
+  gets him off the top; **Simulate Down** the same downwards, looking 45 degrees down. The
+  clips' own movement carries him, with the player's box against walls, playerclip and the
+  floor, the game's tests for climbing on, getting off the top (98 units of room over him)
+  and the bottom (the floor within 40 under him), and its snaps to the ladder. Each starts
+  again from the last spawn. When he can't finish (the ladder too short or too long, too
+  close to a wall, something in the way, its origin far from it) the climb stops and the
+  yellow note says why, with what to change.
 * **Modify** (above Find): add entities, most of all AI path nodes: Add, then click on the
   map where it goes. A new node is drawn
   see-through until saved, its parameters edit as entity-lump text (applied as you type),
   **Move** picks it up again with the mouse, **Trim origin** nudges it with W A S D / the arrows by a trim step of 1 to 50 units
   while the camera stays put (white arrows out of its sides, red the way it just went; a
-  door or other brush entity's from round its brushes, faint where a wall is in front), and **AI routes** show its links as soon as it is placed,
+  door or other brush entity's from round its brushes, faint where a wall is in front),
+  **angles** (under trim step) shows the selected entity's pitch, yaw and roll to type over
+  (Enter sets them on every selected entity), with **⟳ Rotate** (a circle facing you: drag
+  inside it, Shift tumbles) and **⊕ Axes** (X, Y and Z rings: drag one) to turn them with the
+  mouse, each about its own origin, in whole degrees (Ctrl: 15s), one Undo per drag; a path
+  node or other info_ entity (not info_splinepath) turns on its yaw only (pitch and roll
+  off, one flat ring), its box staying as it is while its arrow turns; and **AI routes** show its links as soon as it is placed,
   worked out the way the game builds its `.pth`. **Save as .bsp** writes a copy of the
   map with the new entities and a new `map_time`, so the game rebuilds its paths; it
-  never writes over the original. **Save as .map** and **Copy** are there too. Closing the
-  viewer with Esc while changes aren't saved asks first: Save as .bsp, Save as .map,
-  Discard changes or Cancel. Selecting one of the map's own point entities (a broken
+  never writes over the original. Both saves are quick saves, not compiles: Save as .bsp
+  changes only entities and path nodes (it is off once Edit map has changed a brush, patch
+  or terrain), and Save as .map writes the text, which Compile... (Edit map) builds into a
+  .bsp. **Save as .map** and **Copy** are there too. Closing the
+  viewer with Esc (or File > Close file), or opening another map, while changes aren't
+  saved asks first: Save as .bsp, Save as .map, Discard changes or Cancel (Cancel keeps
+  this map open; the other one opens after a save or a discard). Selecting one of the map's own point entities (a broken
   path node, say) lists it in Modify too, to edit, move or trim it the same way, or to
   **Delete** it from the saved copy (marked DEL until you save; Restore or Undo puts it
   back). **Spawnflags** ticks the selected entity's spawnflags from its class's list (for
@@ -520,6 +544,10 @@ way here.
     cone, or a pipe bend (a quarter elbow). It gets the texture in the Texture box
     (**Browse...** picks one from the map or your paks; the list beside it has the tool
     textures: caulk, hint, vis, skip, clip, playerclip, nodraw, trigger, origin and more).
+    **▭ Draw any axis** (beside *in entity*; click for **Draw XY**, **Draw XZ**, **Draw YZ**):
+    any axis draws on the surface under the mouse, a slope too (the outline lies on the
+    slope and the brush stands square on it); XY always draws flat, XZ and YZ upright
+    (facing y or x), through the point clicked, then the mouse sets the depth.
   * **⇕ Resize**: drag a face of a brush to pull it out or push it in, along its own
     direction. The brush's corners show as white crosses: drag a **corner** or an
     **edge** to reshape the brush freely (it stays a closed, convex brush; the faces keep
@@ -529,7 +557,10 @@ way here.
   * **✥ Move**: drag a brush, patch or terrain block across the floor; Shift+drag moves it
     up and down, Alt+drag makes a moved copy, and Shift+click (no drag) adds a brush to the
     selection or takes it out, without going back to Select. Move and Resize go in single
-    units, or in the grid's size with Grid on. **✥ Trim / ⇕ Trim** (beside Region, with Move
+    units, or in the grid's size with Grid on. Under Region, Move and Resize have
+    copies of Modify's **trim step** and Display's **grid** (Grid XY / XZ / YZ / all, its size and
+    **Grid +** on / off), Draw brush and Clip the grid ones: the same settings, moved either
+    place. **✥ Trim / ⇕ Trim** (beside Region, with Move
     or Resize): W A S D / arrows and Space / C nudge the selected brushes by Modify's trim
     step (Resize: push out the face that faces that way, Shift+key pulls it in), the way to
     stretch a brush too thin to grab, like a ceiling wire. A selected patch (a pipe or wire,
@@ -576,6 +607,13 @@ way here.
     is selected too: every face of a brush, a patch, or every patch of a terrain block
     (one Undo). With the **▦ Texture** tool or terrain *paint texture* on, the box is the
     paint and stays as you set it.
+  * **Angles** (above Exact values, with brushes or patches selected): a turn typed in as
+    pitch, yaw and roll, then **Turn**; or with the mouse: **⟳ Rotate** draws a circle round
+    the selection facing you (drag inside it to turn it about the line you look along,
+    Shift+drag tumbles it), **⊕ Axes** three rings for the world's X, Y and Z (drag one to
+    turn about it). Whole degrees, Ctrl for 15s; the angles show the turn as you drag, and
+    letting go makes it (one Undo, Esc cancels). They turn about the selection's middle; an
+    entity with all its brushes selected turns its origin key too. Terrain blocks don't turn.
   * **Tiling** (under Texture, with a brush or terrain block selected): its texture's scale,
     rotate and shift, on the face clicked (else every face) or every terrain patch; **Set**
     lays them. The eyedropper takes a surface's tiling with its texture and gives both to

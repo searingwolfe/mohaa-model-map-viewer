@@ -91,6 +91,34 @@ ROLE_STEPS = {
 }
 ROLES = tuple(ROLE_STEPS)
 
+# SIMULATE on a func_ladder: an unarmed man climbs it as the player's state machine does
+# (global/mike_torso.st: GET_ON_LADDER, LADDER_UP_LEFT / RIGHT, LADDER_DOWN_LEFT / RIGHT,
+# GET_OFF_LADDER_TOP / BOTTOM). The player's aliases (models/player/base/anims_misc.txt:
+# ladder_geton_bottom = misc/ladderup_geton.skc ...) are the humans' ladder_up_geton ...
+# (models/human/new_generic_human.tik), the same .skc files; their frame deltas carry him
+# up and down the ladder (Player::PlayerAnimDelta, movetype climbwall). The stand and run
+# clips are for the ground before and after it.
+LADDER_CLIPS = ("ladder_up_geton", "ladder_up_lefthand", "ladder_up_righthand", "ladder_up_getoff",
+                "ladder_down_geton", "ladder_down_lefthand", "ladder_down_righthand", "ladder_down_getoff",
+                "unarmed_run_forward")
+LADDER_IDLE = "unarmed_stand_alert"     # upper body only: its legs are unarmed_stand_alert_legs (LEGS_ALERT)
+
+
+def plan_ladder(names):
+    """The ladder clips the human has: ([(name, entry, None)], why); why is '' when every
+    climbing clip is there (the run clip may be missing: he then slides to the ladder)."""
+    steps, missing = [], []
+    for nm in LADDER_CLIPS:
+        ent = names.get(nm)
+        if ent is None:
+            if nm != "unarmed_run_forward":
+                missing.append(nm)
+            continue
+        steps.append((nm, ent, None))
+    if missing:
+        return [], "this human has no %s animation" % ", ".join(missing)
+    return steps, ""
+
 # ------------------------------------------------------------------------------
 #  Model lists
 # ------------------------------------------------------------------------------

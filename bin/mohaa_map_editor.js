@@ -356,8 +356,10 @@ function edFaces(pr){return pr.d.faces.map(f=>({p:f.p.slice(),tex:f.tex,sh:f.sh.
   cont:f.cont|0,flags:f.flags|0,val:f.val||0,extra:f.extra||'',tm:f.tm?[f.tm[0].slice(),f.tm[1].slice()]:null}));}
 function edFaceLine(f){
   const P=[f.p.slice(0,3),f.p.slice(3,6),f.p.slice(6,9)].map(q=>'( '+q.map(fmt).join(' ')+' )').join(' ');
-  if(f.tm)return P+' ( ( '+f.tm[0].map(fmt).join(' ')+' ) ( '+f.tm[1].map(fmt).join(' ')+' ) ) '+f.tex+' '+f.cont+' '+f.flags+' '+fmt(f.val)+(f.extra?' '+f.extra:'');
-  return P+' '+f.tex+' '+fmt(f.sh[0])+' '+fmt(f.sh[1])+' '+fmt(f.rot)+' '+fmt(f.sc[0])+' '+fmt(f.sc[1])+' '+f.cont+' '+f.flags+' '+fmt(f.val)+(f.extra?' '+f.extra:'');
+  // the texture's numbers to 6 places (a scale such as 0.109375 kept as it is: 3 places would move the texture)
+  const t6=x=>{const r=Math.round(x*1e6)/1e6;return String(Object.is(r,-0)?0:r);};
+  if(f.tm)return P+' ( ( '+f.tm[0].map(t6).join(' ')+' ) ( '+f.tm[1].map(t6).join(' ')+' ) ) '+f.tex+' '+f.cont+' '+f.flags+' '+fmt(f.val)+(f.extra?' '+f.extra:'');
+  return P+' '+f.tex+' '+t6(f.sh[0])+' '+t6(f.sh[1])+' '+t6(f.rot)+' '+t6(f.sc[0])+' '+t6(f.sc[1])+' '+f.cont+' '+f.flags+' '+fmt(f.val)+(f.extra?' '+f.extra:'');
 }
 function edBrushText(faces){
   const bp=faces.some(f=>f.tm);
@@ -489,7 +491,7 @@ function edRebuild(sel){
   // the culling boxes are per face: a change that keeps the face count (a brush moved into a
   // new entity, a brush reshaped) still reorders or moves faces
   try{CULL.fk=CULL.fb=null;}catch(_e){}
-  try{PG=null;GRID.fk='';GRID.key='';}catch(_e){}     // the player collision (traces, the grid's focus) from the new geometry
+  try{PG=null;PGP=null;GRID.fk='';GRID.key='';}catch(_e){}     // the player collision (traces, the grid's focus) from the new geometry
   edNewCalc();
   buildEntities();prepMaterials();prepSeeThrough();doorsInit();expInit();
   ENTPRIMS=null;LINE_STARTS=null;TRACEBR=null;_texCounts=null;TEXUSE=null;SEARCH=null;TARGETED_BY=null;LBLOCC=null;
@@ -722,13 +724,15 @@ window.addEventListener('keyup',e=>{
 const edAxKey=d=>(d[0]>0.5?'+x':d[0]<-0.5?'-x':d[1]>0.5?'+y':d[1]<-0.5?'-y':d[2]>0?'+z':'-z');
 const ED_AX=[[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]];
 let edTrimCache=null;
+// a brush's, patch's or terrain block's box, from what the view draws of it
+function edPrimBox(pi){const p=SC.prims[pi],mn=[Infinity,Infinity,Infinity],mx=[-Infinity,-Infinity,-Infinity];if(!p)return null;
+  for(let f=p.f0;f<p.f1;f++){const ea=SC.faceE0[f],ec=SC.faceEN[f];for(let k=ea;k<ea+ec;k++){const v=SC.edge[k]*3;
+    for(let a=0;a<3;a++){const x=SC.pos[v+a];if(x<mn[a])mn[a]=x;if(x>mx[a])mx[a]=x;}}}
+  return mn[0]<=mx[0]?{mn:mn,mx:mx}:null;}
 function edTrimBoxes(){
   const P=edJoinPrims(),key=ED.tool+'|'+ED.n+'|'+P.join(',');
   if(edTrimCache&&edTrimCache.key===key)return edTrimCache.boxes;
-  const boxOf=pi=>{const p=SC.prims[pi],mn=[Infinity,Infinity,Infinity],mx=[-Infinity,-Infinity,-Infinity];if(!p)return null;
-    for(let f=p.f0;f<p.f1;f++){const ea=SC.faceE0[f],ec=SC.faceEN[f];for(let k=ea;k<ea+ec;k++){const v=SC.edge[k]*3;
-      for(let a=0;a<3;a++){const x=SC.pos[v+a];if(x<mn[a])mn[a]=x;if(x>mx[a])mx[a]=x;}}}
-    return mn[0]<=mx[0]?{mn:mn,mx:mx}:null;};
+  const boxOf=edPrimBox;
   let boxes=[];
   if(ED.tool==='resize'&&P.length<=24){
     for(const pi of P){const r=SC.prims[pi],pr=r&&MAP.ents[r.ent].prims[r.bn];if(!pr||pr.kind>1)continue;const b=boxOf(pi);if(!b)continue;
@@ -761,8 +765,15 @@ function edDrawTrim(vp){
         lin(e,[e[0]-d[0]*Ln*0.4+o[0],e[1]-d[1]*Ln*0.4+o[1],e[2]-d[2]*Ln*0.4+o[2]],col);
         lin(e,[e[0]-d[0]*Ln*0.4-o[0],e[1]-d[1]*Ln*0.4-o[1],e[2]-d[2]*Ln*0.4-o[2]],col);}}}
   if(L.length){drawTrimArrows(vp,L);gl.disable(gl.BLEND);gl.depthMask(true);}}
+// Edit map's copies of the trim step and grid controls follow the originals
+ctlCopiesHook=()=>{
+  const sc=$('edStepC');if(sc){sc.value=MOD.stepI;$('edStepCV').textContent=MOD_STEPS[MOD.stepI];}
+  const gp=$('edGridPC');if(gp)gp.textContent=$('bGrid').textContent;
+  const gs=$('edGridSzC');if(gs){gs.value=GRID.i;$('edGridVC').textContent=gridSize();}
+  const go=$('edGridOnC');if(go)go.classList.toggle('on',GRID.on);
+  if(ED.tool==='draw'||ED.tool==='resize'||ED.tool==='move'){const th=$('edToolHelp');if(th)th.textContent=edHelp();}};
 const _drawModifyEd=drawModify;
-drawModify=function(vp){_drawModifyEd(vp);try{edDrawTrim(vp);}catch(_e){}};
+drawModify=function(vp){_drawModifyEd(vp);try{edDrawTrim(vp);}catch(_e){}try{edDrawRot(vp);}catch(_e){}};
 
 // ---- Classname: what the selected brushes are --------------------------------------------
 // Brushes of the world (or a func_group) become one new entity of that class, with the
@@ -1520,7 +1531,8 @@ function edToolHtml(){
   h+='</div>';
   if(ED.tool==='draw')h+=edRow('shape '+edSel('edShape',[['box','box'],['prism','n-sided prism'],['cyl','cylinder / pipe (curved patch)'],['cone','cone (curved patch)'],['elbow','pipe bend (curved patch)']],ED.shape)+
     (ED.shape==='prism'?' sides '+edSel('edSides',[3,4,5,6,7,8,9,10,12,16].map(n=>[String(n),String(n)]),String(ED.sides)):'')+
-    '<label title="Put new brushes and patches in the selected brush entity instead of the world"><input type="checkbox" id="edIntoEnt"'+(ED.into?' checked':'')+'>in entity</label>');
+    '<label title="Put new brushes and patches in the selected brush entity instead of the world"><input type="checkbox" id="edIntoEnt"'+(ED.into?' checked':'')+'>in entity</label>'+
+    '<button class="sm" id="bEdDPlane" title="'+esc('Which plane a new brush\'s outline is drawn on (click for the next): Draw any axis - the surface under the mouse, a slope too (the brush stands square on it); Draw XY - flat, as a floor; Draw XZ and Draw YZ - upright, facing y or x, through the point clicked. Then the mouse sets its depth.')+'">▭ '+({any:'Draw any axis',xy:'Draw XY',xz:'Draw XZ',yz:'Draw YZ'}[ED.dplane||'any'])+'</button>');
   if(ED.tool==='terrain'){h+=edRow(edSel('edTerrMode',[['holes','cut / fill triangles'],['raise','raise / lower'],['flatten','flatten'],['smooth','smooth'],['paint','paint texture'],['new','draw a new block']],ED.terr)+
     (['raise','flatten','smooth'].indexOf(ED.terr)>=0?' radius '+edSel('edTrad',[64,128,192,256,384,512,768,1024].map(n=>[String(n),String(n)]),String(ED.trad)):'')+
     (ED.terr==='new'?'<label title="Give the new block\'s edges the heights of the terrain round it, and blend its inside between them"><input type="checkbox" id="edTFit" checked>meet the terrain round it</label>':''));}
@@ -1536,8 +1548,14 @@ function edToolHtml(){
   h+=edRow(edBtn('bEdReg',ED.region?'Region off':'Region: selection',ED.region?'Draw the whole map again':'Draw only what is near the selection (plus the margin), as MOHRadiant\'s Region: easier to work in a crowded spot')+
     (ED.region?'':' margin '+edSel('edRegM',[0,64,128,256,512,1024].map(n=>[String(n),String(n)]),String(ED.regm||256)))+
     (ED.tool==='move'||ED.tool==='resize'?'<button class="sm'+(ED.trim?' on':'')+'" id="bEdTrim" title="'+esc(ED.tool==='move'?
-      'Trim: W A S D / arrows move the selected brushes along the world axis nearest the way you look, Space / C up and down, by Modify\'s trim step. Esc or T stops. One Undo for the whole trim.':
-      'Trim: W A S D / arrows / Space / C push the face of each selected brush that faces that way out by Modify\'s trim step (Shift+key pulls it in): a way to stretch a brush too thin to grab a side of (a wire). Esc or T stops. One Undo for the whole trim.')+'">'+(ED.tool==='move'?'✥':'⇕')+' Trim</button>':''));
+      'Trim: W A S D / arrows move the selected brushes along the world axis nearest the way you look, Space / C up and down, one trim step (the slider below, as Modify\'s Trim origin) per key press. Esc or T stops. One Undo for the whole trim.':
+      'Trim: W A S D / arrows / Space / C push the face of each selected brush that faces that way out by one trim step (the slider below) per key press (Shift+key pulls it in): a way to stretch a brush too thin to grab a side of (a wire). Esc or T stops. One Undo for the whole trim.')+'">'+(ED.tool==='move'?'✥':'⇕')+' Trim</button>':''));
+  // copies of Modify's trim step and Display's grid, by the tools that use them (they stay
+  // one setting: moving either moves both)
+  if(ED.tool==='move'||ED.tool==='resize')h+='<div class="row co" style="align-items:center;margin-top:3px">trim step <input type="range" id="edStepC" min="0" max="13" step="1" value="'+MOD.stepI+'" style="flex:1;min-width:0" title="Trim step, 1 to 50 units: each key press while Trim is on moves the selected brushes (✥ Trim) or pushes their faces out (⇕ Trim) by this many units, step by step, as Modify\'s Trim origin moves the selected entity or node. The same setting as Modify\'s trim step"><span id="edStepCV" style="min-width:22px;text-align:right">'+MOD_STEPS[MOD.stepI]+'</span></div>';
+  if(['move','resize','draw','clip'].includes(ED.tool))h+='<div class="row co" style="align-items:center;margin-top:3px"><button class="sm" id="edGridPC" style="min-width:66px" title="Which planes the grid draws (click for the next): Grid XY, XZ, YZ or all. While Grid is on, the selected brushes snap to the grid shown (Modify: the selected entity or node). The same as Display\'s">'+$('bGrid').textContent+'</button>'+
+    '<input type="range" id="edGridSzC" min="0" max="9" step="1" value="'+GRID.i+'" style="flex:1;min-width:0" title="Grid size, 1 to 512 units ({ and }): while Grid is on, Move and Resize snap the selected brushes to the grid shown, in steps of this size (Draw brush and Clip always use it), and Modify\'s Add and Move snap the entity or node to it. The same as Display\'s"><span id="edGridVC" style="min-width:30px;text-align:right">'+gridSize()+'</span>'+
+    '<button class="sm'+(GRID.on?' on':'')+'" id="edGridOnC" title="The grid on or off (+). On: the selected brushes snap to the grid shown as you Move or Resize them, and Modify\'s selected entity or node as you Add or Move it. Off: they go in single units (Draw brush and Clip still use the grid\'s size). The same as Display\'s Grid">Grid +</button></div>';
   if(ED.tool==='clip'&&ED.clip&&ED.clip.pts.length>=2)
     h+=edRow(edBtn('bEdCut','Clip','Cut the brush and keep the bright side (Enter)')+edBtn('bEdSplit','Split in two','Cut it and keep both halves as two brushes (Shift+Enter)')+
       edBtn('bEdFlipC','Other side','Keep the other side (Tab)')+edBtn('bEdClrC','Start over','Clear the points (Esc)'));
@@ -1558,7 +1576,7 @@ function edHelp(){
   const t=ED.tool,g=snapG();
   if(t==='select')return'Pick a tool above to build in the view. Grid '+g+'.';
   if(t==='draw')return EDDRAG&&EDDRAG.phase==='height'?'Move the mouse to set the height, then click to make it. Esc cancels.':
-    'Drag on a floor, wall or ceiling to draw the '+(ED.shape==='box'?'box':ED.shape==='prism'?ED.sides+'-sided prism':ED.shape==='cyl'?'cylinder':'pipe')+'\'s outline (grid '+g+'), then set its height. It gets the texture below.';
+    'Drag on '+({any:'a floor, wall, ceiling or slope',xy:'any surface (the outline lies flat, XY)',xz:'any surface (the outline stands upright facing y, XZ)',yz:'any surface (the outline stands upright facing x, YZ)'}[ED.dplane||'any'])+' to draw the '+(ED.shape==='box'?'box':ED.shape==='prism'?ED.sides+'-sided prism':ED.shape==='cyl'?'cylinder':'pipe')+'\'s outline (grid '+g+'), then set its height. It gets the texture below.';
   if(t==='resize')return'Drag a brush\'s face along its own direction, or a corner or edge (white crosses) to reshape it; with a patch selected, drag its control points. Shift: up and down. Grid '+g+'.';
   if(t==='texture')return'Click: the Texture box\'s texture on that face (Shift+click: the whole brush; patches and terrain too). Alt+click: take the texture under the mouse. Ctrl+click: pick a face, then fit, turn, flip, shift or scale its texture below.';
   if(t==='move')return'Drag a brush, patch or terrain block across the floor (grid '+g+'; terrain moves in 64s); press on one that is in a selection of more and they all move. Shift+click: add a brush to the selection or take it out; Shift+drag: up and down. Alt+drag: a copy.';
@@ -1584,6 +1602,11 @@ function edToolBind(el){
   const s=$('edShape');if(s)s.onchange=()=>{ED.shape=s.value;edPanel();};
   const n=$('edSides');if(n)n.onchange=()=>{ED.sides=+n.value;edPanel();};
   const ie=$('edIntoEnt');if(ie)ie.onchange=()=>{ED.into=ie.checked;};
+  const sc=$('edStepC');if(sc)sc.oninput=()=>{MOD.stepI=+sc.value;$('modStep').value=MOD.stepI;$('modStepV').textContent=MOD_STEPS[MOD.stepI];$('edStepCV').textContent=MOD_STEPS[MOD.stepI];slidersPost();};
+  const gp=$('edGridPC');if(gp)gp.onclick=()=>$('bGrid').click();
+  const gs=$('edGridSzC');if(gs)gs.oninput=()=>setGridSize(+gs.value);
+  const go=$('edGridOnC');if(go)go.onclick=()=>setGrid(!GRID.on);
+  const dpl=$('bEdDPlane');if(dpl)dpl.onclick=()=>{const L=['any','xy','xz','yz'];ED.dplane=L[(L.indexOf(ED.dplane||'any')+1)%4];edPanel();};
   const tm=$('edTerrMode');if(tm)tm.onchange=()=>{ED.terr=tm.value;edPanel();};
   const tr=$('edTrad');if(tr)tr.onchange=()=>{ED.trad=+tr.value;edPanel();};
   const on=(id,fn)=>{const b=$(id);if(b)b.onclick=edRun(fn);};
@@ -1893,6 +1916,93 @@ window.addEventListener('keydown',e=>{
   if(!ED.drop||e.key!=='Escape')return;
   const tg=e.target&&e.target.tagName;if(tg==='INPUT'||tg==='TEXTAREA'||tg==='SELECT')return;
   e.stopPropagation();e.preventDefault();edDrop(false);flash('Eyedropper: cancelled');},true);
+// ---- Angles: turn the selected brushes and patches about their middle -------------------------
+// A turn typed in (pitch yaw roll, as an entity's angles) and Turn; or with the mouse:
+// Rotate - a circle round the selection, facing the camera: drag inside it to turn it about the
+// line you look along (Shift: tumble it, left / right about the screen's up line, up / down
+// about its side line); Axes - three rings, the world's X (red), Y (green) and Z (blue): drag
+// one to turn about that axis. Whole degrees (Ctrl: 15s). The fields show the turn as it is
+// dragged; letting go makes it (one Undo). Points land on 1/1000 of a unit; textures are laid
+// anew on the turned faces. An entity turned with all its brushes turns its origin key too.
+// Terrain blocks stay as they are (MOHAA's terrain lies square on the grid).
+ED.rmode=null;let EDROT=null,edRotHov=-1;
+// (the turn maths and the gizmo itself are the page's: m3*, gz*, shared with Modify's Angles)
+function edRotPrims(){return edJoinPrims().filter(pi=>{const r=SC.prims[pi],pr=r&&MAP.ents[r.ent].prims[r.bn];return !!pr&&pr.kind<2;});}
+let edRotCache=null;
+function edRotCenter(){
+  const P=edRotPrims();if(!P.length)return null;const key=ED.n+'|'+P.join(',');
+  if(edRotCache&&edRotCache.key===key)return edRotCache.C;
+  const mn=[Infinity,Infinity,Infinity],mx=[-Infinity,-Infinity,-Infinity];
+  for(const pi of P){const b=edPrimBox(pi);if(!b)continue;for(let k=0;k<3;k++){mn[k]=Math.min(mn[k],b.mn[k]);mx[k]=Math.max(mx[k],b.mx[k]);}}
+  const C=mn[0]<=mx[0]?[0,1,2].map(k=>(mn[k]+mx[k])/2):null;edRotCache={key:key,C:C};return C;}
+// a brush's or patch's text turned by G about C
+function edRotText(pr,G,C){
+  const rp=(A,o)=>{const v=m3v(G,[A[o]-C[0],A[o+1]-C[1],A[o+2]-C[2]]);for(let k=0;k<3;k++)A[o+k]=Math.round((C[k]+v[k])*1000)/1000;};
+  if(pr.kind===0){const fs=edFaces(pr);for(const f of fs)for(let i=0;i<9;i+=3)rp(f.p,i);
+    try{edCheck(fs);}catch(_e){throw new Error('a brush turned that way comes apart: try a rounder angle');}return{faces:fs,text:edBrushText(fs)};}
+  const P=edPatchData(pr);for(let o=0;o<P.pts.length;o+=5)rp(P.pts,o);
+  edPatchCheck(P);const t=D.srcText.slice(pr.ts,pr.te),q=edPatchParts(t),mx=t.slice(q.m0,q.m1);
+  return{patch:P,text:t.slice(0,q.m0)+(edPatchSplice(mx,P)||edPatchMatrix(P))+t.slice(q.m1)};}
+function edRotApply(G,what,C0){
+  const P=edRotPrims();if(!P.length)throw new Error('Select a brush or a patch to turn (terrain blocks don\'t turn)');
+  const C=C0||edRotCenter(),keep=[...SEL],ops=[];
+  for(const pi of P){const r=SC.prims[pi],pr=MAP.ents[r.ent].prims[r.bn];ops.push({at:pr.ts,del:D.srcText.slice(pr.ts,pr.te),ins:edRotText(pr,G,C).text,sel:null});}
+  // an entity turned with all its brushes: its origin key turns with them
+  let c=null;try{c=edCopySet();}catch(_e){}
+  if(c)for(const ei of c.ents){const e=MAP.ents[ei],its=primsOfEnt(ei).map(pi=>e.prims[SC.prims[pi].bn]).filter(Boolean);if(!its.length)continue;
+    const first=Math.min(...its.map(pr=>pr.ts)),head=D.srcText.slice(e.ts,first),m=/"origin"\s+"([^"]*)"/i.exec(head);
+    if(m){const v=m[1].trim().split(/\s+/).map(Number);if(v.length===3&&v.every(isFinite)){const w=m3v(G,vsub(v,C));
+      ops.push({at:e.ts+m.index,del:m[0],ins:'"origin" "'+[0,1,2].map(k=>fmt(Math.round((C[k]+w[k])*1000)/1000)).join(' ')+'"',sel:null});}}}
+  edDoMany(ops,what);
+  SEL.clear();for(const k of keep)SEL.add(k);selectionChanged();lineDirty=true;requestDraw();}
+function edAngRead(){const a=['edAngP','edAngY','edAngR'].map(id=>num($(id).value,-1e5,1e5));if(a.some(v=>!isFinite(v)))throw new Error('angles: three numbers, pitch yaw roll');return a;}
+function edAngShow(G){const a=m3toAng(G);['edAngP','edAngY','edAngR'].forEach((id,k)=>{const el=$(id);if(el)el.value=fmt(a[k]);});}
+function edAngTurn(){const a=edAngRead();if(!a[0]&&!a[1]&&!a[2])throw new Error('type a turn first: pitch yaw roll in degrees');
+  edRotApply(m3ang(a),'Turned by pitch '+fmt(a[0])+', yaw '+fmt(a[1])+', roll '+fmt(a[2]));}
+function edAngHtml(){
+  if(typeof MAP==='undefined'||!MAP||!edRotPrims().length)return'';
+  return edLine('Angles',edCap('pitch')+edField('edAngP','0',40)+edCap('yaw')+edField('edAngY','0',40)+edCap('roll')+edField('edAngR','0',40)+
+    edBtn('bEdAng','Turn','Turn the selection by these angles about its middle (pitch, yaw, roll in degrees, as an entity\'s angles). One Undo.')+
+    '<button class="sm'+(ED.rmode==='rotate'?' on':'')+'" id="bEdRotT" title="'+esc('A circle round the selection, facing you: drag inside it to turn the selection about the line you look along; hold Shift to tumble it. Whole degrees, Ctrl: 15 at a time. The angles above show the turn as you drag; letting go makes it.')+'">⟳ Rotate</button>'+
+    '<button class="sm'+(ED.rmode==='axes'?' on':'')+'" id="bEdAxesT" title="'+esc('Three rings round the selection: the world\'s X (red), Y (green) and Z (blue). Drag a ring to turn the selection about that axis. Whole degrees, Ctrl: 15 at a time.')+'">⊕ Axes</button>',
+    'A turn for the selected brushes and patches about their middle; Rotate and Axes turn them with the mouse');}
+function edRotMode(m){ED.rmode=ED.rmode===m?null:m;edRotHov=-1;if(ED.rmode&&MROT.mode){MROT.mode=null;try{modAngSync();}catch(_e){}}edPanel();requestDraw();
+  if(ED.rmode)flash(ED.rmode==='rotate'?'Rotate: drag inside the circle round the selection (Shift: tumble)':'Axes: drag a ring to turn the selection about X, Y or Z');}
+function edRotG(){return gzG(edRotCenter());}
+function edRingHit(x,y){return gzRingHit(edRotG(),GZ_XYZ,x,y);}
+function edRotStart(x,y,e){
+  if(!edRotPrims().length)return null;
+  return gzStart(edRotG(),ED.rmode==='axes'?'rings':'circle',GZ_XYZ,x,y,e.shiftKey);}
+function edRotPreview(st){
+  const H=[],col=C_HOT();
+  for(const pi of edRotPrims()){const r=SC.prims[pi],pr=MAP.ents[r.ent].prims[r.bn];
+    try{const R=edRotText(pr,st.G,st.C);if(R.faces)facesEdges(H,R.faces,col);else edNetEdges(H,R.patch,col);}catch(_e){}}
+  edShow(H,null);edAngShow(st.G);const a=m3toAng(st.G);flash('Turn '+st.what+': pitch '+fmt(a[0])+', yaw '+fmt(a[1])+', roll '+fmt(a[2])+' (let go to make it, Esc cancels)');}
+// the gizmo, drawn after Modify's lines
+function edDrawRot(vp){
+  if(!ED.rmode||!gl||typeof MAP==='undefined'||!MAP||!EON())return;
+  gzDraw(vp,edRotG(),ED.rmode==='axes'?'rings':'circle',GZ_XYZ,EDROT?EDROT.k:edRotHov,!!EDROT);}
+window.addEventListener('mousedown',e=>{
+  if(!ED.rmode||e.button!==0||e.target!==glcv||typeof MAP==='undefined'||!MAP||!EON()||ED.drop||ED.carry||EDDRAG)return;
+  if(typeof MOD!=='undefined'&&(MOD.placing||MOD.trim))return;
+  const[x,y]=edXY(e);let st=null;try{st=edRotStart(x,y,e);}catch(err){flash(err.message);}
+  if(!st)return;EDROT=st;e.stopImmediatePropagation();e.preventDefault();requestDraw();},true);
+window.addEventListener('mousemove',e=>{
+  if(typeof MAP==='undefined'||!MAP||!ED.rmode)return;
+  const[x,y]=edXY(e);
+  if(EDROT){e.stopImmediatePropagation();const st=EDROT;if(st.raf)return;
+    st.raf=requestAnimationFrame(()=>{st.raf=0;if(EDROT!==st)return;try{st.G=st.turn(x,y,e);edRotPreview(st);}catch(err){flash(err.message);}});return;}
+  if(ED.rmode==='axes'&&e.target===glcv&&!e.buttons){const k=edRingHit(x,y);if(k!==edRotHov){edRotHov=k;requestDraw();}}},true);
+window.addEventListener('mouseup',e=>{
+  if(!EDROT||e.button!==0)return;e.stopImmediatePropagation();
+  const st=EDROT;EDROT=null;if(st.raf){cancelAnimationFrame(st.raf);st.raf=0;}
+  edShow();const a=m3toAng(st.G);
+  if(!a[0]&&!a[1]&&!a[2]){edAngShow(M3I);requestDraw();return;}
+  try{edRotApply(st.G,'Turned '+st.what+': pitch '+fmt(a[0])+', yaw '+fmt(a[1])+', roll '+fmt(a[2]),st.C);}catch(err){flash(err.message);}
+  requestDraw();},true);
+window.addEventListener('keydown',e=>{
+  if(!EDROT||e.key!=='Escape')return;e.stopImmediatePropagation();e.preventDefault();
+  const st=EDROT;EDROT=null;if(st.raf)cancelAnimationFrame(st.raf);edShow();edAngShow(M3I);flash('Turn cancelled');requestDraw();},true);
 window.addEventListener('mousedown',e=>{
   if(ED.drop||ED.carry||!EON()||ED.tool==='select'||e.target!==glcv||!MAP)return;
   if(typeof MOD!=='undefined'&&(MOD.placing||MOD.trim))return;     // Modify is placing or trimming: the click is its
@@ -1934,11 +2044,19 @@ window.addEventListener('keydown',e=>{
 // ---- Draw: an outline on a surface, then a height --------------------------------------------
 function edDrawDown(x,y){
   if(EDDRAG&&EDDRAG.phase==='height'){edDrawMake();return true;}
-  const h=edHit(x,y);let ax=2,n=[0,0,1],c,P;
-  if(h&&h.point){P=h.point;const q=edPrimOfHit(h);
-    if(q&&q.kind===0){const pl=SC.facePlane[h.face];if(pl){ax=[0,1,2].reduce((a,k)=>Math.abs(pl[k])>Math.abs(pl[a])?k:a,0);n=AXV(ax);if(pl[ax]<0)n=vscale(n,-1);}}
+  const h=edHit(x,y),fixed={xy:2,xz:1,yz:0}[ED.dplane||'any'];let ax=2,n=[0,0,1],c,P=null,pl=null;
+  if(h&&h.point){P=h.point;const q=edPrimOfHit(h);if(q&&q.kind===0)pl=SC.facePlane[h.face]||null;}
+  // Draw any axis on a slope: the outline lies on the slope, the brush stands square on it
+  if(fixed==null&&P&&pl&&Math.max(Math.abs(pl[0]),Math.abs(pl[1]),Math.abs(pl[2]))<0.999)return edDrawSlope(x,y,P,pl);
+  if(fixed!=null){ax=fixed;
+    if(P)c=Math.round(P[ax]);
+    else if(ax===2)c=ED.lastZ!=null?ED.lastZ:snapV(cam.pos[2]-128);
+    else c=snapV(cam.pos[ax]+camAxes().f[ax]*256);
+    // the depth goes out of the surface clicked, else toward the camera
+    const sg=pl&&Math.abs(pl[ax])>0.1?Math.sign(pl[ax]):(Math.sign(cam.pos[ax]-c)||1);n=vscale(AXV(ax),sg);}
+  else if(P){if(pl){ax=[0,1,2].reduce((a,k)=>Math.abs(pl[k])>Math.abs(pl[a])?k:a,0);n=AXV(ax);if(pl[ax]<0)n=vscale(n,-1);}
     c=Math.round(P[ax]);}
-  else{c=ED.lastZ!=null?ED.lastZ:snapV(cam.pos[2]-128);P=rayPlane(x,y,[0,0,1],c);if(!P)return false;}
+  else c=ED.lastZ!=null?ED.lastZ:snapV(cam.pos[2]-128);
   const s=n[ax]<0?-1:1,pn=AXV(ax);
   const at=(px,py)=>{const q=rayPlane(px,py,pn,c);if(!q)return null;const o=q.slice();for(let k=0;k<3;k++)if(k!==ax)o[k]=snapV(o[k]);o[ax]=c;return o;};
   const a=at(x,y);if(!a)return false;
@@ -1954,12 +2072,45 @@ function edDrawDown(x,y){
     d.phase='height';d.depth=Math.max(8,snapG())*s;d.mid=[0,1,2].map(k=>(d.a[k]+d.b[k])/2);
     $('edToolHelp')&&($('edToolHelp').textContent=edHelp());edDrawPrev();};
   EDDRAG=d;ED.lastZ=ax===2?c:ED.lastZ;edDrawPrev();return true;}
+// a sloped face: the outline in the face's own frame (u along the slope's level line, w up it,
+// n out of it), from the point clicked, on the grid in that frame; the depth along n
+const edSlopeW=(S,l)=>[0,1,2].map(k=>Math.round((S.O[k]+S.u[k]*l[0]+S.w[k]*l[1]+S.n[k]*l[2])*1000)/1000);
+function edDrawSlope(x,y,P,pl){
+  const n=vnorm(pl.slice(0,3)),u=vnorm(vcross([0,0,1],n))||[1,0,0],w=vcross(n,u),O=P.map(v=>Math.round(v*1000)/1000),dn=vdot(n,O);
+  const S={O:O,u:u,w:w,n:n};
+  const loc=(px,py)=>{const q=rayPlane(px,py,n,dn);if(!q)return null;const r=vsub(q,O);return[snapV(vdot(r,u)),snapV(vdot(r,w))];};
+  const d={kind:'draw',phase:'rect',slope:S,a:[0,0],b:[0,0],depth:0};
+  d.move=(mx,my)=>{
+    if(d.phase==='rect'){const b=loc(mx,my);if(b)d.b=b;}
+    else{const t=rayLineT(mx,my,d.mid,n);let v=snapV(t);if(!v)v=snapG();d.depth=v;}
+    edDrawPrev();};
+  d.up=()=>{
+    if(d.phase!=='rect')return;
+    if(Math.abs(d.b[0]-d.a[0])<snapG()||Math.abs(d.b[1]-d.a[1])<snapG()){EDDRAG=null;edShow();flash('Drag out an outline at least one grid square ('+snapG()+') each way');return;}
+    d.phase='height';d.depth=Math.max(8,snapG());d.mid=edSlopeW(S,[(d.a[0]+d.b[0])/2,(d.a[1]+d.b[1])/2,0]);
+    $('edToolHelp')&&($('edToolHelp').textContent=edHelp());edDrawPrev();};
+  EDDRAG=d;edDrawPrev();return true;}
 function edDrawBox(){
   const d=EDDRAG,mn=[0,0,0],mx=[0,0,0];
+  if(d.slope)return{mn:[Math.min(d.a[0],d.b[0]),Math.min(d.a[1],d.b[1]),Math.min(0,d.depth)],mx:[Math.max(d.a[0],d.b[0]),Math.max(d.a[1],d.b[1]),Math.max(0,d.depth)]};
   for(let k=0;k<3;k++){if(k===d.ax){const o=d.c+d.depth;mn[k]=Math.min(d.c,o);mx[k]=Math.max(d.c,o);}else{mn[k]=Math.min(d.a[k],d.b[k]);mx[k]=Math.max(d.a[k],d.b[k]);}}
   return{mn:mn,mx:mx};}
+// the shape being drawn: brush faces or a patch, turned into the slope's frame on a slope
+function edDrawShape(){
+  const d=EDDRAG,b=edDrawBox();
+  if(!d.slope)return{f:edShapeFaces(b.mn,b.mx,d.ax),b:b};
+  const f=edShapeFaces(b.mn,b.mx,2),S=d.slope;
+  if(f.faces)for(const F of f.faces)for(let i=0;i<9;i+=3){const q=edSlopeW(S,F.p.slice(i,i+3));F.p[i]=q[0];F.p[i+1]=q[1];F.p[i+2]=q[2];}
+  else for(let o=0;o<f.patch.pts.length;o+=5){const q=edSlopeW(S,f.patch.pts.slice(o,o+3));f.patch.pts[o]=q[0];f.patch.pts[o+1]=q[1];f.patch.pts[o+2]=q[2];}
+  return{f:f,b:b};}
 function edDrawPrev(){
   const d=EDDRAG;if(!d)return;const H=[],col=C_HOT();
+  if(d.slope){
+    if(d.phase==='rect'){const S=d.slope,p=(a,b)=>edSlopeW(S,[a,b,0]),A=p(d.a[0],d.a[1]),B=p(d.b[0],d.a[1]),C2=p(d.b[0],d.b[1]),D2=p(d.a[0],d.b[1]);
+      segPush(H,A,B,col);segPush(H,B,C2,col);segPush(H,C2,D2,col);segPush(H,D2,A,col);flash(Math.abs(d.b[0]-d.a[0])+' x '+Math.abs(d.b[1]-d.a[1])+' on the slope');}
+    else{const R=edDrawShape(),b=R.b;try{if(R.f.faces)facesEdges(H,R.f.faces,col);else edNetEdges(H,R.f.patch,col);}catch(_e){}
+      flash((b.mx[0]-b.mn[0])+' x '+(b.mx[1]-b.mn[1])+' x '+(b.mx[2]-b.mn[2])+' on the slope  (click to make it)');}
+    edShow(H,null);return;}
   if(d.phase==='rect'){const u=(d.ax+1)%3,w=(d.ax+2)%3,p=(cu,cw)=>{const q=d.a.slice();q[u]=cu;q[w]=cw;return q;};
     const A=p(d.a[u],d.a[w]),B=p(d.b[u],d.a[w]),C=p(d.b[u],d.b[w]),D2=p(d.a[u],d.b[w]);segPush(H,A,B,col);segPush(H,B,C,col);segPush(H,C,D2,col);segPush(H,D2,A,col);
     flash(Math.abs(d.b[u]-d.a[u])+' x '+Math.abs(d.b[w]-d.a[w]));}
@@ -1995,10 +2146,10 @@ function edPrismFaces(mn,mx,ax,n,tex){
     out.push({p:[].concat(P[0],P[1],P[2]),tex:tex,sh:[0,0],rot:0,sc:[0.5,0.5],cont:0,flags:0,val:0,extra:'',tm:null});}
   return out;}
 function edDrawMake(){
-  const d=EDDRAG,b=edDrawBox();EDDRAG=null;edShow();
-  const f=edShapeFaces(b.mn,b.mx,d.ax),sz=[0,1,2].map(k=>b.mx[k]-b.mn[k]);
+  const d=EDDRAG,R=edDrawShape(),b=R.b,f=R.f;EDDRAG=null;edShow();
+  const sz=[0,1,2].map(k=>b.mx[k]-b.mn[k]),at=d.slope?edSlopeW(d.slope,b.mn):b.mn;
   const ent=ED.sel&&ED.sel.ei>0&&!isWorldlike(ED.sel.ei)&&ED.into?ED.sel.ei:0;
-  if(f.faces)edAddBrush(ent,f.faces,'New '+(ED.shape==='box'?'brush':ED.sides+'-sided brush')+' '+sz.map(fmt).join(' x ')+' at '+b.mn.map(fmt).join(' '));
+  if(f.faces)edAddBrush(ent,f.faces,'New '+(ED.shape==='box'?'brush':ED.sides+'-sided brush')+' '+sz.map(fmt).join(' x ')+(d.slope?' on the slope':'')+' at '+at.map(fmt).join(' '));
   else{edPatchCheck(f.patch);edAddBlock(ent,edPatchText(f.patch),'patch','New '+({cyl:'cylinder',cone:'cone',elbow:'pipe bend'}[ED.shape]||'patch')+' '+sz.map(fmt).join(' x '));}}
 
 // ---- Resize: pull one face of a brush ---------------------------------------------------------
@@ -2515,6 +2666,7 @@ function edPanel(){
   h+=edJoinHtml();
   h+=edTileHtml();
   h+=edSelSummary();
+  h+=edAngHtml();
   h+='<details id="edExact"'+(ED.exact?' open':'')+' style="margin-top:6px"><summary style="cursor:pointer" title="Every value typed in: sizes, corners, planes, control points, heights, texture shifts">Exact values</summary>';
   h+=edHead('<b>New</b> <span class="co">(on the surface straight ahead, with the Texture above)</span>');
   h+=edLine('Box',edXYZ('edNs',ED.ns||[64,64,64],40)+edBtn('bEdNewB','Add','A box this size (x y z) on the surface straight ahead, on the grid, with the texture above'),'A box: its size along x, y and z');
@@ -2573,6 +2725,7 @@ function edPanel(){
   const lk=$('edLock');if(lk)lk.onchange=()=>{ED.lock=lk.checked;};
   on('bEdDelQ',()=>{if(!edDeleteSel())flash('Select a brush, patch or terrain block first');});
   on('bEdTrim',()=>edTrim());on('bEdTile',edTileSet);
+  on('bEdAng',edAngTurn);on('bEdRotT',()=>edRotMode('rotate'));on('bEdAxesT',()=>edRotMode('axes'));
   el.querySelectorAll('input[id^="edTl"]').forEach(i=>i.addEventListener('change',()=>{try{ED.tileV=edTileRead();}catch(_e){}}));
   const cx=$('edClAx');if(cx)cx.onchange=()=>{$('edClP').style.display=cx.value==='pts'?'':'none';$('edClV').disabled=cx.value==='pts';};
   el.querySelectorAll('[data-edf]').forEach(d=>d.onclick=()=>{ED.face=+d.getAttribute('data-edf');edPanel();});
@@ -2678,7 +2831,7 @@ function edMode(on){
 window.__EDITHOOKS__&&window.__EDITHOOKS__.push(edMode);
 
 // what the editor holds, for the test harness and the console (read it; change it through the panel)
-window.MOHAA_EDITOR_API={edPatchTrimText:edPatchTrimText,edPatchAxes:edPatchAxes,edTrimBoxes:edTrimBoxes,edDrawTrim:edDrawTrim,edTrim:edTrim,edTrimKey:edTrimKey,edDeleteSel:edDeleteSel,edTileSet:edTileSet,edTileAt:edTileAt,edSelTile:edSelTile,edSetFaces:edSetFaces,edSelWhole:edSelWhole,edJoin:edJoin,edJoinHtml:edJoinHtml,edRzOutlines:edRzOutlines,get rzKey(){return _edRzKey;},get drag(){return EDDRAG;},ED:ED,edMoveDown:edMoveDown,edMoveSelDown:edMoveSelDown,edPrimOfHit:edPrimOfHit,edResizeHover:edResizeHover,edKeyOfPrim:edKeyOfPrim,edClsApply:edClsApply,edClsTargets:edClsTargets,edClsAll:edClsAll,edCopySet:edCopySet,edCarryStart:edCarryStart,edCarryPlace:edCarryPlace,edCarryEnd:edCarryEnd,edSelTex:edSelTex,edTexApplySel:edTexApplySel,edTexChoose:edTexChoose,edDrop:edDrop,edTexAt:edTexAt,edDropTake:edDropTake,edPaintDown:edPaintDown,edFaces:edFaces,edFaceLine:edFaceLine,edBounds:edBounds,edCheck:edCheck,edPanel:edPanel,brRow:brRow,edPatchData:edPatchData,edTerrData:edTerrData,edTerrSpan:edTerrSpan,edMarks:edMarks,edPatchFacing:edPatchFacing,edTerrFitSel:edTerrFitSel,edRegionSet:edRegionSet,edSetTerr:edSetTerr,terrHeightsMap:terrHeightsMap,
+window.MOHAA_EDITOR_API={edRotApply:edRotApply,edRotCenter:edRotCenter,edRotMode:edRotMode,edRingHit:edRingHit,edRotG:edRotG,edDrawShape:edDrawShape,get rot(){return EDROT;},edPatchTrimText:edPatchTrimText,edPatchAxes:edPatchAxes,edTrimBoxes:edTrimBoxes,edDrawTrim:edDrawTrim,edTrim:edTrim,edTrimKey:edTrimKey,edDeleteSel:edDeleteSel,edTileSet:edTileSet,edTileAt:edTileAt,edSelTile:edSelTile,edSetFaces:edSetFaces,edSelWhole:edSelWhole,edJoin:edJoin,edJoinHtml:edJoinHtml,edRzOutlines:edRzOutlines,get rzKey(){return _edRzKey;},get drag(){return EDDRAG;},ED:ED,edMoveDown:edMoveDown,edMoveSelDown:edMoveSelDown,edPrimOfHit:edPrimOfHit,edResizeHover:edResizeHover,edKeyOfPrim:edKeyOfPrim,edClsApply:edClsApply,edClsTargets:edClsTargets,edClsAll:edClsAll,edCopySet:edCopySet,edCarryStart:edCarryStart,edCarryPlace:edCarryPlace,edCarryEnd:edCarryEnd,edSelTex:edSelTex,edTexApplySel:edTexApplySel,edTexChoose:edTexChoose,edDrop:edDrop,edTexAt:edTexAt,edDropTake:edDropTake,edPaintDown:edPaintDown,edFaces:edFaces,edFaceLine:edFaceLine,edBounds:edBounds,edCheck:edCheck,edPanel:edPanel,brRow:brRow,edPatchData:edPatchData,edTerrData:edTerrData,edTerrSpan:edTerrSpan,edMarks:edMarks,edPatchFacing:edPatchFacing,edTerrFitSel:edTerrFitSel,edRegionSet:edRegionSet,edSetTerr:edSetTerr,terrHeightsMap:terrHeightsMap,
   edAddBrush:edAddBrush,edBoxFaces:edBoxFaces,edNew:()=>EDNEW,edNewLines:edNewLines,edNewSync:edNewSync};
 
 try{edSection();}catch(err){console.error(err);}

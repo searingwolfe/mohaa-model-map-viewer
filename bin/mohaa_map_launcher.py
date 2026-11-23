@@ -171,6 +171,7 @@ def _privacy_text():
 
 class MapApp(ML.App):
     """The Model Viewer's launcher window, set up for maps."""
+    _open_after = None; _open_after_tok = None     # a map to open once the page has let go (_open_file)
     # This window's identity (as App's). The map editor (mohaa_map_edit.EditApp, which
     # mohaa_map_launcher.py runs) is this same window with Edit map built in.
     RUNTIME_NAME = "mohaa_map_launcher"         # init_runtime: logs/mohaa_map_launcher.log
@@ -256,6 +257,7 @@ class MapApp(ML.App):
         self._proc = None; self._building_name = None; self._build_gen = 0
         self._opening_view = False
         self._pending_open = None
+        self._open_after = None; self._open_after_tok = None   # a map to open once the page has let go
         self.bind_all("<ButtonPress-1>", self._popup_dismiss_check, add="+")
         self.bind_all("<ButtonPress-3>", self._popup_dismiss_check, add="+")
         self.bind_all("<ButtonPress-1>", self._reclaim_focus, add="+")
@@ -314,7 +316,7 @@ class MapApp(ML.App):
                 _mi("Open File...", self._browse_and_run, "Ctrl+Shift+O"),
                 {"type": "cascade", "label": "Recent files", "items": self._menu_items_recent},
                 _MSEP,
-                _mi("Close file", self._close_viewer, "Esc", "normal" if vopen else "disabled"),
+                _mi("Close file", self._close_file_ask, "Esc", "normal" if vopen else "disabled"),
                 _MSEP,
                 _mi("Reload paks", self._reload_all_cmd, "F5"),
                 _mi("Clear all paks", self._clear_pk3s),
@@ -620,6 +622,7 @@ class MapApp(ML.App):
                   ("", "dim"),
                   ("The 3D viewer will close and return to the start page.", "dim")]
         if not self._confirm_dialog("Clear built maps", lines, ok_text="Delete"): return
+        self._open_after = None
         self._close_viewer()
         self._last_build = None
         try: self._path_var.set("")
@@ -1112,9 +1115,23 @@ class MapApp(ML.App):
             MC.swallowed()
             return False
 
-    def _open_file(self, path):
+    def _open_file(self, path, _asked=False):
         """Show a built page in the embedded pane (with #embed&theme=... so it starts in the
-        launcher's layout and theme), else in the default browser."""
+        launcher's layout and theme), else in the default browser.
+
+        A map already open in the pane is asked first, as Esc asks it: with MODIFY's or Edit
+        map's changes unsaved it posts mohaa-close-ask (Save as .bsp / .map, Discard changes,
+        Cancel: _close_ask), else mohaa-close; the new page opens on that close
+        (_close_viewer), or after 2.5 s when the page doesn't answer. So the browser's own
+        "Leave site?" box never comes up for it (a cancelled one left the pane unable to
+        open another map)."""
+        if not _asked and self._webview is not None and self._embed_url:
+            self._open_after = path
+            tok = object(); self._open_after_tok = tok
+            self._page_js("try{if(typeof closeViewer==='function')closeViewer();else window.chrome.webview.postMessage('mohaa-close')}"
+                          "catch(e){try{window.chrome.webview.postMessage('mohaa-close')}catch(_e){}}")
+            self.after(2500, lambda t=tok: self._open_after_timeout(t))
+            return
         import pathlib
         base = pathlib.Path(os.path.abspath(path)).as_uri()
         if self._ensure_webview():
@@ -1129,6 +1146,35 @@ class MapApp(ML.App):
                 MC.swallowed()
                 self._log_line(f"(embed failed: {e}; opening in browser)", "dim")
         self._open_in_browser(path)
+
+    def _open_after_timeout(self, tok):
+        """The page didn't answer the question before an open (still loading, or hung): open."""
+        if tok is not None and getattr(self, "_open_after_tok", None) is tok and getattr(self, "_open_after", None):
+            p = self._open_after; self._open_after = None; self._open_after_tok = None
+            self._open_file(p, _asked=True)
+
+    def _close_file_ask(self):
+        """File > Close file: as the viewer's Esc, the page asks first when its changes aren't
+        saved (mohaa-close-ask), else lets itself go (mohaa-close); closes anyway after 2.5 s
+        when it doesn't answer."""
+        if self._webview is None: return
+        self._open_after = None
+        tok = object(); self._open_after_tok = tok
+        self._page_js("try{if(typeof closeViewer==='function')closeViewer();else window.chrome.webview.postMessage('mohaa-close')}"
+                      "catch(e){try{window.chrome.webview.postMessage('mohaa-close')}catch(_e){}}")
+        def late(t=tok):
+            if getattr(self, "_open_after_tok", None) is t:
+                self._open_after_tok = None; self._close_viewer()
+        self.after(2500, late)
+
+    def _close_viewer(self):
+        """The page let itself go (Esc, Close file, or the question before an open answered):
+        open the map waiting for it, else back to the start page."""
+        p = getattr(self, "_open_after", None)
+        self._open_after = None; self._open_after_tok = None     # answered: no timeout acts later
+        if p:
+            self._open_file(p, _asked=True); return
+        super()._close_viewer()
 
     # -------------------------------------------------- map details panel ---
     def _clear_info(self):
@@ -1260,6 +1306,7 @@ class MapApp(ML.App):
         name = os.path.splitext(os.path.basename(req.get("vpath") or req.get("src") or "map"))[0] or "map"
 
         def tell(ok, msg):
+            if not ok: self._open_after = None         # no save: no map opens after it
             self._log_line(("  " if ok else "! ") + msg, "ok" if ok else "err")
             self._page_js("try{modSaved(%s,%s)}catch(e){}" % ("true" if ok else "false", json.dumps(msg)))
         if kind == "bsp" and not req.get("isBsp"):
@@ -1275,6 +1322,7 @@ class MapApp(ML.App):
             initialdir=init_dir if os.path.isdir(init_dir) else None, initialfile=name + "_mod." + kind,
             defaultextension="." + kind, filetypes=[("MOHAA " + ("compiled map" if kind == "bsp" else "map source"), "*." + kind)])
         if not out:
+            self._open_after = None
             self._page_js("try{modSaveCancelled()}catch(e){}"); return
         out = os.path.abspath(out)
         made = set(self._cfg.get("modify_written") or [])
@@ -1315,6 +1363,18 @@ class MapApp(ML.App):
                                f"copy or rename the script, or keep the name {name}.bsp in another folder)", "dim")
 
     # ------------------------------------------------ MODIFY: unsaved changes on close ---
+    def _close_ask_q(self):
+        """The question: before closing, or before opening the map waiting (_open_file)."""
+        nxt = getattr(self, "_open_after", None)
+        return f"Save them before opening {os.path.basename(nxt)}?" if nxt else "Save them before closing the viewer?"
+
+    def _close_ask_kept(self, choice, name):
+        """Cancel (or Esc): the page stays, and the map waiting to open doesn't."""
+        if choice in ("bsp", "map", "discard"): return
+        nxt = getattr(self, "_open_after", None)
+        if nxt: self._log_line(f"  (kept {name} open: {os.path.basename(nxt)} not opened)", "dim")
+        self._open_after = None
+
     def _close_ask(self, info):
         """The viewer is closing (Esc past its last layer) with MODIFY's new or changed
         entities not saved: Save as .bsp / Save as .map (the viewer closes once the file is
@@ -1323,6 +1383,8 @@ class MapApp(ML.App):
             try: return max(0, int(info.get(k) or 0))
             except (TypeError, ValueError): return 0
         nw, ch, is_bsp = num("new"), num("changed"), bool(info.get("isBsp"))
+        self._open_after_tok = None                     # answered: no timeout opens past the question
+        nxt = getattr(self, "_open_after", None)
         parts = []
         if nw: parts.append(f"{nw} new entit{'y' if nw == 1 else 'ies'}")
         if ch: parts.append(f"{ch} changed entit{'y' if ch == 1 else 'ies'}")
@@ -1331,10 +1393,11 @@ class MapApp(ML.App):
         choice = self._unsaved_dialog(
             "Unsaved changes",
             f"MODIFY has {what} in {name} that {'is' if (nw + ch) == 1 else 'are'} not saved.",
-            "Save them before closing the viewer?" + ("" if is_bsp else
+            self._close_ask_q() + ("" if is_bsp else
             "\n(this map was opened from a .map: Save as .bsp needs its .bsp)"),
             [("bsp", "Save as .bsp", is_bsp), ("map", "Save as .map", True),
              ("discard", "Discard changes", True), ("cancel", "Cancel", True)])
+        self._close_ask_kept(choice, name)
         if choice in ("bsp", "map"):
             self._page_js("try{modSaveThenClose(%s)}catch(e){}" % json.dumps(choice))
         elif choice == "discard":
@@ -1618,14 +1681,15 @@ class MapApp(ML.App):
         try:
             import mohaa_map_actor as MA
             mp = MA.check_vpath(req["m"], MA.HUMAN_DIR)
-            wp = MA.check_vpath(req["w"], MA.WEAPON_DIR)
+            # no weapon: an unarmed man (SIMULATE on a func_ladder)
+            wp = MA.check_vpath(req["w"], MA.WEAPON_DIR) if req["w"] else None
         except ValueError as e:
             self._sim_actor_js("MOHAA_SIMACT_FAIL", k, "", str(e)); return
         vfs, shaders = self._vfs, self._SH
         if vfs is None or not self._tex_ready:
             self._sim_actor_js("MOHAA_SIMACT_FAIL", k, "", "the paks are still loading"); return
         for vp in (mp, wp):
-            if not vfs.exists(vp):
+            if vp is not None and not vfs.exists(vp):
                 self._sim_actor_js("MOHAA_SIMACT_FAIL", k, "", "%s is not in the loaded paks" % vp); return
         try: texsize = int(self._texsize.get())
         except (TypeError, ValueError): texsize = 256
@@ -1633,7 +1697,7 @@ class MapApp(ML.App):
         if not hasattr(self, "_sim_actor_ctx"):
             import collections
             self._sim_actor_ctx = collections.OrderedDict()
-        self._log_line(f"(Simulate: building {mp} with {wp} ...)", "dim")
+        self._log_line(f"(Simulate: building {mp} {'with ' + wp if wp else 'unarmed'} ...)", "dim")
         threading.Thread(target=self._sim_actor_work, args=(k, mp, wp, vfs, shaders, texsize, self._index_cache),
                          daemon=True).start()
 
@@ -1654,19 +1718,27 @@ class MapApp(ML.App):
                 mb.skin_wanted = False
                 if mi < 0:
                     raise ValueError("%s can't be drawn: %s" % (mp, mb.failed.get(mp) or "unknown"))
-                wi = mb.get(wp)
-                if wi < 0:
-                    raise ValueError("%s can't be drawn: %s" % (wp, mb.failed.get(wp) or "unknown"))
-                wg = MA.weapon_group(vfs.read(wp).decode("latin-1", "replace"))
-                if not wg:
-                    raise ValueError("%s has no weapon group" % wp)
+                if wp is not None:
+                    wi = mb.get(wp)
+                    if wi < 0:
+                        raise ValueError("%s can't be drawn: %s" % (wp, mb.failed.get(wp) or "unknown"))
+                    wg = MA.weapon_group(vfs.read(wp).decode("latin-1", "replace"))
+                    if not wg:
+                        raise ValueError("%s has no weapon group" % wp)
+                else:
+                    wi, wg = -1, "unarmed"
                 tik = vfs.read(mp).decode("latin-1", "replace")
                 names = MA.catalog_names(MTX.build_anim_catalog(tik, vfs, mp))
                 bones = mb.skins[mp]["skd"]["bones"]
                 ctx = MV.anim_solver_ctx(bones)
                 meta = {"wg": wg, "tag": MA.ACTOR_TAG, "tagL": MA.ACTOR_TAG_OFF, "mi": mi, "wi": wi,
-                        "roles": MA.roles_available(names, wg), "idle": None, "idleWhy": ""}
+                        "roles": (MA.roles_available(names, wg) if wp is not None
+                                  else {"ladder": MA.plan_ladder(names)[1]}), "idle": None, "idleWhy": ""}
                 steps, why = MA.plan_role(names, wg, "idle")
+                if wp is None and MA.LADDER_IDLE in names:        # unarmed: his own stand
+                    # unarmed_stand_alert moves the upper body only ("(action)"): the legs come
+                    # from unarmed_stand_alert_legs, as an armed idle's from <wg>_stand_alert_legs
+                    steps, why = [(MA.LADDER_IDLE, names[MA.LADDER_IDLE], MA.LEGS_ALERT)], ""
                 if steps:
                     nm, ent, legs = steps[0]
                     le = names.get(wg + "_" + legs) if legs else None
@@ -1683,7 +1755,7 @@ class MapApp(ML.App):
                 self._sim_actor_ctx.move_to_end(k)
                 while len(self._sim_actor_ctx) > self.SIM_ACTOR_KEEP:
                     self._sim_actor_ctx.popitem(last=False)
-                self._log_q.put(("dim", f"  (Simulate: {os.path.basename(mp)} with {os.path.basename(wp)} built, {gz // 1024} KB)"))
+                self._log_q.put(("dim", f"  (Simulate: {os.path.basename(mp)} {'with ' + os.path.basename(wp) if wp else 'unarmed'} built, {gz // 1024} KB)"))
                 self._sim_actor_js("MOHAA_SIMACTOR", k, meta, b64)
             except Exception as e:
                 MC.swallowed()
@@ -1697,7 +1769,7 @@ class MapApp(ML.App):
             return
         k, role = req["k"], req["role"]
         import mohaa_map_actor as MA
-        if role not in MA.ROLES or role == "idle":
+        if (role not in MA.ROLES and role != "ladder") or role == "idle":
             self._sim_actor_js("MOHAA_SIMACT_FAIL", k, role[:20], "not an animation role"); return
         ctx = getattr(self, "_sim_actor_ctx", {}).get(k)
         if ctx is None:
@@ -1713,7 +1785,7 @@ class MapApp(ML.App):
                 if role in ctx["done"]:
                     self._sim_actor_js("MOHAA_SIMACT_ANIM", k, role, ctx["done"][role]); return
                 wg, names = ctx["wg"], ctx["names"]
-                steps, why = MA.plan_role(names, wg, role)
+                steps, why = MA.plan_ladder(names) if role == "ladder" else MA.plan_role(names, wg, role)
                 if not steps:
                     raise ValueError(why)
                 recs, seq = {}, []

@@ -1223,6 +1223,7 @@ class EditApp(MM.MapApp):
         except (TypeError, ValueError): nb = 0
         if not nb:
             return MM.MapApp._close_ask(self, info)
+        self._open_after_tok = None                     # answered: no timeout opens past the question
         def num(k):
             try: return max(0, int(info.get(k) or 0))
             except (TypeError, ValueError): return 0
@@ -1234,8 +1235,10 @@ class EditApp(MM.MapApp):
         choice = self._unsaved_dialog(
             "Unsaved changes",
             f"{name} has {' and '.join(parts)} not saved.",
-            "Save them as a .map before closing? (Changed geometry needs compiling to become a .bsp.)",
+            self._close_ask_q().replace("Save them", "Save them as a .map").replace(" the viewer?", "?") +
+            " (Changed geometry needs compiling to become a .bsp.)",
             [("map", "Save as .map", True), ("discard", "Discard changes", True), ("cancel", "Cancel", True)])
+        self._close_ask_kept(choice, name)
         if choice == "map":
             self._page_js("try{modSaveThenClose('map')}catch(e){}")
         elif choice == "discard":

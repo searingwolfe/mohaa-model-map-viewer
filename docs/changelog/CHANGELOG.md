@@ -3313,3 +3313,67 @@ look of the walk and the doors should be confirmed by eye in the launcher.
 - Fixed: trimming or moving a brush entity in Modify that isn't a door threw in
   rebuildLines (`doorCorners` of nothing: the row's offset gave it a transform but no box);
   the editor's `movObj` now gives such an entity its box.
+- **Draw any axis / XY / XZ / YZ** (`ED.dplane`, beside *in entity*): which plane a new
+  brush's outline is drawn on. Any axis follows the surface under the mouse, and now a
+  sloped face too (`edDrawSlope`: the outline in the face's own frame, on the grid there,
+  the depth along its normal; the shape is built square and turned onto the slope,
+  `edDrawShape`); before, a slope was treated as the nearest flat or upright face. XY, XZ
+  and YZ draw on that plane through the point clicked (depth out of the surface clicked, or
+  toward the camera).
+- **Angles** row above Exact values (`edAngHtml`): pitch / yaw / roll and **Turn** turn the
+  selected brushes and patches about their middle (`edRotApply`: face points and control
+  points turned, to 1/1000 of a unit; an entity with all its brushes selected turns its
+  origin key too); **⟳ Rotate** draws a circle round the selection facing the camera (drag
+  inside: turn about the view line, Shift: tumble) and **⊕ Axes** the world's X / Y / Z
+  rings (drag one: turn about it), as the Model Viewer's Rotate and Axes; whole degrees,
+  Ctrl 15s; the angles show the turn while dragging, letting go makes it (one Undo, Esc
+  cancels). Terrain blocks are left out.
+- Fixed: rewriting a brush (any editor change to it) rounded its texture numbers to 3
+  places, so a scale such as 0.109375 became 0.109 and the texture slid; they keep 6 now.
+- **Modify's angles** row under trim step (`modAngSync`, `modAngSet`): the selected entity's
+  pitch / yaw / roll to type over (Enter or leaving a box sets them on every selected
+  entity, one Undo), **⟳ Rotate** and **⊕ Axes** to turn them with the mouse (each about its
+  own origin; one Undo per drag, Esc cancels). An info_ entity but info_splinepath turns
+  on its yaw only: pitch and roll off, and both tools give one flat Z ring. Written as
+  Yaw writes them: "angle" for an info_ entity with no pitch or roll, else "angles".
+  Brush entity rows are left out (Edit map's Angles turns brushes).
+- The turn gizmo is now the page's (`gzStart`, `gzDraw`, `gzRingHit`, the m3* turn maths),
+  shared by Edit map's Angles and Modify's; turning one on turns the other off.
+- Save as .bsp / Save as .map tooltips: quick saves, not compiles; .bsp only entities and
+  path nodes (off after brush changes), .map the text that Compile... builds.
+- Edit map's panel, under Region: copies of Modify's trim step (Move, Resize) and
+  Display's grid plane, size and Grid + (Move, Resize, Draw brush, Clip), kept in step
+  with the originals both ways (`ctlCopiesHook`).
+- Fixed: opening another map while Modify's or Edit map's changes were unsaved navigated
+  the pane straight away, so the browser's own "Leave site?" box came up instead of the
+  launcher's question, and after its Cancel no other map would open. Now the launcher
+  asks the open page first (`_open_file` runs its `closeViewer`, as Esc does): with
+  nothing unsaved it lets go and the new map opens; with changes it is the launcher's Save
+  as .bsp / Save as .map / Discard changes / Cancel, naming the map waiting ("Save them
+  before opening obj_team2.bsp?"); the new map opens once the save or discard is done, and
+  not after Cancel (or a failed or cancelled save). A page that doesn't answer in 2.5 s
+  is replaced anyway. File > Close file asks the same way (it closed the page outright).
+- Tooltips: the trim step sliders (Modify's and Edit map's copy) and Trim buttons say each
+  key press moves the selected brushes, or Modify's entity or node, one trim step; the
+  grid controls (Display's and Edit map's copies) say that while Grid is on the selected
+  brushes (Move, Resize) and Modify's entity or node (Add, Move) snap to the grid shown.
+- **SIMULATE on a func_ladder** (`ladFocus`, `ladGeom`, `ladSim`, `ladPanel`): an unarmed
+  human (any in the paks) climbs the selected ladder as a player does: Spawn up / down /
+  middle (where ladder_up_getoff / ladder_down_getoff leave a climber, or holding on halfway
+  up), Pause, Fly to, Follow, Simulate Up / Down (from the last spawn). Each frame (40 a
+  second) follows the player's ladder states in global/mike_torso.st and the code they run
+  (OpenMoHAA player.cpp, player_conditionals.cpp, misc.cpp): USE_LADDER's AT_LADDER sight
+  line and FuncLadder::CanUseLadder, PositionOnLadder, the clips' frame deltas through
+  AnimMove (scaled by the model's scale: the climber ends where the game leaves him, e.g.
+  mohdm6's ladder at 417 15 32 and 417 73 224), tweakladderpos, CAN_CLIMB_UP / DOWN,
+  CAN_GET_OFF_LADDER_TOP / BOTTOM, ensureoverladder and ensureforwardoffladder, then the fall
+  to the floor. A climb that can't finish stops with the reason and a recommendation in
+  yellow. The player's collision (`PG_MODE` 'player': MASK_PLAYERSOLID, playerclip in,
+  monsterclip out, doors closed) is built beside the AI's.
+- The launcher builds a human with no weapon when the page asks for one (`w` ""), with its
+  unarmed_stand_alert idle, and the ladder clips as the role "ladder" (`plan_ladder`).
+- The ladder climber's idle (standing at a spawn, or after a climb) gets its legs:
+  unarmed_stand_alert moves only the upper body (an "(action)" clip), so the legs come
+  from unarmed_stand_alert_legs, as an armed man's idle takes <weapongroup>_stand_alert_legs;
+  without them his legs kept the skeleton's base pose and he looked to stand on one foot.
+  (The humans have no unarmed_stand_idle.)

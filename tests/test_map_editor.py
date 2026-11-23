@@ -241,6 +241,37 @@ class Brushes(unittest.TestCase):
         self.assertIn("3 geometry changes (brushes, patches, terrain) and 1 new entity", seen[0][1])
         self.assertEqual([c[0] for c in seen[0][3]], ["map", "discard", "cancel"])
 
+    def test_open_asks_the_page_first(self):
+        """Opening another map with one in the pane asks that page (as Esc does) instead of
+        navigating away, so the browser's own "Leave site?" never comes up; the new map opens
+        when the page lets go, and not at all after Cancel."""
+        app = self._app("")
+        loaded = []
+        class WV:
+            def load_url(self, u): loaded.append(u)
+        app._webview = WV(); app._embed_url = "file:///o/old_map_view.html#embed"
+        app._ensure_webview = lambda: True
+        app._set_status = lambda *a: None
+        app.after = lambda ms, fn: None
+        app._embed_merge_ui = lambda: None
+        app._editor_hash = lambda: ""; app._theme = "dark"
+        app._open_file("/o/new_bsp_view.html")
+        self.assertEqual(loaded, [])
+        self.assertIn("closeViewer()", app._js[-1])
+        self.assertEqual(app._open_after, "/o/new_bsp_view.html")
+        # unsaved: the question names the map waiting; Cancel keeps the old page
+        seen = []
+        app._unsaved_dialog = lambda *a: (seen.append(a), "cancel")[1]
+        app._close_ask({"new": 0, "changed": 0, "brushes": 2, "isBsp": False, "name": "room"})
+        self.assertIn("before opening new_bsp_view.html", seen[0][2])
+        self.assertIsNone(app._open_after)
+        app._open_file("/o/new_bsp_view.html")
+        # saved / discarded / nothing unsaved: the page's close opens the new map
+        app._close_viewer()
+        self.assertEqual(len(loaded), 1)
+        self.assertTrue(loaded[0].startswith("file:///o/new_bsp_view.html#embed"))
+        self.assertIsNone(app._open_after)
+
 
 class Compile(unittest.TestCase):
     """The compiler: this system's ommap build compiles New map's room, and a room with its

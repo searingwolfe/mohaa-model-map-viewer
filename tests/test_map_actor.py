@@ -138,6 +138,23 @@ class ClipNames(unittest.TestCase):
             MA.plan_role(fake_names(), "rifle", "../x")
 
 
+class LadderClips(unittest.TestCase):
+    """SIMULATE on a func_ladder: the human's ladder clips (the player's aliases' .skc files)."""
+    def test_every_climbing_clip_is_needed_the_run_is_not(self):
+        names = {n: {"n": n} for n in MA.LADDER_CLIPS}
+        steps, why = MA.plan_ladder(names)
+        self.assertEqual(why, "")
+        self.assertEqual([s[0] for s in steps], list(MA.LADDER_CLIPS))
+        del names["unarmed_run_forward"]
+        steps, why = MA.plan_ladder(names)
+        self.assertEqual(why, "")
+        self.assertNotIn("unarmed_run_forward", [s[0] for s in steps])
+        del names["ladder_up_getoff"]
+        steps, why = MA.plan_ladder(names)
+        self.assertEqual(steps, [])
+        self.assertIn("ladder_up_getoff", why)
+
+
 class HandEvents(unittest.TestCase):
     """The weapon changes hands in some clips' server commands (the right corner's)."""
 
