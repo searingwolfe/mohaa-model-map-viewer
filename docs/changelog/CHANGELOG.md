@@ -3393,3 +3393,30 @@ look of the walk and the doors should be confirmed by eye in the launcher.
 - A ladder's facing arrow shows only while the ladder is selected, at its foot (2 units over
   the bottom of its brushes) instead of halfway up, pointing from where a climber stands to
   the ladder; Hide select hides it with the rest of the highlight.
+- SIMULATE's ladder row has a **pitch** box above Simulate Up / Down: how far he looks up
+  or down while walking to the ladder, 0 to 89 degrees, 50 by default (was a fixed 45),
+  kept in the browser's storage (`mohaaMapViewerLadPitch`) as it's typed. Under 36 up or 35
+  down he can't get on (USE_LADDER's LOOKING_UP "35" / !LOOKING_UP "-35",
+  Player::CondLookingUp: pitch < -35, or >= 35), and the climb stops saying so.
+- Simulate starts him up to 64 units behind the spawn (`LAD_BACK`, as far as his box goes
+  with floor under him), and AT_LADDER is checked a unit apart along each step of the walk
+  instead of once a frame. Going down from a ladder's top, the spots where his view meets
+  the ladder and he is within 52 of its origin can be only a few units deep, behind where
+  Spawn Top stands him: mohdm7's trench ladder ( -3419 2104 144 ) now gets him on looking
+  50 down and not 45, as in the game; its other ladder ( 1682 -1151 -132, its top 3 units
+  over the floor) needs 58 or more. mohdm6's climbs end where they did.
+
+## 1.0.011 (November 2026)
+
+- Released as v1.0.011: everything since 1.0.010 (the section above: the dropper, trim
+  arrows and patch trim, draw planes and slopes, the Angles row and its gizmos, SIMULATE's
+  ladder climb), and the updater's Git sync below. `VERSION` (`mohaa_launcher.py`, `mohaa_envcheck.py`) and
+  `docs/version.txt` say 1.0.011; the updater finds it by the tag `v1.0.011`.
+- The updater keeps a Git clone in step (`_update_git_sync`): after installing a commit in a
+  folder with `.git`, it runs `git fetch origin` and, when the branch has nothing GitHub
+  lacks (`git merge-base --is-ancestor HEAD <commit>`), `git reset --mixed <commit>`, so
+  the branch points at what was installed and the files stay as they are. Before, a clone
+  updated through the program kept its old branch, its next commit wasn't based on
+  GitHub's, and the push was rejected until `git fetch` + `git reset --soft origin/main`.
+  With local commits, no Git on PATH or no network, the Output pane says what to run
+  instead. Tested against real repositories (`UpdaterGit` in tests/test_hardening.py).

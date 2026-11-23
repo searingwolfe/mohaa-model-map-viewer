@@ -413,9 +413,12 @@ window.setEditorMode=function(on){window.__EDITON__=!!on;
          <button class="sm" id="bLadFollow" disabled title="The game's third-person camera behind his head (cg_cameradist 120, cg_cameraheight 18). Moving the camera by hand turns it off">Follow</button>
          <button class="sm" id="bLadHideSel" title="Hide the selection's red highlight on the ladder (its tint, outline and box) so the climb is easier to see; the ladder stays selected. Press again to show it. It turns off when the ladder is deselected">Hide select</button>
        </div>
+       <div class="row co" style="gap:4px;align-items:center" title="How far he looks up (Simulate Up) or down (Simulate Down) as he walks to the ladder, in degrees: 0 to 89, 50 by default (kept for next time). The game only lets him on looking more than 35 up (USE_LADDER: LOOKING_UP &quot;35&quot;) or at least 35 down (!LOOKING_UP &quot;-35&quot;), and his view must meet the ladder within 128 units">pitch
+         <input type="text" id="ladPitch" style="width:36px;padding:1px 3px;font:inherit;font-size:11px" value="50"> degrees up / down
+       </div>
        <div class="row">
-         <button class="sm" id="bLadSimUp" disabled title="From where he was spawned: he walks forward toward the ladder looking 45 degrees up (the game needs more than 35), gets on (ladder_up_geton), climbs a hand at a time (ladder_up_righthand, ladder_up_lefthand...) until he can get off the top (ladder_up_getoff), and lands there. Not from the top">&#9654; Simulate Up</button>
-         <button class="sm" id="bLadSimDown" disabled title="From where he was spawned: he walks forward toward the ladder looking 45 degrees down (the game needs more than 35), gets on (ladder_down_geton), climbs down a hand at a time (ladder_down_lefthand, ladder_down_righthand...) until the floor is close under him (ladder_down_getoff), and stands there. Not from the bottom">&#9654; Simulate Down</button>
+         <button class="sm" id="bLadSimUp" disabled title="From where he was spawned: he walks forward toward the ladder looking up by the pitch above (50 degrees by default; the game needs more than 35), gets on (ladder_up_geton), climbs a hand at a time (ladder_up_righthand, ladder_up_lefthand...) until he can get off the top (ladder_up_getoff), and lands there. Not from the top">&#9654; Simulate Up</button>
+         <button class="sm" id="bLadSimDown" disabled title="From where he was spawned: he walks forward toward the ladder looking down by the pitch above (50 degrees by default; the game needs at least 35), gets on (ladder_down_geton), climbs down a hand at a time (ladder_down_lefthand, ladder_down_righthand...) until the floor is close under him (ladder_down_getoff), and stands there. Not from the bottom">&#9654; Simulate Down</button>
        </div>
        <div id="ladSum" class="co" style="white-space:pre-line"></div>
        <div id="ladWarn" class="co" style="white-space:pre-line;color:var(--warn)"></div>
@@ -12454,7 +12457,8 @@ function actInit(){
 // (LAD_DT), with his box ( -15 -15 0, 15 15 94 ) against what stops a player (PG_MODE
 // 'player': MASK_PLAYERSOLID) and the ladder's own brushes for the MASK_LADDER traces:
 //  - on the ground he walks forward (the ladder's angle to go up, the other way to go down),
-//    looking 45 up (USE_LADDER needs LOOKING_UP "35") or 45 down (!LOOKING_UP "-35"), until
+//    looking up or down by LAD.pitch (the pitch box, 50 by default: USE_LADDER needs
+//    LOOKING_UP "35", more than 35 up, or !LOOKING_UP "-35", at least 35 down), until
 //    AT_LADDER: a line from his eye (82 up) along the view, 12 back to 128 ahead, meets the
 //    ladder, and CanUseLadder: within 52 units of its origin, facing it, the spot below (or
 //    above) free (Player::CondLadder, FuncLadder::CanUseLadder)
@@ -12475,8 +12479,11 @@ function actInit(){
 //  - ladder_getoff_top calls ensureoverladder at its frame 31 and ensureforwardoffladder at
 //    its last; then FINISHED_GET_OFF_LADDER lets go (movetype legs): he falls to the floor
 // When none of those can happen he hangs there for ever in the game: the climb has failed.
-const LAD={want:'',where:'',spawn:null,wantSim:'',res:null,warn:'',hideSel:null};
-const LAD_DT=0.025,LAD_MINS=[-15,-15,0],LAD_MAXS=[15,15,94],LAD_EYE=82,LAD_RUN=250,LAD_MAX_T=90;
+const LAD={want:'',where:'',spawn:null,wantSim:'',res:null,warn:'',hideSel:null,pitch:50};
+const LAD_LS_P='mohaaMapViewerLadPitch',LAD_PITCH=50;
+// the pitch box: a whole or decimal number of degrees, 0 to 89 (null when it isn't one)
+function ladPitchOf(v){const n=parseFloat(String(v).trim());return isFinite(n)&&/^\s*[+-]?\d*\.?\d+\s*$/.test(String(v))?Math.max(0,Math.min(89,n)):null;}
+const LAD_BACK=64,LAD_DT=0.025,LAD_MINS=[-15,-15,0],LAD_MAXS=[15,15,94],LAD_EYE=82,LAD_RUN=250,LAD_MAX_T=90;
 const LAD_CLIP={geton_bottom:'ladder_up_geton',geton_top:'ladder_down_geton',up_left:'ladder_up_lefthand',up_right:'ladder_up_righthand',
   down_left:'ladder_down_lefthand',down_right:'ladder_down_righthand',getoff_top:'ladder_up_getoff',getoff_bottom:'ladder_down_getoff',run:'unarmed_run_forward'};
 // the selected func_ladder: {key, ei}
@@ -12629,8 +12636,9 @@ function ladSpawnSpot(L,where,recs,sc){
   return{p:t.allsolid?[x,y,top]:t.end.slice(),yaw:where==='up'?(L.yaw+180)%360:L.yaw,onLadder:false};
 }
 // the climb, frame by frame: {F: frames {p, y (yaw), c (clip name or null), t}, ok, msg, why}
-function ladSim(L,start,dir,recs,sc){
-  const F=[],up=dir==='up',pitch=up?-45:45,face=up?L.yaw:(L.yaw+180)%360,maxN=Math.round(LAD_MAX_T/LAD_DT);
+function ladSim(L,start,dir,recs,sc,P){
+  if(P==null)P=LAD_PITCH;
+  const F=[],up=dir==='up',pitch=up?-P:P,face=up?L.yaw:(L.yaw+180)%360,maxN=Math.round(LAD_MAX_T/LAD_DT);
   let pos=start.p.slice(),yaw=start.yaw,state=start.onLadder?'idle_left':'ground',clip='',ct=0,hold=start.onLadder?{c:LAD_CLIP.up_right,t:0}:null;
   let why='',ok=false,steps=0,lastZ=null,still=0,fall=null,events=[],walked=0;
   // a frame: p, y, c (clip or null: standing, the idle at it), t; b/w: the pose it is
@@ -12648,10 +12656,23 @@ function ladSim(L,start,dir,recs,sc){
   // on the ground at the start: settle on the floor first
   const mm={o:pos.slice(),vel:[0,0,0],speed:0,ft:LAD_DT,dd:[0,0,0],ground:false,walking:false,gn:[0,0,1],mins:LAD_MINS,maxs:LAD_MAXS,hit:false,hitO:[0,0,0],obn:[0,0,0]};
   const mmove=()=>{const was=PG_MODE;PG_MODE='player';try{pgMmove(mm);}finally{PG_MODE=was;}pos=mm.o.slice();};
-  if(state==='ground'){for(let i=0;i<40&&!mm.ground;i++)mmove();if(F.length)F[0].p=pos.slice();}
+  if(state==='ground'){for(let i=0;i<40&&!mm.ground;i++)mmove();
+    // A player walks up to the ladder: he starts up to LAD_BACK behind the spawn (as far as
+    // his box goes and there is floor under him), so the whole approach is checked. At a
+    // ladder's top the spots where his view meets it and he is within 52 of its origin can
+    // be a few units deep, behind the spot ladder_up_getoff leaves him on
+    const bk=ladFwd(face);
+    for(const back of[LAD_BACK,48,32,16]){
+      const t=ladTr([pos[0],pos[1],pos[2]+1],[pos[0]-bk[0]*back,pos[1]-bk[1]*back,pos[2]+1]);
+      if(t.startsolid||t.f<1)continue;
+      const fl=ladTr(t.end,[t.end[0],t.end[1],t.end[2]-20]);if(fl.f>=1)continue;
+      pos=fl.end.slice();mm.o=pos.slice();mm.ground=false;for(let i=0;i<40&&!mm.ground;i++)mmove();break;}
+    if(F.length)F[0].p=pos.slice();}
   for(let n=0;n<maxN;n++){
     if(state==='ground'){
       yaw=face;
+      // CondLookingUp: LOOKING_UP "35" is pitch < -35; !LOOKING_UP "-35" is pitch >= 35
+      if(up?!(pitch<-35):!(pitch>=35)){why='Looking '+fnum(P)+' degrees '+(up?'up':'down')+', he can\'t get on: USE_LADDER needs '+(up?'more than 35 up (LOOKING_UP "35")':'at least 35 down (!LOOKING_UP "-35")');break;}
       // USE_LADDER: ONGROUND FORWARD LOOKING_UP "35" (or !LOOKING_UP "-35") ... AT_LADDER
       const r=mm.ground?ladAt(L,pos,yaw,pitch):'he isn\'t on the floor';
       if(!r){
@@ -12661,8 +12682,12 @@ function ladSim(L,start,dir,recs,sc){
         events.push({t:n*LAD_DT,what:'gets on ('+clip+')'});
         push(clip,0);continue;}
       if(walked>=LAD_RUN*4){why='He walked 4 seconds toward the ladder without getting on: '+r;break;}
-      // he walks forward (sv_runspeed 250)
+      // he walks forward (sv_runspeed 250); the checks run on the way, a unit apart (the game
+      // checks every client frame, a few units apart at 250)
       const o0=pos.slice();mm.o=pos.slice();mm.dd=ladFwd(yaw);mm.speed=LAD_RUN;mmove();walked+=Math.hypot(pos[0]-o0[0],pos[1]-o0[1]);
+      {const o1=pos.slice(),n=Math.ceil(Math.hypot(o1[0]-o0[0],o1[1]-o0[1]));
+        for(let k=1;k<n;k++){const q=[o0[0]+(o1[0]-o0[0])*k/n,o0[1]+(o1[1]-o0[1])*k/n,o0[2]+(o1[2]-o0[2])*k/n];
+          if(mm.ground&&!ladAt(L,q,yaw,pitch)){pos=q;mm.o=q.slice();break;}}}
       if(n>8&&Math.hypot(pos[0]-o0[0],pos[1]-o0[1])<0.5&&mm.ground){why='He is stopped walking toward the ladder before he can get on: '+r;break;}
       push(recs[LAD_CLIP.run]?LAD_CLIP.run:null,recs[LAD_CLIP.run]?(n*LAD_DT)%ladDur(recs[LAD_CLIP.run]):0);continue;}
     if(state==='clip'){
@@ -12712,7 +12737,7 @@ function ladSim(L,start,dir,recs,sc){
   }
   if(!ok&&!why)why='The climb didn\'t end within '+LAD_MAX_T+' seconds';
   const fallen=fall?fall.z0-pos[2]:0;
-  return{F:F,ok:ok,why:why,steps:steps,secs:F.length*LAD_DT,end:pos.slice(),fallen:fallen,events:events,onLadder:!ok&&state!=='ground'&&state!=='fall'};
+  return{F:F,ok:ok,why:why,pitch:P,steps:steps,secs:F.length*LAD_DT,end:pos.slice(),fallen:fallen,events:events,onLadder:!ok&&state!=='ground'&&state!=='fall'};
 }
 // ---- the buttons ----
 function ladSc(b){return b&&b.H&&b.H.M&&b.H.M.sc||1;}
@@ -12753,7 +12778,7 @@ function ladRun(dir){
   const L=ladGeom(f.ei);if(!L)return;
   const la=c.b.anims.get('ladder');if(!la)return;
   // back where he was spawned, then the climb
-  let R;try{R=ladSim(L,LAD.spawn,dir,la.recs,ladSc(c.b));}catch(e){flash('Simulate: '+(e&&e.message||e));return;}
+  let R;try{R=ladSim(L,LAD.spawn,dir,la.recs,ladSc(c.b),LAD.pitch);}catch(e){flash('Simulate: '+(e&&e.message||e));return;}
   LAD.res={dir:dir,R:R,L:L};
   LAD.warn=R.ok?'':R.why+'\n'+ladAdvice(R,L,dir);
   c.o=LAD.spawn.p.slice();c.yaw=LAD.spawn.yaw;c.pauseAt=null;
@@ -12768,6 +12793,8 @@ function ladAdvice(R,L,dir){
   if(/higher|get off the top|98/.test(R.why))tips.push('Make the ladder reach the floor at the top (its top at the floor\'s height), with 98 units of room over the last rung');
   if(/floor isn't within|lower/.test(R.why))tips.push('Extend the ladder down to the floor (he gets off once the floor is within 40 units under him)');
   if(/4 seconds|walked|stopped walking/.test(R.why))tips.push('Check that the ladder is in front of him where he gets on, and that he can walk up to it');
+  if(/128 units along his view/.test(R.why))tips.push('Try another pitch (now '+fnum(R.pitch)+'): a player has to look at the ladder itself, and steeper or shallower can be what reaches it');
+  if(/USE_LADDER needs/.test(R.why))tips.push('Set the pitch to 36 or more (50 is the default)');
   if(!tips.length)tips.push('Change the ladder\'s height, or place it further from the wall');
   return 'Recommendation: '+tips.join('. ')+'.';
 }
@@ -12794,7 +12821,7 @@ function ladPanel(f){
   else{
     s={up:'At the top of the ladder.',down:'At the foot of the ladder.',mid:'On the ladder, halfway up.'}[sw]||'';
     const R=LAD.res&&LAD.res.R;
-    if(R){s=run?'Climbing '+LAD.res.dir+'…':R.ok?'Climbed '+LAD.res.dir+' in '+R.secs.toFixed(1)+' s ('+R.steps+' holds), standing at ( '+R.end.map(fnum).join(' ')+' ).':'The climb '+LAD.res.dir+' failed (below).';
+    if(R){s=run?'Climbing '+LAD.res.dir+' (looking '+fnum(R.pitch)+' '+LAD.res.dir+')…':R.ok?'Climbed '+LAD.res.dir+' in '+R.secs.toFixed(1)+' s ('+R.steps+' holds, looking '+fnum(R.pitch)+' '+LAD.res.dir+'), standing at ( '+R.end.map(fnum).join(' ')+' ).':'The climb '+LAD.res.dir+' failed (below).';
       if(R.ok&&R.fallen>48)s+='\nHe fell '+fnum(R.fallen)+' units after letting go.';
       if(R.events.length)s+='\n'+R.events.map(e=>e.t.toFixed(1)+' s: '+e.what).join('\n');}
     if(cc.pauseAt!=null)s='Paused: Resume carries on\n'+s;
@@ -12814,6 +12841,11 @@ function ladInit(){
   $('bLadFollow').onclick=()=>$('bActFollow').onclick();
   $('bLadHideSel').onclick=()=>{LAD.hideSel=selHidden()?null:SEL.size===1?[...SEL][0]:null;
     lineDirty=true;$('bLadHideSel').blur();simPanel();requestDraw();};
+  {const v=ladPitchOf(LS.get(LAD_LS_P));LAD.pitch=v==null?LAD_PITCH:v;$('ladPitch').value=fnum(LAD.pitch);}
+  // saved as typed (a valid number), tidied (clamped to 0..89) when he leaves the box
+  $('ladPitch').oninput=()=>{const v=ladPitchOf($('ladPitch').value);$('ladPitch').style.color=v==null?'var(--warn)':'';if(v!=null){LAD.pitch=v;LS.set(LAD_LS_P,String(v));}};
+  $('ladPitch').onchange=()=>{const v=ladPitchOf($('ladPitch').value);if(v!=null){LAD.pitch=v;LS.set(LAD_LS_P,String(v));}$('ladPitch').value=fnum(LAD.pitch);$('ladPitch').style.color='';};
+  $('ladPitch').onkeydown=e=>{e.stopPropagation();if(e.key==='Enter'||e.key==='Escape')$('ladPitch').blur();};
   $('ladHum').onchange=()=>{const v=$('ladHum').value;ACT.hum=v;LS.set(ACT_LS_H,v);$('ladHum').blur();if(LAD.spawn&&ACT.cur)ladSpawn(LAD.spawn.where);};
 }
 // ---- drawing: the path's curve (while the section shows) and the box ----------------------

@@ -530,7 +530,7 @@ def init_runtime(app_name="mohaa_launcher"):
 #  docs/ and the RUN .bat. On each release, bump VERSION here and in docs/version.txt,
 #  then tag the release commit v<version>.
 # ============================================================================
-VERSION="1.0.010"
+VERSION="1.0.011"
 VERSION_LABEL="version "+VERSION
 # GitHub coordinates for the update check. The check compares every program file here
 # with the same file on GitHub's main branch, by its Git fingerprint (the blob SHA-1 the
@@ -753,6 +753,48 @@ def _update_newer_here(cands, commit, dates, head_time=None, file_time=None):
         if t is not None and mt>t+UPDATE_TIME_SLACK:
             out[rp]=(mt,t)
     return out
+
+def _update_git_sync(root, commit, run=None):
+    """After an update in a Git checkout: move its branch to the commit just installed, so
+    Git knows the folder now holds GitHub's files and the next push is a plain fast-forward
+    (the updater writes the files but not Git's history, so a push from here would be
+    rejected and need a `git pull` or a reset first).
+
+    `git fetch origin`, then, only if the branch has nothing GitHub lacks (HEAD is the
+    commit or an ancestor of it: no commits made here and not pushed), `git reset --mixed`
+    to it: the branch and Git's index move, the files on disk are left exactly as they are,
+    so a file you unticked or kept shows in `git status` as your own change. Nothing is done
+    without a .git folder; without Git on PATH, offline, or with commits made here, it
+    says what to run instead. Returns a line for the Output pane, or None (not a checkout).
+    `run` (tests) replaces subprocess.run."""
+    if not os.path.isdir(os.path.join(root, ".git")):
+        return None
+    manual = "run `git fetch origin` and `git reset --mixed origin/main` there (your files stay as they are)"
+    git = shutil.which("git")
+    if not git and run is None:
+        return "Git: this folder is a Git checkout but git isn't on PATH, so its branch wasn't moved: " + manual
+    run = run or subprocess.run
+    env = dict(os.environ, GIT_TERMINAL_PROMPT="0")
+    def g(*a, t=120):
+        return run([git or "git", "-C", root] + list(a), capture_output=True, text=True, timeout=t, env=env, **NOWIN)
+    try:
+        f = g("fetch", "--quiet", "origin")
+        if f.returncode != 0 or g("cat-file", "-e", commit + "^{commit}").returncode != 0:
+            LOG.warning("update: git fetch failed: %s", (f.stderr or "").strip()[:300])
+            return "Git: couldn't fetch GitHub's history, so the branch wasn't moved: " + manual
+        if g("merge-base", "--is-ancestor", "HEAD", commit).returncode != 0:
+            return ("Git: this checkout has commits GitHub doesn't (made here, not pushed), so its branch "
+                    "was left where it is: use `git pull` to combine them before pushing")
+        x = g("reset", "--mixed", "-q", commit)
+        if x.returncode != 0:
+            LOG.warning("update: git reset failed: %s", (x.stderr or "").strip()[:300])
+            return "Git: couldn't move the branch: " + manual
+        LOG.info("update: git branch moved to %s", commit[:7])
+        return ("Git: the branch now points at GitHub's commit %s, so `git status` shows only your own "
+                "changes and a push needs no pull or reset first" % commit[:7])
+    except (OSError, subprocess.SubprocessError) as e:
+        LOG.warning("update: git sync failed", exc_info=True)
+        return "Git: couldn't run git (%s): %s" % (type(e).__name__, manual)
 
 def update_check():
     """Compare the program folder with GitHub's main branch, file by file. No Tk calls.
@@ -4192,7 +4234,8 @@ class App(tk.Tk):
                              "them: work not pushed yet), so they aren't offered."%len(r["newer"]))
             if r.get("git"):
                 notes.append("This folder is a Git checkout: a changed file may be your own edit that "
-                             "isn't pushed yet, so untick it to keep it.")
+                             "isn't pushed yet, so untick it to keep it. After the download its branch is "
+                             "moved to GitHub's commit (files untouched), so pushing from here needs no pull first.")
             self._upd_label(body," ".join(notes),dim=True,wraplength=600).pack(anchor="w",pady=(8,0))
             def download():
                 sel={f["path"] for f in files if f["path"] in ticked}
@@ -4276,6 +4319,8 @@ class App(tk.Tk):
             self._log_line("  removed  "+os.path.join(_install_root(),rp))
         if res.get("backup"):
             self._log_line("Update: the replaced files were saved to "+res["backup"],"dim")
+        if res.get("git"):
+            self._log_line("Update: "+res["git"],"ok" if "now points at" in res["git"] else "note")
         self._log_line("Update: this updates the Model Viewer and the Map Viewer together; restart "
                        "the other one too if it is open.","dim")
         self._log_line("Update: %d file(s) written%s. %s"%(len(res.get("installed") or []),
@@ -4380,8 +4425,9 @@ class App(tk.Tk):
             _update_manifest_save(commit,mf)
             LOG.info("update to commit %s: %d written, %d staged, %d removed, backup %s",
                      commit[:7],len(installed)-len(staged),len(staged),len(removed),backup)
+            gitmsg=_update_git_sync(root,commit)
             return {"ok":True,"installed":installed,"staged":staged,"removed":removed,
-                    "backup":backup,"version":version,"commit":commit}
+                    "backup":backup,"version":version,"commit":commit,"git":gitmsg}
         except Exception as e:
             LOG.error("update to commit %s failed",commit[:7],exc_info=True)
             return {"ok":False,"error":"%s: %s"%(type(e).__name__,e)}

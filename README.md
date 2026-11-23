@@ -359,25 +359,29 @@ click away: its targetname, origin, `setsize`, targets and ready-to-paste script
   to** and **Follow** (the game's third-person camera) help watch him, and **Respawn** puts
   him back on the node. The human and weapon are built from the paks only when chosen, each
   animation the first time it's needed. Needs the Map Viewer (not a bare browser).
-  Select a `func_ladder` and the section climbs it with an unarmed **Human** as the player's
-  ladder states do (global/mike_torso.st, with OpenMoHAA's FuncLadder code): **Spawn Bottom**
-  stands him where `ladder_down_getoff` leaves a climber at its foot, **Spawn Top** where
-  `ladder_up_getoff` leaves him at the top (facing the ladder), **Spawn Middle** puts
-  him on it halfway up (for a ladder whose ends go into the floor or ceiling). **Simulate
-  Up** walks him at the ladder looking 45 degrees up until he can use it, gets him on
-  (`ladder_up_geton`), climbs a hand at a time (`ladder_up_righthand`, `_lefthand`...) and
-  gets him off the top; **Simulate Down** the same downwards, looking 45 degrees down. The
-  clips' own movement carries him, with the player's box against walls, playerclip and the
-  floor, the game's tests for climbing on, getting off the top (98 units of room over him)
-  and the bottom (the floor within 40 under him), and its snaps to the ladder. As in the
-  game, each clip's last frame holds for one server frame (0.05 s) before the next state
-  starts, and each new clip crossblends in over 0.2 s; after getting off he blends into his
-  standing idle the same way. Each starts again from the last spawn. When he can't finish (the ladder too short or too long, too
-  close to a wall, something in the way, its origin far from it) the climb stops and the
-  yellow note says why, with what to change.
+  Select a `func_ladder` and the section climbs it with an unarmed **Human** as the
+  player's ladder states do (global/mike_torso.st, with OpenMoHAA's FuncLadder code):
+  **Spawn Bottom** stands him where `ladder_down_getoff` leaves a climber at its foot,
+  **Spawn Top** where `ladder_up_getoff` leaves him at the top (facing the ladder), **Spawn
+  Middle** puts him on it halfway up (for a ladder whose ends go into the floor or
+  ceiling). **Simulate Up** walks him at the ladder looking up by the **pitch** box (50
+  degrees by default, kept for next time; the game needs more than 35) until he can use it,
+  gets him on (`ladder_up_geton`), climbs a hand at a time (`ladder_up_righthand`,
+  `_lefthand`...) and gets him off the top; **Simulate Down** the same downwards, looking
+  down by the pitch. He starts up to 64 units behind the spawn, as a player walks up to it:
+  at some ladders' tops only a steeper pitch gets him on (mohdm7's trench ladder needs 50,
+  not 45). The clips' own movement carries him, with the player's box against walls,
+  playerclip and the floor, the game's tests for climbing on, getting off the top (98 units
+  of room over him) and the bottom (the floor within 40 under him), and its snaps to the
+  ladder. As in the game, each clip's last frame holds for one server frame (0.05 s) before
+  the next state starts, and each new clip crossblends in over 0.2 s; after getting off he
+  blends into his standing idle the same way. Each starts again from the last spawn. When
+  he can't finish (the ladder too short or too long, too close to a wall, something in the
+  way, its origin far from it) the climb stops and the yellow note says why, with what to
+  change.
   **Pause**, **Fly to** and **Follow** work as for path nodes, and **Hide select** (green
-  while on) hides the ladder's red selection highlight and its facing arrow so the climb
-  is easier to watch; the ladder stays selected, and deselecting it turns Hide select off.
+  while on) hides the ladder's red selection highlight and its facing arrow so the climb is
+  easier to watch; the ladder stays selected, and deselecting it turns Hide select off.
 * **Modify** (above Find): add entities, most of all AI path nodes: Add, then click on the
   map where it goes. A new node is drawn
   see-through until saved, its parameters edit as entity-lump text (applied as you type),
@@ -779,6 +783,12 @@ When that record can't tell (the file was changed here before any check saw it, 
 work not pushed to GitHub yet), the file's time here is compared with when GitHub last
 committed it: a file saved here after that is yours and newer, so it isn't offered (the
 update window and the Output pane say how many, and the log names them).
+
+In a Git clone (the folder has `.git`), the update also moves the branch to the commit it
+installed (`git fetch origin`, then `git reset --mixed` to it: the files on disk are left
+as they are), so `git status` shows only your own changes and a later `git push` needs no
+pull first. It does this only when the clone has no commits of its own that GitHub lacks;
+otherwise, or without Git on PATH, the Output pane says what to run instead.
 
 The update is checked before anything changes: the download (a zip of exactly the commit
 that was checked) must be undamaged, and every file must match GitHub's fingerprint for it.

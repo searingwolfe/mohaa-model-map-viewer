@@ -577,6 +577,71 @@ class Updater(TempDirCase):
             self.assertFalse(ok(rp), rp)
 
 
+class UpdaterGit(TempDirCase):
+    """_update_git_sync against real Git repositories: a bare "origin" standing in for
+    GitHub and a clone whose files the updater has just replaced. Skipped without git."""
+
+    @classmethod
+    def setUpClass(cls):
+        if not shutil.which("git"):
+            raise unittest.SkipTest("git missing")
+        try:
+            import tkinter  # noqa: F401
+        except ImportError:
+            raise unittest.SkipTest("tkinter missing")
+        import mohaa_launcher as ML
+        cls.ML = ML
+
+    def git(self, cwd, *a):
+        env = dict(os.environ, GIT_AUTHOR_NAME="t", GIT_AUTHOR_EMAIL="t@t", GIT_COMMITTER_NAME="t",
+                   GIT_COMMITTER_EMAIL="t@t", GIT_CONFIG_NOSYSTEM="1", HOME=self.d)
+        r = subprocess.run(["git", "-C", cwd] + list(a), capture_output=True, text=True, env=env)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        return r.stdout.strip()
+
+    def setup_repos(self):
+        """origin with commit A, a clone at A ("here"), then commit B pushed to origin from
+        another clone ("laptop"). Returns (here, sha of B)."""
+        origin, laptop, here = self.p("origin.git"), self.p("laptop"), self.p("here")
+        self.git(self.d, "init", "-q", "--bare", "-b", "main", origin)
+        self.git(self.d, "clone", "-q", origin, laptop)
+        with open(os.path.join(laptop, "a.txt"), "w") as f: f.write("one\n")
+        self.git(laptop, "add", "a.txt"); self.git(laptop, "commit", "-q", "-m", "A")
+        self.git(laptop, "push", "-q", "origin", "HEAD:main")
+        self.git(self.d, "clone", "-q", origin, here)
+        with open(os.path.join(laptop, "a.txt"), "w") as f: f.write("two\n")
+        self.git(laptop, "commit", "-q", "-am", "B"); self.git(laptop, "push", "-q", "origin", "HEAD:main")
+        return here, self.git(laptop, "rev-parse", "HEAD")
+
+    def test_branch_moves_to_the_installed_commit(self):
+        here, b = self.setup_repos()
+        with open(os.path.join(here, "a.txt"), "w") as f: f.write("two\n")    # what the updater wrote
+        msg = self.ML._update_git_sync(here, b)
+        self.assertIn("now points at", msg)
+        self.assertEqual(self.git(here, "rev-parse", "HEAD"), b)
+        self.assertEqual(self.git(here, "status", "--porcelain"), "")         # nothing to commit, push is clean
+
+    def test_a_file_kept_here_stays_a_local_change(self):
+        here, b = self.setup_repos()
+        with open(os.path.join(here, "a.txt"), "w") as f: f.write("mine\n")   # unticked: the file here kept
+        self.ML._update_git_sync(here, b)
+        self.assertEqual(self.git(here, "rev-parse", "HEAD"), b)
+        self.assertIn("a.txt", self.git(here, "status", "--porcelain"))
+        with open(os.path.join(here, "a.txt")) as f: self.assertEqual(f.read(), "mine\n")
+
+    def test_commits_made_here_leave_the_branch_alone(self):
+        here, b = self.setup_repos()
+        with open(os.path.join(here, "c.txt"), "w") as f: f.write("local\n")
+        self.git(here, "add", "c.txt"); self.git(here, "commit", "-q", "-m", "local")
+        head = self.git(here, "rev-parse", "HEAD")
+        msg = self.ML._update_git_sync(here, b)
+        self.assertIn("git pull", msg)
+        self.assertEqual(self.git(here, "rev-parse", "HEAD"), head)
+
+    def test_not_a_checkout(self):
+        self.assertIsNone(self.ML._update_git_sync(self.d, "c" * 40))
+
+
 class BspSave(TempDirCase):
     def test_save_verifies_then_keeps_bak(self):
         out = self.p("m_mod.bsp")
