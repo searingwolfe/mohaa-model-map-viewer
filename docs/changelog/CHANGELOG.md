@@ -3753,3 +3753,54 @@ look of the walk and the doors should be confirmed by eye in the launcher.
   shaders are one-sided and additive; the rest are two-sided or sprites).
 - `opellightflare` (scripts/opel.shader) is not drawn because nothing uses it: no Opel surface,
   .tik or map names that shader, so the game doesn't draw it either.
+
+## Map Editor: Clip on the grid, its sides in two colours; Texture selects a face (November 2026)
+
+- Clip: with Grid on, a point snaps to the grid across the face clicked and stays on that
+  face (its own axis is worked out from the face's plane, so a face off the grid, a brush top
+  at z 30, doesn't push the point above or into it). With Grid off it goes in whole units
+  (it had always used the grid's size). A dim green cross under the mouse shows where the next
+  point will land, and with one point down the line the cut would follow.
+- Clip: the part kept is outlined in yellow and the part cut away in red, and the brush's own
+  red selection outline is hidden while the cut is shown. Before, the kept part was drawn in the
+  selection's red over the selection's red, and the other part in half-white, so Tab's swap was
+  hard to see. Esc, a cut or another tool brings the outline back.
+- Texture tool: a click selects the face it lands on, not the whole brush (the page's
+  rebuildSelection asks `selFaceOf` which face of a brush to show), and Shift+click takes the
+  whole brush. What is highlighted is what the click, the face buttons and the eyedropper change.
+  Ctrl+click still selects a face without changing its texture.
+- Eyedropper: with the Texture tool, what it takes goes on the face selected there (or on the
+  whole brush after a Shift+click), and on nothing that a click in the tool didn't pick. Its
+  button stays green while the Texture box holds the texture it took (typing or choosing
+  another lets it go).
+
+## Map Editor: Clip shows the half that stays as the selection; cuts square to the face (November 2026)
+
+- Clip's halves were outlined yellow and red over the brush's red selection tint, and new
+  brushes are outlined yellow too, so which half Tab picked was still unclear (and the edge
+  the halves share came out orange). Now the half that stays is tinted and outlined like the
+  selection, the cutting face is cyan, and the half cut away is a faint white outline. The
+  brush's own selection tint is hidden while a cut is shown (`selFaceOf` returns -2 for it), so
+  Tab moves the red from one half to the other. The page draws the editor's tinted faces with
+  `EDFILL` / drawEdFill (the line program, as the level script's trigger boxes).
+- A cut through two points stood through the eye: along the line as seen on the screen, so
+  across a cube's top from an angle it slanted down through the cube. It now stands square to
+  the face the first point was clicked on (straight down from a top face), and the
+  **2 points** button switches back to *through the eye* (kept in the browser's storage). A
+  third point still overrides both: the cut passes through all three. The panel and tooltip
+  say so.
+
+## Map Editor: the eyedropper takes, the Texture tool holds (November 2026)
+
+- The eyedropper's button stayed green after Esc or a second click (it showed "holding" too,
+  while the Texture box kept the texture taken), and what it took kept being laid by every
+  later click with nothing to show it or stop it. The button is now green only while it picks
+  (while the cursor is the pipette). Taking only puts the texture in the Texture box (it no
+  longer goes on the selection or switches tools); with the Texture tool, the texture and its
+  tiling are held (`ED.hold`), and the panel shows **Holding** *texture* with its scale,
+  rotate and shift and a **Let go** button. Each click lays it until Let go, Esc or another
+  tool. Without one held, a Texture tool click only selects (the face, or the brush with
+  Shift). Alt+click, Browse and tool textures hold what they take too.
+- The Texture box, Browse, tool textures and the eyedropper show only with Draw brush,
+  Texture and Terrain, the tools that use a texture. A face Clip cuts gets the brush's own most
+  used texture (it had the Texture box's).

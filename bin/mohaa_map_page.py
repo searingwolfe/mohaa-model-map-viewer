@@ -4612,6 +4612,7 @@ function draw(){
   drawShowSky(VP);
   drawSunFlare(VP);
   drawSelection(VP);
+  drawEdFill(VP);
   drawLines(VP);
   drawOutlines(VP);
   drawShowTris(VP);
@@ -8051,10 +8052,15 @@ function primsOfEnt(ei){
   if(!ENTPRIMS){ENTPRIMS=MAP.ents.map(()=>[]);SC.prims.forEach((p,pi)=>ENTPRIMS[p.ent].push(pi));}
   return ENTPRIMS[ei];
 }
+// selFaceOf(pi): the one face (side) of that brush the selection shows, -1 for all of it, or
+// -2 for none (the Map Editor draws it itself: Clip tints the half that stays). The Map
+// Editor's Texture tool sets it, so a click there selects a face, not the brush.
+let selFaceOf=null;
 function rebuildSelection(){
   if(!gl)return;
   const tri=[],edg=[];
-  const addPrim=pi=>{const p=SC.prims[pi];for(let f=p.f0;f<p.f1;f++){if(faceVis&&!faceVis[f])continue;
+  const addPrim=pi=>{const p=SC.prims[pi],fo=selFaceOf?selFaceOf(pi):-1;if(fo===-2)return;for(let f=p.f0;f<p.f1;f++){if(faceVis&&!faceVis[f])continue;
+    if(fo>=0&&SC.faceSide[f]!==fo)continue;
     const a=SC.faceI0[f],c=SC.faceIN[f];for(let k=a;k<a+c;k++)tri.push(SC.tri[k]);
     const ea=SC.faceE0[f],ec=SC.faceEN[f];for(let k=ea;k<ea+ec;k++)edg.push(SC.edge[k]);}};
   const selE=selectedEnts();
@@ -10890,6 +10896,21 @@ function modTrimKey(e){
 // green with its edges, the way the map's own trigger brushes look; tinted with the
 // selection's colour while it is selected. Drawn with Modify's line program, behind the map's
 // surfaces like them; pickScriptTrigs makes their sides clickable.
+// Translucent triangles the Map Editor asks for (Clip: the half that stays, tinted like the
+// selection, and the cutting face): EDFILL holds 10 floats a vertex (point, the point again,
+// colour), as drawScriptTrigs builds its boxes, drawn with the same line program.
+let EDFILL=null;
+function drawEdFill(vp){
+  if(!gl||!EDFILL||!EDFILL.length)return;
+  if(!PMODT)PMODT=compile(VS_GVL,FS_LINE);
+  if(!B.edfBuf){B.edfBuf=gl.createBuffer();B.vEdf=gvLineVAO(B.edfBuf,true);gl.bindVertexArray(null);}
+  gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LEQUAL);gl.depthMask(false);gl.disable(gl.CULL_FACE);
+  gl.enable(gl.BLEND);gl.blendFuncSeparate(gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA,gl.ONE,gl.ONE_MINUS_SRC_ALPHA);
+  gvUniforms(PMODT,vp,0.0015);
+  gl.bindVertexArray(B.vEdf);gl.bindBuffer(gl.ARRAY_BUFFER,B.edfBuf);
+  gl.bufferData(gl.ARRAY_BUFFER,EDFILL,gl.STREAM_DRAW);gl.drawArrays(gl.TRIANGLES,0,EDFILL.length/10);
+  gl.bindVertexArray(null);gl.disable(gl.BLEND);gl.depthMask(true);
+}
 let SCRTRIGS=null;
 function drawScriptTrigs(vp){
   if(!gl||(hiddenMask&C_SCRTRIG))return;

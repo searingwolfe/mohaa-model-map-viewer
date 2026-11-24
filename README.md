@@ -631,29 +631,35 @@ way here.
     `targetname` or `target`. One Undo (Alt+Z) takes the whole copy away. Brushes and
     entities (path nodes, spawns ...) aren't copied at once: with only entities selected,
     Alt+C is Modify's Copy.
-  * **✂ Clip**: click the brush, then two points: it is cut along the line between them
-    as you see it on screen (a third point tilts the cut). **Enter** cuts, **Shift+Enter**
-    splits it into two brushes, **Tab** keeps the other side. Cuts make any shape: bevels,
-    wedges, stairs, roofs. Ctrl+click picks another brush.
-  * **▦ Texture**: click a face to give it the Texture box's texture (Shift+click: every
-    face of the brush; patches and terrain patches too). **Alt+click** takes the texture
-    under the mouse into the box. **Ctrl+click** picks a face, then **Fit** (once across
-    the face), turn ⟲ ⟳, flip, shift, scale up or down, or **Natural** (reset). What a click
-    will paint is outlined in yellow under the mouse: the face, the whole brush while Shift
-    is held, the whole patch, or the terrain patch (512 x 512 units).
-  * **Eyedropper** (the pipette button beside *- tool textures -*, with any tool): click
-    it, then click any surface in the view (a brush face, a patch, a terrain patch or a
-    `.bsp`'s own surface) and its texture goes into the Texture box, then the **▦ Texture**
-    tool comes on (terrain *paint texture* stays on) so each click lays it. The surface it
-    will take from is outlined in yellow under the mouse (in place of the red selection
-    outline where they meet). A drag still turns the camera; **Esc** or the button again
-    cancels.
-  * **The Texture box follows the selection**: selecting a brush, patch or terrain block
-    puts its texture in the box (the face clicked, else the brush's most used texture).
-    A texture chosen with **Browse...**, *- tool textures -* or the eyedropper goes on what
-    is selected too: every face of a brush, a patch, or every patch of a terrain block
-    (one Undo). With the **▦ Texture** tool or terrain *paint texture* on, the box is the
-    paint and stays as you set it.
+  * **✂ Clip**: click the brush, then two points: the cut runs through them straight
+    through the brush from the face the first point is on (two points across a cube's top cut
+    it straight down). The **2 points** button switches to *through the eye*: along the line
+    as you see it on screen, so from an angle it slants. A third point overrides both: the cut
+    passes through all three (one on another face tilts it, e.g. low on the far side for a
+    slope). With Grid on, the points snap to the grid on the face clicked; a dim green cross
+    shows where the next one will land. The half that stays is tinted red like the selection,
+    the cutting face is cyan and the half cut away a faint outline; **Tab** moves the red to
+    the other half. **Enter** cuts, **Shift+Enter** splits it into two brushes. Cuts make any
+    shape: bevels, wedges, stairs, roofs. Ctrl+click picks another brush.
+  * **▦ Texture**: a click selects the face it lands on (Shift+click: the whole brush), for
+    **Fit** (once across the face), turn ⟲ ⟳, flip, shift, scale up or down, or **Natural**
+    (reset). To lay a texture, take one with the eyedropper or **Alt+click** (or choose one
+    with **Browse...** or *- tool textures -*, which also puts it on the face selected): the
+    panel then shows **Holding** *texture* with its scale, rotate and shift, and each click
+    lays it on the face clicked (Shift+click: every face of the brush; patches and terrain
+    patches too) until **Let go** or **Esc**. **Ctrl+click** selects without laying. What a
+    click will select or lay is outlined in yellow under the mouse: the face, the whole brush
+    while Shift is held, the whole patch, or the terrain patch (512 x 512 units).
+  * **Texture box and eyedropper** (with Draw brush, Texture and Terrain, the tools that
+    use a texture): the box is the texture new brushes get, the one the Texture tool holds,
+    and terrain *paint texture*'s paint. The **eyedropper** (the pipette beside *- tool
+    textures -*, green while it picks) takes the texture of the next surface clicked (a
+    brush face, a patch, a terrain patch or a `.bsp`'s own surface) into the box; with the
+    Texture tool it is held, with its tiling, to lay with each click. The surface it will
+    take from is outlined in yellow under the mouse. A drag still turns the camera; **Esc**
+    or the button again cancels. Selecting a brush, patch or terrain block puts its texture
+    in the box (the face clicked, else the brush's most used texture). A face cut with Clip
+    gets the brush's own most used texture.
   * **Angles** (above Exact values, with brushes or patches selected): a turn typed in as
     pitch, yaw and roll, then **Turn**; or with the mouse: **⟳ Rotate** draws a circle round
     the selection facing you (drag inside it to turn it about the line you look along,
