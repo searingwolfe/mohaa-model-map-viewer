@@ -2815,6 +2815,9 @@ def build_payload(skd,anims_data,base_channels,referenced,convention,wT_payload,
                 # base-stage `tcmod scroll` (RB_CalcScrollTexCoords, tr_shade_calc.c:1558-1577):
                 # the Opel truck's tyre tread
                 if ent.get("texscroll"): sr["texscroll"]=ent["texscroll"]
+                # nextbundle layer and rgbGen / alphaGen dot (mohaa_textures write_textures_manifest)
+                for _fk in ("mt","rgbdot","adot"):
+                    if ent.get(_fk): sr[_fk]=ent[_fk]
                 if ent.get("clamp"): sr["clamp"]=True
                 # alphaGen distFade LOD window (tr_shader.c:1168-1194): {near, range, inv}, e.g. swapping
                 # a tree's leaf cards for its billboard stand-in.
@@ -4102,6 +4105,15 @@ function mkSurfTex(s){
   if(s.frames&&s.frames.length>1){
     rec.frames=s.frames.map(u=>{const f=new Image();f.onload=()=>{f._ok=1;draw();};f.src=u;return f;});
   }
+  // nextbundle: the stage's second texture with its own tcmods, multiplied with the base (or
+  // added: `nextbundle add`). WebGL samples both; the 2D renderer draws `bake`, the two
+  // multiplied at time zero (one texture per triangle there).
+  if(s.mt&&s.mt.tex){const m=s.mt,mi=new Image();mi.onload=()=>{mi._ok=1;draw();};mi._clamp=!!m.clamp;mi.src=m.tex;
+    rec.mt={img:mi,add:m.env==='add',scroll:m.scroll||null,rotate:m.rotate||0,scale:m.scale||[1,1],bake:null};
+    if(m.bake){const bi=new Image();bi.onload=()=>{bi._ok=1;draw();};bi.src=m.bake;rec.mt.bake=bi;}}
+  // rgbGen / alphaGen dot / oneMinusDot: [min, max, oneMinus]
+  if(s.rgbdot)rec.rgbdot=s.rgbdot;
+  if(s.adot)rec.adot=s.adot;
   if(s.pulse){
     const pim=new Image();pim.onload=()=>{pim._ok=1;draw();};pim.src=s.pulse.tex;
     const w=s.pulse.wave||['sin',0.25,0.25,0,0.75];
@@ -4132,10 +4144,34 @@ let _effStarted=false;
 function startEffLoop(){if(_effStarted)return;_effStarted=true;requestAnimationFrame(effLoop);}
 // True when the host or an attachment has a surface that needs the effect clock.
 function liveEffectSurf(){return LTEX.some(t=>t&&(t.additive||t.autosprite||t.autosprite2
-  ||t.pulse||t.texrotate||t.texscroll||(t.frames&&t.frames.length>1)));}
+  ||t.pulse||t.texrotate||t.texscroll||(t.mt&&(t.mt.scroll||t.mt.rotate))||(t.frames&&t.frames.length>1)));}
 // Surfaces with a base-stage `tcmod rotate` (propeller discs) need the effect clock
 // running even when the model isn't playing.
-const hasTexRot=DATA.surfRanges.some(s=>s.texrotate||s.texscroll);
+const hasTexRot=DATA.surfRanges.some(s=>s.texrotate||s.texscroll||(s.mt&&(s.mt.scroll||s.mt.rotate)));
+// rgbGen / alphaGen dot (RB_CalcRGBFromDot / RB_CalcAlphaFromDot, tr_shade_calc.c:1019-1100):
+// per vertex, f = (N.V)^2 (1 - that for oneMinusDot), N the vertex normal and V the direction
+// to the eye; the value is min + (max-min)*f, clamped to [0,1]. The eye in model space is
+// the orbit camera's (project()): centre minus dist along the view axis.
+function eyePos(){const ce=Math.cos(pitch),se=Math.sin(pitch),ca=Math.cos(yaw),sa=Math.sin(yaw);
+  return[cx+dist*ce*sa,cy-dist*se,cz-dist*ce*ca];}
+function dotGen(g,nx,ny,nz,px,py,pz,E){
+  let vx=E[0]-px,vy=E[1]-py,vz=E[2]-pz;const vl=Math.hypot(vx,vy,vz)||1;
+  const nl=Math.hypot(nx,ny,nz)||1;let d=(nx*vx+ny*vy+nz*vz)/(vl*nl);d*=d;if(g[2])d=1-d;
+  return Math.min(1,Math.max(0,(g[1]-g[0])*d+g[0]));}
+// Smooth vertex normals of the surfaces that use a dot gen (area-weighted face normals, from
+// the live skinned vertices), so a beam cone shades smoothly like the engine's per-vertex
+// colours. Other vertices stay zero. Reused buffer, rebuilt each frame those surfaces draw.
+let _dotN=null;
+function dotNormals(){
+  const V=model,n=V.length;if(!_dotN||_dotN.length!==n)_dotN=new Float32Array(n);else _dotN.fill(0);
+  const N=_dotN;let any=false;
+  for(let si=0;si<LSR.length;si++){const t=LTEX[si];if(!(t&&(t.rgbdot||t.adot)))continue;any=true;
+    const s=LSR[si];
+    for(let k=s.start;k<s.end;k++){const tr=LT[k],a=tr[0]*3,b=tr[1]*3,c=tr[2]*3;
+      const ux=V[b]-V[a],uy=V[b+1]-V[a+1],uz=V[b+2]-V[a+2],wx=V[c]-V[a],wy=V[c+1]-V[a+1],wz=V[c+2]-V[a+2];
+      const fx=uy*wz-uz*wy,fy=uz*wx-ux*wz,fz=ux*wy-uy*wx;
+      for(const q of [a,b,c]){N[q]+=fx;N[q+1]+=fy;N[q+2]+=fz;}}}
+  return any?N:null;}
 // World-space centre + radius of a surface (for autosprite billboarding), from the live
 // skinned verts so it follows animation.
 function surfCenterRadius(si){const s=LSR[si];const V=model;
@@ -5948,6 +5984,8 @@ function draw2DScene(){ctx.clearRect(0,0,W,H);
    // alphaGen distFade sampled once per surface per frame (the engine does it per vertex,
    // tr_shade.c:1098-1151); the surface centre is a cheap equivalent.
    const _dfa=[];
+   // dot gens: smooth vertex normals and the eye, once per frame
+   const _DN=dotNormals(),_EYE=_DN?eyePos():null;
    for(const o of order){const t=o[1],a=o[2],b=o[3],c=o[4],tr=T[t];
      let si=0;for(let q=0;q<sr.length;q++){if(t>=sr[q].start&&t<sr[q].end){si=q;break;}}
      if(hiddenSurf.has(si))continue;   // surface +nodraw (server anim command) - not drawn
@@ -5971,18 +6009,23 @@ function draw2DScene(){ctx.clearRect(0,0,W,H);
      const vx=V[i2*3]-V[i0*3],vy=V[i2*3+1]-V[i0*3+1],vz=V[i2*3+2]-V[i0*3+2];
      let nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;const nn=Math.hypot(nx,ny,nz)||1;
      let dot=(nx*L[0]+ny*L[1]+nz*L[2])/(nn*Ln);const sh=0.35+0.65*Math.abs(dot);
-     const add=tex&&tex.additive;const img=tex?curImg(tex):null;
+     const add=tex&&tex.additive;
+     // nextbundle surfaces draw `bake` (both textures multiplied at time zero) here
+     const img=tex?((tex.mt&&tex.mt.bake&&tex.mt.bake._ok)?tex.mt.bake:curImg(tex)):null;
+     const _mtb=!!(tex&&tex.mt&&img===tex.mt.bake);
      const textured=view.tex&&!fast&&img&&UV&&UV.length;
      // Backface cull: the painter's centroid sort can't order a long convex shell, so at
      // grazing angles back faces (the inside of a cylinder) bleed through. Dropping back-facing
-     // tris leaves the front half, which never self-occludes. Skipped for additive, pulse-only,
-     // autosprite and two-sided surfaces and for pure wireframe. MOHAA's front faces run
+     // tris leaves the front half, which never self-occludes. Skipped for pulse-only,
+     // autosprite and two-sided surfaces and for pure wireframe. An additive stage is culled
+     // like any other unless its shader says `cull none` (the engine culls by shader, not by
+     // blend): a one-sided beam cone (beam, opellights) otherwise adds its far side on top. MOHAA's front faces run
      // clockwise on screen (GL_Cull culls GL_FRONT with the default CCW front face,
      // tr_backend.c:137-175), which is positive area on this y-down screen, so _a2 < 0 is
      // back-facing. The two-sided flag is also read from DATA.surfRanges, since surfTex is
      // null without a loaded texture.
      const _two = (tex&&tex.twosided) || (sr[si]&&sr[si].twosided);
-     if(!add&&!(tex&&(tex.pulseOnly||tex.autosprite))&&!_two&&(view.tex||view.mesh)){
+     if(!(tex&&(tex.pulseOnly||tex.autosprite))&&!_two&&(view.tex||view.mesh)){
        const _a2=(b[0]-a[0])*(c[1]-a[1])-(c[0]-a[0])*(b[1]-a[1]);
        if(_a2<0)continue;}
      if(textured){
@@ -5994,13 +6037,13 @@ function draw2DScene(){ctx.clearRect(0,0,W,H);
        // (single drawImage, see _spin) and skip the flat-shade pass, which would otherwise fill
        // the transparent corners with a grey square.
        let _u0=UV[i0*2],_v0=UV[i0*2+1],_u1=UV[i1*2],_v1=UV[i1*2+1],_u2=UV[i2*2],_v2=UV[i2*2+1];
-       if(tex&&tex.texrotate){const _th=-tex.texrotate*effT*Math.PI/180.0,_c=Math.cos(_th),_s=Math.sin(_th);
+       if(tex&&tex.texrotate&&!_mtb){const _th=-tex.texrotate*effT*Math.PI/180.0,_c=Math.cos(_th),_s=Math.sin(_th);
          const _rot=(u,v)=>{const du=u-0.5,dv=v-0.5;return[_c*du-_s*dv+0.5,_s*du+_c*dv+0.5];};
          let _r;_r=_rot(_u0,_v0);_u0=_r[0];_v0=_r[1];_r=_rot(_u1,_v1);_u1=_r[0];_v1=_r[1];_r=_rot(_u2,_v2);_u2=_r[0];_v2=_r[1];}
        // Base-stage `tcmod scroll <s> <t>` (RB_CalcScrollTexCoords, tr_shade_calc.c:1558-1577):
        // s,t per second added to the texcoords, wrapped to [0,1) (the tyre tread). The repeat
        // pattern below tiles it.
-       if(tex&&tex.texscroll){let _ss=tex.texscroll[0]*effT,_st=tex.texscroll[1]*effT;_ss-=Math.floor(_ss);_st-=Math.floor(_st);
+       if(tex&&tex.texscroll&&!_mtb){let _ss=tex.texscroll[0]*effT,_st=tex.texscroll[1]*effT;_ss-=Math.floor(_ss);_st-=Math.floor(_st);
          _u0+=_ss;_u1+=_ss;_u2+=_ss;_v0+=_st;_v1+=_st;_v2+=_st;}
        const p0x=_u0*iw,p0y=_v0*ih,p1x=_u1*iw,p1y=_v1*ih,p2x=_u2*iw,p2y=_v2*ih;
        const e1x=p1x-p0x,e1y=p1y-p0y,e2x=p2x-p0x,e2y=p2y-p0y;
@@ -6028,8 +6071,17 @@ function draw2DScene(){ctx.clearRect(0,0,W,H);
          if(_atk){const _v=_atestVariant(img,_atk,_fa);
            if(_v===undefined)_drop=true;               // fully eroded - engine draws nothing
            else if(_v){_src=_v;_hard=true;}}           // null -> not decoded yet, use raw img
+         // rgbGen / alphaGen dot, the triangle's three vertex values averaged. Additive stages
+         // (the beams) take the colour as alpha, since 'lighter' adds src*alpha.
+         let _ga=_fa;
+         if(_DN&&tex&&(tex.rgbdot||tex.adot)){let _cr=0,_ar=0;
+           for(const q of [i0,i1,i2]){const q3=q*3;
+             if(tex.rgbdot)_cr+=dotGen(tex.rgbdot,_DN[q3],_DN[q3+1],_DN[q3+2],V[q3],V[q3+1],V[q3+2],_EYE);
+             if(tex.adot)_ar+=dotGen(tex.adot,_DN[q3],_DN[q3+1],_DN[q3+2],V[q3],V[q3+1],V[q3+2],_EYE);}
+           if(tex.adot)_ga*=_ar/3;
+           if(tex.rgbdot&&add)_ga*=_cr/3;}
          ctx.save();
-         if(_fa<1&&!_hard)ctx.globalAlpha=_fa;            // blended stages ramp; tested ones do not
+         if(_ga<1&&!_hard)ctx.globalAlpha=_ga;            // blended stages ramp; tested ones do not
          if(add)ctx.globalCompositeOperation='lighter';   // blendfunc add: flame glows, black->transparent
          ctx.setTransform(A00*DPR,A10*DPR,A01*DPR,A11*DPR,dx*DPR,dy*DPR);
          ctx.beginPath();ctx.moveTo(p0x,p0y);ctx.lineTo(p1x,p1y);ctx.lineTo(p2x,p2y);ctx.closePath();
@@ -7215,7 +7267,7 @@ function attGeomFail(key,msg){
 // build_payload writes for host surfaces, so once an attachment is in LSR/LTEX every draw
 // path treats it like the host's own surfaces.
 const ATT_SR_KEYS=['additive','autosprite','autosprite2','lightglow','twosided',
-                   'clamp','texrotate','texscroll','fps','frames','atest','distfade','pulse'];
+                   'clamp','texrotate','texscroll','mt','rgbdot','adot','fps','frames','atest','distfade','pulse'];
 function attRebuild(){
   // Rebuild the live arrays: the host geometry, then every ready attachment appended as extra
   // surfaces with indices shifted past the host's vertices.
@@ -8717,19 +8769,28 @@ function initGLRenderer(){
  // The transform is affine, so rotating per-vertex then interpolating vUV is exact.
  // uTexScr: a base-stage `tcmod scroll` offset (RB_CalcScrollTexCoords, tr_shade_calc.c:1558-1577),
  // added after the spin; (0,0) for every other surface.
- const VSRC='attribute vec3 aPos;attribute vec2 aUV;uniform mat4 uMVP;uniform vec3 uTexRot;uniform vec2 uTexScr;'+
-   'varying vec3 vPos;varying vec2 vUV;'+
-   'void main(){vPos=aPos;vec2 uv=aUV;'+
+ // uTexRot2/uTexScr2/uTexScl2: the nextbundle texture's own tcmods (scale, then spin, then
+ // scroll), giving vUV2. aNrm: smooth vertex normals for the dot gens (zero elsewhere).
+ const VSRC='attribute vec3 aPos;attribute vec2 aUV;attribute vec3 aNrm;uniform mat4 uMVP;uniform vec3 uTexRot;uniform vec2 uTexScr;'+
+   'uniform vec3 uTexRot2;uniform vec2 uTexScr2;uniform vec2 uTexScl2;'+
+   'varying vec3 vPos;varying vec2 vUV;varying vec2 vUV2;varying vec3 vNrm;'+
+   'void main(){vPos=aPos;vNrm=aNrm;vec2 uv=aUV;'+
    ' if(uTexRot.z>0.5){vec2 d=uv-vec2(0.5);'+
    '   uv=vec2(uTexRot.x*d.x-uTexRot.y*d.y, uTexRot.y*d.x+uTexRot.x*d.y)+vec2(0.5);}'+
-   ' vUV=uv+uTexScr;gl_Position=uMVP*vec4(aPos,1.0);}';
+   ' vUV=uv+uTexScr;'+
+   ' vec2 u2=aUV*uTexScl2;'+
+   ' if(uTexRot2.z>0.5){vec2 d=u2-vec2(0.5);'+
+   '   u2=vec2(uTexRot2.x*d.x-uTexRot2.y*d.y, uTexRot2.y*d.x+uTexRot2.x*d.y)+vec2(0.5);}'+
+   ' vUV2=u2+uTexScr2;gl_Position=uMVP*vec4(aPos,1.0);}';
  // uMode: 0 flat-shaded palette fill, 1 textured + shade, 2 additive texture (blendfunc add),
  //        3 pulse overlay (additive, scaled by the wave glow), 4 unshaded lines (grid, wire).
  // Shading matches the 2D path: sh = 0.35 + 0.65*|dot(N,L)|, and textured surfaces are
  // darkened by rgb*(1-(1-sh)*0.55).
  const FSRC=(isGL2?'':'#extension GL_OES_standard_derivatives : enable\n')+
-   'precision mediump float;varying vec3 vPos;varying vec2 vUV;'+
+   'precision mediump float;varying vec3 vPos;varying vec2 vUV;varying vec2 vUV2;varying vec3 vNrm;'+
    'uniform int uMode;uniform vec3 uColor;uniform float uAlpha;uniform float uAtest;uniform sampler2D uTex;'+
+   'uniform sampler2D uTex2;uniform int uMT;uniform vec4 uRgbDot;uniform vec4 uADot;uniform vec3 uEye;'+
+   'float dotGen(vec4 g,float d){return clamp((g.y-g.x)*(g.z>0.5?1.0-d:d)+g.x,0.0,1.0);}'+
    'void main(){'+
    ' if(uMode==4){gl_FragColor=vec4(uColor,uAlpha);return;}'+
    ' vec3 N=cross(dFdx(vPos),dFdy(vPos));float nl=length(N);'+
@@ -8737,6 +8798,15 @@ function initGLRenderer(){
    ' vec3 L=normalize(vec3(0.4,0.8,0.45));float s=0.35+0.65*abs(dot(N,L));'+
    ' if(uMode==0){gl_FragColor=vec4(uColor*s,1.0);return;}'+
    ' vec4 t=texture2D(uTex,vUV);'+
+   // nextbundle: GL_MODULATE multiplies the two textures; GL_ADD adds colour, multiplies alpha
+   ' if(uMT==1)t*=texture2D(uTex2,vUV2);'+
+   ' else if(uMT==2){vec4 t2=texture2D(uTex2,vUV2);t=vec4(t.rgb+t2.rgb,t.a*t2.a);}'+
+   // dot gens: (N.V)^2 with the smooth vertex normal (the face normal if there is none);
+   // an rgbGen replaces the stage's lighting, so it also stands in for the shade term
+   ' if(uRgbDot.w>0.5||uADot.w>0.5){vec3 n=length(vNrm)>0.0?normalize(vNrm):N;'+
+   '   float d=dot(n,normalize(uEye-vPos));d*=d;'+
+   '   if(uRgbDot.w>0.5){t.rgb*=dotGen(uRgbDot,d);s=1.0;}'+
+   '   if(uADot.w>0.5)t.a*=dotGen(uADot,d);}'+
    // uAlpha carries alphaGen distFade; uAtest carries the alphaFunc threshold (0 = none).
    // Tested stages resolve to full opacity, matching the engine's binary discard.
    ' if(uMode==1){float A=t.a*uAlpha;'+
@@ -8758,12 +8828,17 @@ function initGLRenderer(){
  const prog=gl.createProgram();gl.attachShader(prog,vsh);gl.attachShader(prog,fsh);gl.linkProgram(prog);
  if(!gl.getProgramParameter(prog,gl.LINK_STATUS))return null;
  gl.useProgram(prog);
- const aPos=gl.getAttribLocation(prog,'aPos'),aUV=gl.getAttribLocation(prog,'aUV');
+ const aPos=gl.getAttribLocation(prog,'aPos'),aUV=gl.getAttribLocation(prog,'aUV'),aNrm=gl.getAttribLocation(prog,'aNrm');
  const uMVP=gl.getUniformLocation(prog,'uMVP'),uMode=gl.getUniformLocation(prog,'uMode'),
        uColor=gl.getUniformLocation(prog,'uColor'),uAlpha=gl.getUniformLocation(prog,'uAlpha'),
        uTex=gl.getUniformLocation(prog,'uTex'),uTexRot=gl.getUniformLocation(prog,'uTexRot'),uTexScr=gl.getUniformLocation(prog,'uTexScr'),
        uAtest=gl.getUniformLocation(prog,'uAtest');
- gl.uniform1i(uTex,0);
+ const uTex2=gl.getUniformLocation(prog,'uTex2'),uMT=gl.getUniformLocation(prog,'uMT'),
+       uTexRot2=gl.getUniformLocation(prog,'uTexRot2'),uTexScr2=gl.getUniformLocation(prog,'uTexScr2'),
+       uTexScl2=gl.getUniformLocation(prog,'uTexScl2'),uRgbDot=gl.getUniformLocation(prog,'uRgbDot'),
+       uADot=gl.getUniformLocation(prog,'uADot'),uEye=gl.getUniformLocation(prog,'uEye');
+ const nrmBuf=gl.createBuffer();
+ gl.uniform1i(uTex,0);gl.uniform1i(uTex2,1);
  gl.enableVertexAttribArray(aPos);
  // vertex positions = the live skinned model; re-uploaded whenever skin() runs
  const posBuf=gl.createBuffer();
@@ -8849,7 +8924,22 @@ function initGLRenderer(){
    else gl.uniform3f(uTexRot,1.0,0.0,0.0);
    const sc=LTEX[si]&&LTEX[si].texscroll;
    if(sc){let a=sc[0]*effT,b=sc[1]*effT;gl.uniform2f(uTexScr,a-Math.floor(a),b-Math.floor(b));}
-   else gl.uniform2f(uTexScr,0.0,0.0);}
+   else gl.uniform2f(uTexScr,0.0,0.0);
+   setStageFx(LTEX[si]);}
+ // The nextbundle texture (unit 1) with its tcmods, and the dot gens, for one surface.
+ function setStageFx(t){
+   const m=t&&t.mt;
+   if(m&&m.img&&m.img._ok){gl.activeTexture(gl.TEXTURE1);gl.bindTexture(gl.TEXTURE_2D,texFor(m.img));gl.activeTexture(gl.TEXTURE0);
+     gl.uniform1i(uMT,m.add?2:1);
+     gl.uniform2f(uTexScl2,(m.scale&&m.scale[0])||1,(m.scale&&m.scale[1])||1);
+     if(m.rotate){const th=-m.rotate*effT*Math.PI/180.0;gl.uniform3f(uTexRot2,Math.cos(th),Math.sin(th),1.0);}
+     else gl.uniform3f(uTexRot2,1.0,0.0,0.0);
+     if(m.scroll){let a=m.scroll[0]*effT,b=m.scroll[1]*effT;gl.uniform2f(uTexScr2,a-Math.floor(a),b-Math.floor(b));}
+     else gl.uniform2f(uTexScr2,0.0,0.0);}
+   else gl.uniform1i(uMT,0);
+   const g=t&&t.rgbdot,h=t&&t.adot;
+   gl.uniform4f(uRgbDot,g?g[0]:0,g?g[1]:1,g&&g[2]?1:0,g?1:0);
+   gl.uniform4f(uADot,h?h[0]:0,h?h[1]:1,h&&h[2]?1:0,h?1:0);}
  function hexRGB(h){if(!h)return[0,0,0];h=(''+h).trim();
    if(h[0]==='#'){if(h.length>=7)return[parseInt(h.slice(1,3),16)/255,parseInt(h.slice(3,5),16)/255,parseInt(h.slice(5,7),16)/255];
      if(h.length>=4)return[parseInt(h[1]+h[1],16)/255,parseInt(h[2]+h[2],16)/255,parseInt(h[3]+h[3],16)/255];}
@@ -8866,7 +8956,11 @@ function initGLRenderer(){
    gl.vertexAttribPointer(aPos,3,gl.FLOAT,false,0,0);
    if(hasUV&&aUV>=0){gl.enableVertexAttribArray(aUV);gl.bindBuffer(gl.ARRAY_BUFFER,uvBuf);
      gl.vertexAttribPointer(aUV,2,gl.FLOAT,false,0,0);}
-   else if(aUV>=0){gl.disableVertexAttribArray(aUV);gl.vertexAttrib2f(aUV,0,0);}}
+   else if(aUV>=0){gl.disableVertexAttribArray(aUV);gl.vertexAttrib2f(aUV,0,0);}
+   const DN=aNrm>=0?dotNormals():null;
+   if(DN){gl.enableVertexAttribArray(aNrm);gl.bindBuffer(gl.ARRAY_BUFFER,nrmBuf);
+     gl.bufferData(gl.ARRAY_BUFFER,DN,gl.DYNAMIC_DRAW);gl.vertexAttribPointer(aNrm,3,gl.FLOAT,false,0,0);}
+   else if(aNrm>=0){gl.disableVertexAttribArray(aNrm);gl.vertexAttrib3f(aNrm,0,0,0);}}
  function render(){
    gl.viewport(0,0,glcv.width,glcv.height);
    const bg=hexRGB(TH.bg);
@@ -8878,6 +8972,7 @@ function initGLRenderer(){
    gl.useProgram(prog);
    gl.uniformMatrix4fv(uMVP,false,buildMVP(nearP,farP));
    gl.uniform3f(uTexRot,1.0,0.0,0.0);gl.uniform2f(uTexScr,0.0,0.0);   // default: no texcoord spin (set per prop surface below)
+   setStageFx(null);{const E=eyePos();gl.uniform3f(uEye,E[0],E[1],E[2]);}
    // attRebuild can redraw before it calls rebuildSurfaces, so check here too.
    if(bufLSR!==LSR)resyncSurfaces();
    if(dirty){gl.bindBuffer(gl.ARRAY_BUFFER,posBuf);gl.bufferData(gl.ARRAY_BUFFER,model,gl.DYNAMIC_DRAW);dirty=false;}
@@ -8886,6 +8981,7 @@ function initGLRenderer(){
    setCull(false);gl.depthMask(false);
    gl.bindBuffer(gl.ARRAY_BUFFER,gridBuf);gl.vertexAttribPointer(aPos,3,gl.FLOAT,false,0,0);
    if(aUV>=0){gl.disableVertexAttribArray(aUV);gl.vertexAttrib2f(aUV,0,0);}
+   if(aNrm>=0){gl.disableVertexAttribArray(aNrm);gl.vertexAttrib3f(aNrm,0,0,0);}
    const gc=hexRGB(TH.grid);
    gl.uniform1i(uMode,4);gl.uniform3f(uColor,gc[0],gc[1],gc[2]);gl.uniform1f(uAlpha,1);
    gl.drawArrays(gl.LINES,0,gridN);
@@ -8908,9 +9004,9 @@ function initGLRenderer(){
      const _fa=_cc?distFadeAlpha(tex,_cc):1;
      if(_fa<=0.004)continue;                            // past near+range the engine draws nothing
      const _atv=(tex&&tex.atest==='ge128')?0.5:((tex&&tex.atest==='gt0')?0.004:0);
-     // same cull exemptions as 2D: additive / pulse-only ghosts / autosprite planes /
-     // two-sided surfaces, and no culling at all in pure-wireframe view
-     const cull=!add&&!(tex&&(tex.pulseOnly||tex.autosprite))&&
+     // same cull exemptions as 2D: pulse-only ghosts / autosprite planes / two-sided
+     // surfaces, and no culling at all in pure-wireframe view (additive stages cull by shader)
+     const cull=!(tex&&(tex.pulseOnly||tex.autosprite))&&
                 !((tex&&tex.twosided)||(s&&s.twosided))&&(view.tex||view.mesh);
      if(textured){(add?adds:(tex.blend?blends:solid)).push({si:si,mode:add?2:1,img:img,cull:cull,fa:_fa,at:_atv});}
      else if(view.mesh&&!(tex&&tex.pulseOnly)){solid.push({si:si,mode:0,img:null,cull:cull,fa:_fa,at:0});}
@@ -8924,7 +9020,7 @@ function initGLRenderer(){
    const fill=d=>{setCull(d.cull);
      gl.uniform1i(uMode,d.mode);
      gl.uniform1f(uAlpha,d.fa===undefined?1:d.fa);gl.uniform1f(uAtest,d.at||0);
-     if(d.mode===0){const pc=hexRGB(palette[d.si%palette.length]);gl.uniform3f(uColor,pc[0],pc[1],pc[2]);gl.uniform3f(uTexRot,1.0,0.0,0.0);gl.uniform2f(uTexScr,0.0,0.0);}
+     if(d.mode===0){const pc=hexRGB(palette[d.si%palette.length]);gl.uniform3f(uColor,pc[0],pc[1],pc[2]);gl.uniform3f(uTexRot,1.0,0.0,0.0);gl.uniform2f(uTexScr,0.0,0.0);setStageFx(null);}
      else{gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,texFor(d.img));setTexRot(d.si);}
      const b=surfBufs[d.si];gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,b.tb);
      gl.drawElements(gl.TRIANGLES,b.tn,idxType,0);};
@@ -8937,12 +9033,12 @@ function initGLRenderer(){
    // additive stages after all solid geometry: depth-TESTED against it (an occluded
    // flame stays hidden) but never depth-written (glow does not block anything)
    gl.depthMask(false);gl.blendFunc(gl.ONE,gl.ONE);
-   gl.uniform1i(uMode,2);setCull(false);
-   for(const d of adds){
+   gl.uniform1i(uMode,2);
+   for(const d of adds){setCull(d.cull);
      gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,texFor(d.img));setTexRot(d.si);
      const b=surfBufs[d.si];gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,b.tb);
      gl.drawElements(gl.TRIANGLES,b.tn,idxType,0);}
-   gl.uniform3f(uTexRot,1.0,0.0,0.0);gl.uniform2f(uTexScr,0.0,0.0);   // pulse/wire passes below never spin their texcoords
+   gl.uniform3f(uTexRot,1.0,0.0,0.0);gl.uniform2f(uTexScr,0.0,0.0);setStageFx(null);   // pulse/wire passes below never spin their texcoords
    gl.uniform1i(uMode,3);
    for(const d of pulses){gl.uniform1f(uAlpha,d.g);
      gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,texFor(d.img));
@@ -9326,7 +9422,7 @@ def main(argv):
                 # one-sided card. The page's mkSurfTex understands all of these keys.
                 if isinstance(_du,dict):
                     for _k in ("additive","autosprite","autosprite2","lightglow","twosided",
-                               "clamp","texrotate","texscroll","fps","frames","atest","distfade","pulse","blend"):
+                               "clamp","texrotate","texscroll","mt","rgbdot","adot","fps","frames","atest","distfade","pulse","blend"):
                         _v=_du.get(_k)
                         if _v: _sr[_k]=_v
                     # `cull` arrives as a raw shader keyword on some entries and as `twosided` on others;

@@ -441,14 +441,18 @@ def parse_shader_props_file(txt):
                     _fn=_ma.group(1).lower()
                     if _fn in ("gt0","lt128","ge128"): _atest0=_fn
             _bp=re.split(r'(?im)^\s*nextbundle\b.*$', _s0, maxsplit=1)
+            # `nextbundle add` combines the two textures with GL_ADD, anything else GL_MODULATE
+            # (tr_shader.c ParseStage "nextBundle")
+            _benv=re.search(r'(?im)^\s*nextbundle[ \t]+(\S+)', _s0)
+            _benv="add" if (_benv and _benv.group(1).lower()=="add") else "mod"
             if len(_bp)>1:
-                _bmap=None; _bsc=None; _bscr=None; _brot=None; _scr_i=None; _sc_i=None
+                _bmap=None; _bsc=None; _bscr=None; _brot=None; _scr_i=None; _sc_i=None; _bclamp=False
                 for _li,_line in enumerate(_bp[1].splitlines()):
                     _l=_line.strip()
                     if _l.startswith("//"): continue
-                    _mm=re.match(r'(?i)(?:clamp)?map\s+(\S+)', _l)
-                    if _mm and _bmap is None and not _mm.group(1).startswith(("$","*")):
-                        _bmap=_mm.group(1).replace("\\","/")
+                    _mm=re.match(r'(?i)(clamp)?map\s+(\S+)', _l)
+                    if _mm and _bmap is None and not _mm.group(2).startswith(("$","*")):
+                        _bmap=_mm.group(2).replace("\\","/"); _bclamp=bool(_mm.group(1))
                     _ms=re.match(r'(?i)tcmod\s+scale\s+([\-\d.]+)\s+([\-\d.]+)', _l)
                     if _ms and _bsc is None:
                         try: _bsc=(float(_ms.group(1)), float(_ms.group(2))); _sc_i=_li
@@ -460,6 +464,8 @@ def parse_shader_props_file(txt):
                     if _brot is None: _brot=_tcmod_rotate(_l)
                 if _bmap:
                     _bundle0={"map":_bmap,"scale":list(_bsc or (1.0,1.0))}
+                    if _bclamp: _bundle0["clamp"]=True
+                    if _benv=="add": _bundle0["env"]="add"
                     # Base-stage `tcmod rotate` (RB_CalcRotateTexCoords, tr_shade_calc.c:1599-1631).
                     # vsssource/vsssource2 counter-rotate base and bundle to get the smoke churn.
                     for _line in _bp[0].splitlines():
@@ -482,6 +488,24 @@ def parse_shader_props_file(txt):
         # Base-stage `tcmod scroll <s> <t>` (RB_CalcScrollTexCoords, tr_shade_calc.c:1558-1577)
         # adds s,t per second to the texcoords: the Opel truck's tyre tread (`tcmod scroll 0.2 0`).
         _texrotate=None; _clampbase=False; _texscroll=None
+        # rgbGen / alphaGen dot and oneMinusDot (RB_CalcRGBFromDot and friends,
+        # tr_shade_calc.c:1019-1100): the colour (or alpha) is min + (max-min) * (N.V)^2,
+        # N the vertex normal and V the direction to the eye, clamped to 1 (oneMinusDot uses
+        # 1 - (N.V)^2). The Opel's headlight beams (`rgbGen dot 0 1.5`) fade as they turn
+        # edge-on; the lantern glass (`alphaGen oneMinusDot 0.2 1.2`) clears face-on.
+        _rgbdot=None; _adot=None
+        if _stlist:
+            for _kind,_rx in (("rgb",r'(?im)^\s*rgbgen\s+(dot|oneminusdot)\b[ \t]*([\-\d.]+)?[ \t]*([\-\d.]+)?'),
+                              ("alpha",r'(?im)^\s*alphagen\s+(dot|oneminusdot)\b[ \t]*([\-\d.]+)?[ \t]*([\-\d.]+)?')):
+                _md=re.search(_rx, _strip_line_comments(_stlist[0]))
+                if _md:
+                    try:
+                        _v=[float(_md.group(2)) if _md.group(2) else 0.0,
+                            float(_md.group(3)) if _md.group(3) else 1.0,
+                            1 if _md.group(1).lower()=="oneminusdot" else 0]
+                    except ValueError: MC.swallowed(); continue
+                    if _kind=="rgb": _rgbdot=_v
+                    else: _adot=_v
         if _stlist:
             _s0base=re.split(r'(?im)^\s*nextbundle\b.*$', _stlist[0], maxsplit=1)[0]
             for _line in _s0base.splitlines():
@@ -501,7 +525,7 @@ def parse_shader_props_file(txt):
         if not sawcull and name.startswith("cull_"): twosided=True
         # Record any shader with render hints, so emitter sprites can tell an explicit
         # additive=False apart from "no shader info".
-        if additive or autosprite or frames or sawblend or sawsprite or pulse or twosided or needs_alpha or _sawrgb or _atest0 or _bundle0 or _texrotate or _texscroll or _flaps:
+        if additive or autosprite or frames or sawblend or sawsprite or pulse or twosided or needs_alpha or _sawrgb or _atest0 or _bundle0 or _texrotate or _texscroll or _rgbdot or _adot or _flaps:
             rec={"additive":additive,"autosprite":autosprite,"autosprite2":autosprite2,"lightglow":lightglow,"frames":frames,"fps":fps,
                  "spritescale":spritescale,"sprite":sawsprite,"twosided":twosided,"sprite_type":sprite_type,
                  "pulse":pulse,"basevisible":basevisible,"needs_alpha":needs_alpha}
@@ -510,9 +534,11 @@ def parse_shader_props_file(txt):
             if _texrotate:
                 rec["texrotate"]=_texrotate
                 if _clampbase: rec["clamp"]=True
-            # not with a nextbundle: the page would move the whole surface, but the engine scrolls
-            # only the base bundle (opellights: the dust drifts, the beam stays)
-            if _texscroll and not _bundle0: rec["texscroll"]=_texscroll
+            # with a nextbundle this moves only the base texture: the page draws the bundle with
+            # its own texcoords (opellights: the dust drifts, the beam stays)
+            if _texscroll: rec["texscroll"]=_texscroll
+            if _rgbdot: rec["rgbdot"]=_rgbdot
+            if _adot: rec["adot"]=_adot
             if _flaps: rec["flap"]=_flaps
             # distfade: inv=False fades out between near and near+range (leaf cards); inv=True
             # fades in over that range (the long-range billboard stand-ins).
@@ -692,14 +718,19 @@ def dataurl_gl_one_additive(durl):
         MC.swallowed()
         return durl                                       # keep the original on any failure
 
-def texture_to_dataurl(vfs, texpath, max_dim=512, emitter_clean=False, keep_alpha=False, bundle_path=None, bundle_scale=(1.0,1.0)):
+def texture_to_dataurl(vfs, texpath, max_dim=512, emitter_clean=False, keep_alpha=False, bundle_path=None, bundle_scale=(1.0,1.0),
+                       glow_alpha=False):
     """Load a stored texture and return a data: URL for the browser.
 
     jpg/png pass through; tga/dds are decoded with Pillow and re-encoded.
     emitter_clean: for additive emitter sprites. Always PNG, with near-black keyed to
         transparent, so JPEG noise doesn't add up to a visible box behind the glow.
     keep_alpha: keep the alpha channel instead of flattening to opaque JPEG.
-    bundle_path/bundle_scale: bake a nextbundle detail layer into the image."""
+    bundle_path/bundle_scale: bake a nextbundle detail layer into the image.
+    glow_alpha: for an additive layer the 2D renderer draws on its transparent canvas. Alpha
+        becomes the texel's brightness (max of r,g,b) and the colour is divided by it, so the
+        canvas shows colour + background*(1-alpha): black adds nothing and white adds white,
+        where a dark but opaque texel would darken whatever is behind it."""
     data=vfs.read(texpath)
     if data is None: return None
     ext=texpath.rsplit(".",1)[-1].lower()
@@ -740,6 +771,19 @@ def texture_to_dataurl(vfs, texpath, max_dim=512, emitter_clean=False, keep_alph
                     for _yy in range(0,im.size[1],_th):
                         for _xx in range(0,im.size[0],_tw): _lay.paste(_tile,(_xx,_yy))
                     im=ImageChops.multiply(im.convert("RGBA" if has_alpha else "RGB"),_lay)
+            except Exception:
+                MC.swallowed()
+        if glow_alpha:
+            try:
+                rgb=im.convert("RGB"); r,g,b=rgb.split()
+                from PIL import ImageChops
+                mx=ImageChops.lighter(ImageChops.lighter(r,g),b)
+                px=list(rgb.getdata()); mv=list(mx.getdata()); out=[]
+                for (cr,cg,cb),m in zip(px,mv):
+                    out.append((0,0,0,0) if m==0 else (cr*255//m,cg*255//m,cb*255//m,m))
+                g2=Image.new("RGBA",rgb.size); g2.putdata(out)
+                buf=io.BytesIO(); g2.save(buf,"PNG")
+                return "data:image/png;base64,"+base64.b64encode(buf.getvalue()).decode()
             except Exception:
                 MC.swallowed()
         if emitter_clean:
@@ -905,6 +949,34 @@ def write_textures_manifest(vfs, skd_relpath, surface_names, shader_index, tik_i
     tm=resolve_surface_texmap(skd_relpath, surface_names, vfs, shader_index, tik_index, global_surf,
                               editor_index=editor_index, misses=misses)
     man={}; framecache={}
+    def _stage_fx(props, tp):
+        """The drawn stage's nextbundle layer and dot colour/alpha, for the model page.
+
+        mt: the second texture (tr_shader.c ParseStage "nextBundle"), multiplied with the base
+        (GL_MODULATE) or added (`nextbundle add`), with its own tcmods, so a searchlight or
+        headlight beam is its airdust times the beam's fade. `bake` is the two multiplied at
+        time zero, for the 2D renderer, which draws one texture per triangle."""
+        out={}
+        if not props: return out
+        if props.get("rgbdot"): out["rgbdot"]=props["rgbdot"]
+        if props.get("adot"): out["adot"]=props["adot"]
+        b=props.get("bundle")
+        if b and b.get("map"):
+            bp=vfs.find_texture(b["map"])
+            bdu=texture_to_dataurl(vfs, bp, max_dim=max_dim, keep_alpha=True) if bp else None
+            if bdu:
+                mt={"tex":bdu,"scale":b.get("scale") or [1.0,1.0]}
+                for k in ("clamp","env","scroll","prescale","rotate"):
+                    if b.get(k) not in (None,False): mt[k]=b[k]
+                if tp and b.get("env")!="add":
+                    # additive: brightness as alpha (glow_alpha), since 'lighter' on the 2D
+                    # renderer's transparent canvas would otherwise show the dark texels
+                    bk=texture_to_dataurl(vfs, tp, max_dim=max_dim, bundle_path=bp,
+                                          bundle_scale=tuple(b.get("scale") or (1.0,1.0)),
+                                          glow_alpha=bool(props.get("additive")))
+                    if bk: mt["bake"]=bk
+                out["mt"]=mt
+        return out
     for s in surface_names:
         tp, sh = tm.get(s.lower(), (None,None))
         props=(shader_props or {}).get((sh or "").lower())
@@ -974,6 +1046,7 @@ def write_textures_manifest(vfs, skd_relpath, surface_names, shader_index, tik_i
             if dfade: entry["distfade"]=dfade
             if props.get("atest"): entry["atest"]=props["atest"]
             if props.get("flap"): entry["flap"]=props["flap"]
+            entry.update(_stage_fx(props, tp))
             man[s]=entry
         else:
             # Plain surface: a bare data-URL string, promoted to an object only when it carries
@@ -989,6 +1062,7 @@ def write_textures_manifest(vfs, skd_relpath, surface_names, shader_index, tik_i
             if props and props.get("atest"): extra["atest"]=props["atest"]
             if props and props.get("flap"): extra["flap"]=props["flap"]
             if _translucent(du,props): extra["blend"]=True
+            extra.update(_stage_fx(props, tp))
             if extra: extra["tex"]=du; man[s]=extra
             else: man[s]=du
     # Only misses that still produced an entry are reported here: a stand-in was found, or

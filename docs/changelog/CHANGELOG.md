@@ -3729,3 +3729,27 @@ look of the walk and the doors should be confirmed by eye in the launcher.
   one. A stage with a nextbundle doesn't get it, since the engine scrolls only its base bundle.
 - A rotating `map` (the hubs) keeps the repeat fill and the shading; only a rotating clampmap
   (the propeller discs) is drawn clamped and unshaded.
+
+## Model Viewer: searchlight and headlight beams as in the game (November 2026)
+
+- The beams (`beam` on models/miscobj/searchlight, `opellights` on the Opel trucks) drew as
+  solid white cones. Their stage is airdust times the beam's black-to-white fade
+  (`nextbundle`, tr_shader.c ParseStage "nextBundle": GL_MODULATE, or GL_ADD for
+  `nextbundle add`), added to the scene, but the page drew only the airdust, which is nearly
+  white. Model surfaces now carry the stage's second texture (`mt` in the texture manifest:
+  its own clamp, `tcmod scroll / rotate / scale`, and env) and the WebGL renderer multiplies
+  or adds the two per pixel, each texture with its own texcoords. So the dust drifts through a
+  beam that stays put (`tcmod scroll 0 0.3` / `0 0.15` on the dust). The 2D renderer, one texture
+  per triangle, draws the two multiplied at time zero (`bake`), with the brightness as alpha so
+  that on its transparent canvas the dark end adds nothing instead of darkening the background.
+- `rgbGen dot` / `oneMinusDot` and `alphaGen dot` / `oneMinusDot` (RB_CalcRGBFromDot and
+  friends, tr_shade_calc.c:1019-1100): the colour or alpha is min + (max-min)*(N.V)^2 (1 - that
+  for oneMinusDot), clamped to 1, with smooth vertex normals from the live mesh and the
+  camera's eye. The Opel's beams (`rgbGen dot 0 1.5`) fade as they turn edge-on; the lantern
+  glass (`alphaGen oneMinusDot 0.2 1.2`) is clear face-on. Both renderers.
+- Additive surfaces were never back-face culled. The engine culls by the shader's `cull`, not
+  by blend, so a one-sided beam cone added its far side on top and came out twice as bright.
+  They now cull like any other surface unless the shader says `cull none` (16 shipping model
+  shaders are one-sided and additive; the rest are two-sided or sprites).
+- `opellightflare` (scripts/opel.shader) is not drawn because nothing uses it: no Opel surface,
+  .tik or map names that shader, so the game doesn't draw it either.

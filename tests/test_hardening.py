@@ -655,6 +655,23 @@ class ShaderTexMods(unittest.TestCase):
         self.assertEqual(props["prop"]["texrotate"], 5000.0)
         self.assertTrue(props["prop"].get("clamp"))
 
+    def test_beam_bundle_and_dot(self):
+        import mohaa_textures as MTX
+        props = MTX.parse_shader_props_file(
+            "opellights\n{\n{\nmap textures/common/airdust.tga\ntcmod scroll 0 0.15\n"
+            "nextbundle\nclampmap textures/models/items/beam.tga\nrgbGen dot 0 1.5\nblendfunc add\n}\n}\n"
+            "glanternglass\n{\n{\nmap a.tga\nalphagen oneminusdot 0.2 1.2\nblendfunc blend\n}\n}\n"
+            "addbundle\n{\n{\nmap a.tga\nnextbundle add\nmap b.tga\n}\n}\n")
+        p = props["opellights"]
+        self.assertTrue(p["additive"])
+        self.assertEqual(p["texscroll"], [0.0, 0.15])          # the base (dust) scroll only
+        self.assertEqual(p["bundle"]["map"], "textures/models/items/beam.tga")
+        self.assertTrue(p["bundle"].get("clamp"))
+        self.assertNotIn("scroll", p["bundle"])
+        self.assertEqual(p["rgbdot"], [0.0, 1.5, 0])
+        self.assertEqual(props["glanternglass"]["adot"], [0.2, 1.2, 1])
+        self.assertEqual(props["addbundle"]["bundle"].get("env"), "add")
+
 
 class BspSave(TempDirCase):
     def test_save_verifies_then_keeps_bak(self):
