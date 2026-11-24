@@ -3515,6 +3515,16 @@ look of the walk and the doors should be confirmed by eye in the launcher.
   specs beside Edit parameters for a brush entity, else alone under Exact values (a world
   brush, a patch, a terrain block, some of an entity's brushes). It no longer sits on the
   selection's line.
+- Edit map: a brush entity copied (Copy) into a map opened from a .bsp lost its brushes in the
+  saved / compiled .map once it got a Modify row (a targetname typed in Class specs, say):
+  only its keys were written, so the game had the entity but nothing to draw or collide
+  with. `brOk` took only the entities before the .bsp's first static model for brush
+  entities, and Copy adds the new one at the end of the map, after them; its row was
+  written as a point entity's. Now any entity with brushes counts, and a row that isn't a
+  brush entity's keeps whatever brushes its block has (`edKeysKeepBrushes`), so a save never
+  drops them. Checked headless on the user's m3l1b.bsp: $door_floor_hatch1 copied, put
+  down and named keeps both its brushes (the hatch and its origin brush) in the text
+  Compile writes.
 - The updater keeps a Git clone in step (`_update_git_sync`): after installing a commit in a
   folder with `.git`, it runs `git fetch origin` and, when the branch has nothing GitHub
   lacks (`git merge-base --is-ancestor HEAD <commit>`), `git reset --mixed <commit>`, so
@@ -3549,3 +3559,80 @@ look of the walk and the doors should be confirmed by eye in the launcher.
   back (101 lit draw runs), Redo drops it, Undo restores it again.
 - The launcher's check for a stale cached page now includes `mohaa_map_editor.js`: a change
   to Edit map's page code alone didn't rebuild a page built before it.
+- Edit map: the Eyedropper and the Texture tool (and terrain *paint texture*) outline in
+  yellow what the next click takes or paints, under the mouse: the brush face, every face
+  of the brush while Shift is held (Texture tool), the whole patch, the terrain patch
+  (512 x 512 units, along the ground), or a `.bsp`'s own surface (Eyedropper). The
+  selection's red outline steps aside where the yellow runs (`edTexHover`, the same cut
+  as Resize's face hover, `edRzOutlines`); it comes back when the mouse leaves the view or
+  the tool goes off. It is redrawn after each click (the map is built again), on Shift and
+  on a tool change. A terrain pixel along the block's outline sometimes had no exact
+  point (the pick and the ray disagree by a pixel), so a click there failed to paint; the
+  ray is now tried on the terrain and through the pixel's corners (`edHitT`). Tested
+  headless on `m3l1b.map`: a brush face (4 edges), Shift (24), a patch, a terrain block.
+- Edit map: Undo after a Copy (Alt+C) left a `.bsp`'s view at full brightness. The text the
+  `.bsp` was compiled from (`ED.text0`) was only recorded by single edits (`edDo`), not by
+  the ones made as one (`edDoMany`: Copy, Turn, Delete, Join, Classname ...), so after one
+  of those first there was nothing to compare with; worse, a texture change after it
+  recorded the already changed text. It is now recorded by the first change of any kind
+  (`edTextApply`). Tested headless on `m3l1b.bsp`: copy a clip brush (light off), Alt+Z
+  (light back), Alt+Y (off), Alt+Z (back).
+- Modify: Copy (Alt+C) of a selection mixing a `.bsp`'s static props (static_corona_util,
+  static_lamp_lightbulb-caged ...) with a point entity copied the point entity alone, and
+  static props alone gave "Select what to copy first". Static props of a `.bsp` aren't in
+  its entity lump, so Modify can't take them (`modTakes`); the rest of the selection was
+  taken without a word. Copy, Move, Trim origin and Delete now stop and say which can't be
+  taken and why (`modSelRefuse`: static props of a .bsp, script-spawned entities, brush
+  entities with Edit map off). On a `.map` page static props copy as before. Tested
+  headless on `m3l1b.bsp` and `m3l1b.map`.
+- Edit map: a `.bsp`'s static props can be moved, turned and scaled. They come from the
+  static model lump, not the entity lump, so Modify didn't take them (`modTakes`) and the
+  card said they couldn't be modified. With Edit map on they now get a Modify row
+  (`edStaticOk`): Move, Trim origin, Yaw / angles, Edit parameters, Copy and Delete. Save
+  as `.map` and Compile... write them as the `.map`'s entities. Save as `.bsp` sends each
+  one's record number (`modSets`: `st`, `model`) and `write_bsp_entities` writes its origin,
+  angles and scale into that record in place (`_static_records`; checked against the
+  record's model and origin, every other lump checked byte for byte). It refuses a deleted
+  static prop, other keys, another model (the record's baked vertex light is its model's,
+  read one colour per vertex: `tr_model.cpp`) and new static props (they'd be entity-lump
+  entities); the page says so first (`modBspStaticBad`). The card's note says to turn Edit
+  map on. Tests: `BspStaticProps` (a moved record; the refusals). Tested headless on
+  mohdm1: static_furniture_loveseat moved by Trim origin, written to a `.bsp` and read back
+  at its new origin.
+- Edit map: with only entities, path nodes or static props selected, the Editor's Resize,
+  Move, Clip, Texture and Terrain buttons and Trim are off (Select and Draw brush stay), with
+  a line saying Modify moves and turns them (`edEntOnly`; refreshed when Modify's selection
+  changes).
+- Modify: **Align** button by the trim step (Align off / Straight / Diagonal / By angle;
+  Shift+click: off). White lines 8192 units each way out of the selected entities' origins:
+  along X, Y and Z; at 45 degrees in the XY, XZ and YZ planes; or along the entity's own
+  forward (yellow), left and up from its angles (`anglesAxis`). Kept per entity in `ALIGN`
+  (keyed by entity number, or a new entity's row id), so they stay after deselecting: the
+  row is kept (`modSyncSel`) and made again after an Undo (`alignRows`), tagged in the list,
+  and the lines follow the row's origin as it moves. Not drawn for deleted or hidden rows;
+  off for brush entities. Saved per map (name and map_time) in localStorage. Tested headless
+  on `m3l1b.map`: 6, 12 and 6 lines, kept after deselecting, Shift+click clears.
+- Modify: Align's lines showed only after the camera moved; the button now redraws the
+  view at once (`alignCycle`: `requestDraw`).
+- Modify: Align's lines going up are cyan and going down yellow, in every mode (Straight: one
+  each; Diagonal: the four upright diagonals each way; By angle: the entity's own up and down
+  vectors, so a pitch or roll shows), the rest white. By angle had coloured its forward line.
+- Modify: with several map entities selected in the view, only the one clicked last got a row
+  in Modify's list; the others showed only once changed. Every selected entity Modify can
+  take now gets a row and is part of Modify's selection (the one clicked last its focus, the
+  others `MOD.multi`), and leaves the list again when deselected unless changed
+  (`modSyncSel`). With no focus (Find's select-all) the same, when every selected entity can
+  be taken and no brushes are selected. `modMultiPrune` checks against a Set. Tested
+  headless: three added one by one, one taken out, all cleared; 2133 path nodes in 0.1 s.
+- Map launcher: the details pane's **Rebuild** rebuilt the map built last, not the one on
+  show. A pak map opened from its saved page (no build) left `_last_build` naming the map
+  built before it (mohdm1 built, mohdm2 built, mohdm1 opened from its page: Rebuild built
+  mohdm2), and with nothing built since the program started it said "Nothing has been built
+  yet to rebuild". The saved-page open now records the map (`_shown`) and Rebuild extracts
+  and builds that one (`MapApp._rebuild_shown`). Tests: `RebuildShown`.
+- Edit map: turning it on or off with something selected left Modify as it was until the
+  next click: a static prop kept the note that it can't be modified (or, turned off, kept
+  its row and buttons). `edMode` now runs `modSyncSel`, and a focus Modify can't take no
+  longer keeps an unchanged row (a changed one stays, so its change can still be saved).
+  The side panel scrolls back to its top on each toggle. Tested headless on mohdm1: the
+  loveseat's note, row and Move button follow Edit map on, off, on.

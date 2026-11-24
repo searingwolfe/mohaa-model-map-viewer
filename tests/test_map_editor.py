@@ -199,6 +199,89 @@ class BspBrushModel(unittest.TestCase):
         self.assertEqual(MB.ent_get(back, "origin"), "%g %g %g" % (o[0] + 48, o[1], o[2] + 8))
 
 
+class RebuildShown(unittest.TestCase):
+    """The details pane's Rebuild rebuilds the map on show: mohdm1 built, mohdm2 built, then
+    mohdm1 opened from its saved page (no build, so _last_build still names mohdm2)."""
+    def test_cached_pak_map(self):
+        app = _editor()
+        calls = []
+        app._viewer_open_busy = lambda: False
+        app._close_viewer = lambda: calls.append("close")
+        app._open_pk3_model = lambda entry, loose_path=None: calls.append(("pk3", entry, dict(app._run_opts)))
+        app._last_build = ("/tmp/x/maps/DM/mohdm2.bsp", None, None, None, "dm")
+        app._shown = ("pk3", "maps/DM/mohdm1.bsp")
+        app._rebuild_shown()
+        self.assertEqual(calls, ["close", ("pk3", "maps/DM/mohdm1.bsp", {"force": True})])
+
+    def test_built_map(self):
+        app = _editor()
+        got = []
+        app._viewer_open_busy = lambda: False
+        app._close_viewer = lambda: None
+        app._load = lambda *a: got.append(a)
+        app._log_line = lambda *a, **k: None
+        app._last_build = ("/maps/a.bsp", None, None, None, None)
+        app._shown = None
+        app._rebuild_shown()
+        self.assertEqual(got, [("/maps/a.bsp", None, None, None, None)])
+
+
+class BspStaticProps(unittest.TestCase):
+    """Save as .bsp with a static prop moved in Modify (Edit map on): its record in the static
+    model lump gets the new origin, angles and scale in place; the entity lump and every
+    other lump stay; deleting one, other keys or another model are refused."""
+    @staticmethod
+    def _bsp():
+        import struct
+        lumps = [b""] * 29
+        lumps[0] = b"common/caulk".ljust(64, b"\0") + struct.pack("<3i", 0, 1, 0) + b"\0" * 64
+        lumps[1] = b"".join(struct.pack("<4f", *p) for p in
+                            ((1, 0, 0, 64), (-1, 0, 0, 64), (0, 1, 0, 64), (0, -1, 0, 64), (0, 0, 1, 64), (0, 0, -1, 64)))
+        lumps[11] = b"".join(struct.pack("<3i", i, 0, 0) for i in range(6))
+        lumps[12] = struct.pack("<3i", 0, 6, 0)
+        lumps[13] = struct.pack("<6f4i", -64, -64, -64, 64, 64, 64, 0, 0, 0, 1)
+        lumps[14] = b'{\n"classname" "worldspawn"\n}\n\0'
+        rec = lambda m, o, a, sc, fv, nv: m.ljust(128, b"\0") + struct.pack("<3f3ffih", *o, *a, sc, fv, nv) + b"\0\0"
+        lumps[MB.LUMP_STATICMODELDEF] = rec(b"static/chair.tik", (8, 16, 0), (0, 90, 0), 1, 0, 10) + rec(b"static/table.tik", (40, 0, 0), (0, 0, 0), 1, 30, 12)
+        hdr = b"2015" + struct.pack("<ii", 19, 0)
+        ofs, body, dirs = 12 + 8 * 29, b"", b""
+        for lump in lumps:
+            dirs += struct.pack("<ii", ofs + len(body), len(lump))
+            body += lump + b"\0" * ((-len(body + lump)) % 4)
+        return hdr + dirs + body
+
+    def _set(self, **kw):
+        s = {"ei": 2, "cls": "static_table", "origin": [40, 0, 0], "st": 1, "model": "static/table.tik",
+             "kv": [["classname", "static_table"], ["model", "static/table.tik"], ["origin", "48 -8 4"], ["angles", "0 45 0"], ["scale", "1.25"]]}
+        s.update(kw)
+        return s
+
+    def test_moved(self):
+        data = self._bsp()
+        with tempfile.TemporaryDirectory() as d:
+            out = os.path.join(d, "m.bsp")
+            MB.write_bsp_entities(data, "", out, None, replace=[self._set()])
+            b = MB.load(out)
+        self.assertEqual(b.static_models[1]["origin"], (48.0, -8.0, 4.0))
+        self.assertEqual(b.static_models[1]["angles"], (0.0, 45.0, 0.0))
+        self.assertEqual(b.static_models[1]["scale"], 1.25)
+        self.assertEqual((b.static_models[1]["firstVertexData"], b.static_models[1]["numVertexData"]), (30, 12))
+        self.assertEqual(b.static_models[0], MB.Bsp(data, "a.bsp").static_models[0])
+
+    def test_refused(self):
+        data = self._bsp()
+        with tempfile.TemporaryDirectory() as d:
+            out = os.path.join(d, "m.bsp")
+            for bad in (self._set(**{"del": True}),
+                        self._set(kv=[["classname", "static_table"], ["targetname", "t"]]),
+                        self._set(kv=[["classname", "static_table"], ["model", "static/chair.tik"]]),
+                        self._set(origin=[0, 0, 0]),
+                        self._set(st=5)):
+                with self.assertRaises(MB.BspError):
+                    MB.write_bsp_entities(data, "", out, None, replace=[bad])
+            self.assertFalse(os.path.exists(out))
+
+
 class Brushes(unittest.TestCase):
     """The launcher's side of brush editing: the recovery copy, texture names, the close question."""
     def _app(self, d):

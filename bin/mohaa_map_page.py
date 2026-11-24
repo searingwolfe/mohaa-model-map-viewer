@@ -160,6 +160,7 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
  #modList .mtag,#listBox .mtag{font-size:10px;padding:0 4px;border-radius:3px;border:1px solid var(--line);color:var(--dim);flex:none}
  #modList .mtag.nw,#listBox .mtag.nw{color:var(--accent);border-color:var(--accent)}
  #modList .mtag.ch,#listBox .mtag.ch{color:var(--warn);border-color:var(--warn)}
+ #modList .mtag.al{color:var(--txt);border-color:var(--txt);opacity:.85}
  #infoHead{display:flex;align-items:center;gap:8px;padding:10px 12px 8px;border-bottom:1px solid var(--line)}
  #infoHead .t{flex:1;min-width:0;color:var(--accent);font-weight:bold;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
  #infoBody{overflow:auto;padding:8px 12px 12px;flex:1;min-height:0}
@@ -512,7 +513,7 @@ window.setEditorMode=function(on){window.__EDITON__=!!on;
        <button class="sm" id="bModDel" title="Remove the entity&#10;&#10;Hotkey: Delete">Delete</button>
      </div>
      <div class="co" id="modScr" style="display:none;margin-top:6px;color:var(--warn)"></div>
-     <div class="row co" style="margin-top:6px">trim step <input type="range" id="modStep" min="0" max="13" step="1" value="4" title="Trim step, 1 to 50 units: each key press of Trim origin moves the selected entity or node by this many units, step by step (and Edit map's Trim moves or resizes the selected brushes the same)"><span id="modStepV" style="min-width:22px;text-align:right">5</span></div>
+     <div class="row co" style="margin-top:6px;flex-wrap:nowrap">trim step <input type="range" id="modStep" min="0" max="13" step="1" value="4" style="flex:1;min-width:0" title="Trim step, 1 to 50 units: each key press of Trim origin moves the selected entity or node by this many units, step by step (and Edit map's Trim moves or resizes the selected brushes the same)"><span id="modStepV" style="min-width:22px;text-align:right">5</span><button class="sm" id="bModAlign" disabled style="flex:none;min-width:76px" title="Align: lines out of the selected entity's origin to line other things up with, kept after it is deselected (click for the next):&#10;Align off&#10;Straight: along X, Y and Z&#10;Diagonal: 45 degrees, flat and upright&#10;By angle: its own forward, left and up, from its angles&#10;Shift+click: turn Align off. This button applies to all selected entities">Align off</button></div>
      <div class="row co" id="modAngRow" style="gap:3px;flex-wrap:wrap;align-items:center" title="The selected entity's angles: pitch, yaw, roll in degrees (Enter sets them on every selected entity). A path node or other info_ entity (not info_splinepath) only turns on its yaw. Rotate and Axes turn them with the mouse">angles
        <input type="text" id="modAngP" title="pitch" style="width:36px;padding:1px 3px;font:inherit;font-size:11px"><input type="text" id="modAngY" title="yaw" style="width:36px;padding:1px 3px;font:inherit;font-size:11px"><input type="text" id="modAngR" title="roll" style="width:36px;padding:1px 3px;font:inherit;font-size:11px">
        <button class="sm" id="bModRot" title="A circle round the selected entity, facing you: drag inside it to turn it about the line you look along (Shift: tumble it). A path node or other info_ entity: a flat circle that turns its yaw. Whole degrees, Ctrl: 15 at a time; letting go makes it (one Undo), Esc cancels">&#10227; Rotate</button>
@@ -4799,6 +4800,7 @@ function rebuildLines(){
         (hot?H:L).push(X.anchor[0],X.anchor[1],X.anchor[2],c[0],c[1],c[2],c[3],Y.anchor[0],Y.anchor[1],Y.anchor[2],c[0],c[1],c[2],c[3]);
         LINKS.push([X.anchor,Y.anchor,c,hot]);}}
     modLinks(H,L,sc,selE);}
+  try{alignLines(H,L);}catch(err){console.error(err);}
   // facing arrows as MOHRadiant draws them (Brush_DrawFacingAngle): white, from the middle
   // of the box out to 2.5 times its half-width, the head half a half-width long and
   // opening up and down. Drawn as 4-pixel bands each frame (drawFacingArrows).
@@ -6452,7 +6454,7 @@ function gameEnts(){
     if(ei===0){R.g='entity';R.num=1022;continue;}
     if(e.scr){R.g='script';R.why='spawned by the level script while the game runs: it gets its entity number then';continue;}
     if(isStaticProp(ei)){R.g='static';R.why='a static model: scenery the map compiler made, not an entity'+
-      (D.bsp&&D.bsp.firstStatic>0?' (not in the .bsp\'s entity lump, so it can\'t be modified here)':'');continue;}
+      (D.bsp&&D.bsp.firstStatic>0?' (not in the .bsp\'s entity lump but its static model lump: Modify changes it with Edit map on)':'');continue;}
     if(WORLDLIKE[c]){R.g='none';R.why='its brushes become part of the world when the map is compiled';continue;}
     if(k.spawnflags!=null&&c!=='info_pathnode'&&c!=='info_patharea'&&inhibitEntity(parseInt(k.spawnflags,10)|0,map)){
       R.g='inhibited';R.why='its spawnflags keep it out of this game (g_gametype, skill, developer)';continue;}
@@ -10093,14 +10095,25 @@ function modTakes(ei){
 // selected, unless it was changed)
 function modSyncSel(){
   if(!MOD||!$('modList'))return;
-  const ei=selFocusEnt(),cur=MOD.ents[MOD.sel],keep=new Set();
-  MOD.ents.forEach((m,i)=>{if(!modIsMap(m)||modEdited(m)||modBusy(i)||m.hid||m.del||m.ei===ei)keep.add(m);});
+  // every map entity selected in the view that Modify can take gets a row and is Modify's
+  // selection too (the focus, the one clicked last, its MOD.sel; the others MOD.multi), as
+  // long as the focus is one (or, with no focus, all of them are, with no brushes)
+  const all=[...selectedEnts()],selE=all.filter(x=>modTakes(x)),cur=MOD.ents[MOD.sel],keep=new Set();
+  let ei=selFocusEnt();
+  if(!modTakes(ei)&&ei<0&&selE.length&&selE.length===all.length&&![...selectedPrims()].length)ei=selE[selE.length-1];
+  const many=modTakes(ei)?new Set(selE):new Set();
+  // (the focus only while Modify can take it: Edit map off lets a static prop's or a brush
+  // entity's unchanged row go)
+  MOD.ents.forEach((m,i)=>{if(!modIsMap(m)||modEdited(m)||modBusy(i)||m.hid||m.del||(m.ei===ei&&modTakes(ei))||many.has(m.ei)||ALIGN.has(alignKey(m)))keep.add(m);});
   const edit=MOD.ents[MOD.edit],mv=MOD.placing&&MOD.placing.move!=null?MOD.ents[MOD.placing.move]:null;
   MOD.ents=MOD.ents.filter(m=>keep.has(m));
   let sel=cur&&keep.has(cur)?cur:null;
-  if(modTakes(ei)){let m=MOD.ents.find(x=>x.ei===ei);
-    if(!m){const kv=MAP.ents[ei].kv.map(x=>[x[0],x[1]]);m={id:MOD.nid++,ei:ei,kv:kv,orig:kv.map(x=>x.slice())};MOD.ents.push(m);}
-    sel=m;}
+  const byEi=new Map();for(const m of MOD.ents)if(modIsMap(m))byEi.set(m.ei,m);
+  const rowOf=x=>{let m=byEi.get(x);
+    if(!m){const kv=MAP.ents[x].kv.map(y=>[y[0],y[1]]);m={id:MOD.nid++,ei:x,kv:kv,orig:kv.map(y=>y.slice())};MOD.ents.push(m);byEi.set(x,m);}
+    return m;};
+  for(const m of[...MOD.multi])if(modIsMap(m)&&!many.has(m.ei))MOD.multi.delete(m);
+  if(modTakes(ei)){sel=rowOf(ei);for(const x of many){const m=rowOf(x);if(m!==sel)MOD.multi.add(m);}}
   else if(cur&&modIsMap(cur)&&!SEL.size)sel=null;
   MOD.sel=sel?MOD.ents.indexOf(sel):-1;
   if(edit)MOD.edit=MOD.ents.indexOf(edit);
@@ -10124,11 +10137,25 @@ function modSelEnts(withMap){
   for(const m of MOD.ents)if(m!==cur&&MOD.multi.has(m))out.push(m);
   if(withMap)for(const ei of selectedEnts())if(modTakes(ei)){const m=modRowFor(ei);if(!out.includes(m))out.push(m);}
   return out;}
+// selected map entities Modify can't take (a .bsp's static props, script-spawned entities, an
+// entity without an origin): Copy, Move, Trim origin and Delete stop and say so rather than
+// work on the rest of the selection only. True when it stopped.
+function modSelRefuse(what){
+  const L=[...selectedEnts()].filter(ei=>ei>0&&ei<MAP.ents.length&&!modTakes(ei));if(!L.length)return false;
+  const n=L.length,st=L.filter(ei=>isStaticProp(ei)).length,bsp=!!(D.bsp&&D.bsp.firstStatic>0);
+  const nm=n===1?entName(L[0]):n+' of the selected',them=n===1?'it':'them';
+  const why=st===n&&bsp?(n===1?'a static prop':'static props')+' of a .bsp, which '+(n===1?'isn\'t':'aren\'t')+' in its entity lump: turn Edit map on to '+(what==='Trim origin'?'trim':what.toLowerCase())+' '+them:
+    st===n?(n===1?'a static prop':'static props'):
+    L.every(ei=>MAP.ents[ei].scr)?'spawned by the level script':
+    L.every(ei=>ENTS[ei]&&ENTS[ei].hasGeo)?(n===1?'a brush entity':'brush entities')+(window.__EDITON__?'':' (they change with Edit map on)'):
+    (bsp&&st?'static props of a .bsp, or ':'')+'not entities Modify works on';
+  flash(what+' can\'t take '+nm+': '+why+'. Shift+click to leave '+them+' out of the selection');
+  return true;}
 // how many a Copy / Move / Trim origin would take (without making the map's rows)
 function modSelCount(){let n=modSelEnts(false).length;
   for(const ei of selectedEnts())if(modTakes(ei)){const m=MOD.ents.find(x=>x.ei===ei);if(!m||!modIsSel(MOD.ents.indexOf(m)))n++;}
   return n;}
-function modMultiPrune(){for(const m of[...MOD.multi])if(!MOD.ents.includes(m)||MOD.ents[MOD.sel]===m)MOD.multi.delete(m);}
+function modMultiPrune(){if(!MOD.multi.size)return;const S=new Set(MOD.ents);for(const m of[...MOD.multi])if(!S.has(m)||MOD.ents[MOD.sel]===m)MOD.multi.delete(m);}
 // Shift+click on an added entity (in the view or its row): into the selection, or out of it
 function modToggleSel(i){const m=MOD.ents[i];if(!m)return;
   if(MOD.trim||(MOD.placing&&MOD.placing.move!=null)){flash('Finish moving or trimming first');return;}
@@ -10493,6 +10520,7 @@ function modMove(){
   if(MOD.placing&&MOD.placing.move!=null){modPlaceCancel();return;}
   if(MOD.trim)return;
   if(MOD.edit>=0)modEditClose(true);
+  if(modSelRefuse('Move'))return;
   const L=modSelEnts(true),m=L[0];if(!m)return;
   MOD.sel=MOD.ents.indexOf(m);for(const x of L.slice(1))MOD.multi.add(x);
   modGroupStart(m,L.slice(1),false);
@@ -10573,6 +10601,7 @@ function modRemove(i){
 }
 // Delete (Restore) for everything selected: new ones removed, the map's own put back
 function modRemoveSel(){
+  if(modSelRefuse('Delete'))return;
   const L=modSelEnts(false);if(!L.length)return;
   if(L.length===1){modRemove(MOD.ents.indexOf(L[0]));return;}
   if(MOD.edit>=0)modEditClose(false);
@@ -10592,6 +10621,7 @@ function modCopySel(){
   if(MOD.trim)modTrim(false);
   if(MOD.placing)modPlaceCancel();
   if(MOD.linking)modLinkCancel();
+  if(modSelRefuse('Copy'))return;
   const L=modSelEnts(true);if(!L.length){flash('Select what to copy first (Shift+click adds more)');return;}
   modHist();
   const copies=[];let dropped=false;
@@ -10757,6 +10787,7 @@ function modTrim(on){
   if(on==null)on=!MOD.trim;
   if(on&&MOD.edit>=0)modEditClose(true);
   if(on&&MOD.placing)modPlaceCancel();
+  if(on&&modSelRefuse('Trim origin'))return;
   if(on){const L=modSelEnts(true);if(!L.length){flash('Select an entity first');return;}
     MOD.sel=MOD.ents.indexOf(L[0]);for(const x of L.slice(1))MOD.multi.add(x);
     MOD.trimSnap=modSnap();MOD.trimHist=false;}
@@ -11046,10 +11077,61 @@ function modListSetup(L){
     const i=+r.dataset.mi,m=MOD.ents[i];if(!m)return;
     r.title=modText(m)+'\n\nShift+click the name: '+(modIsSel(i)?'take it out of the selection':'add it to the selection')+' · Shift+click the square: '+(m.hid?'show':'hide')+' it';});
 }
+// ---- Align: lines out of an entity's origin, to line other things up with -------------------
+// Straight: along X, Y and Z; Diagonal: at 45 degrees, flat (XY) and upright (XZ, YZ); By
+// angle: its own forward / back, left / right and up / down from its angles. Set on Modify's
+// selected entities with the Align button (by trim step), kept on each (its row stays in the
+// list, tagged) after it is deselected, until the button is cycled back to Align off or the
+// entity is deleted; kept for the map in this browser's storage too.
+const ALIGN=new Map();                    // row key ('e' + entity number, 'n' + a new one's id) -> mode
+const ALIGN_MODES=['off','straight','diag','angle'];
+const ALIGN_NAMES={off:'Align off',straight:'Straight',diag:'Diagonal',angle:'By angle'};
+const ALIGN_TAGS={straight:'┼',diag:'╳',angle:'∠'};
+const ALIGN_LEN=8192;                     // how far the lines run each way
+const ALIGN_UP=[0.3,0.95,1],ALIGN_DN=[1,0.9,0.35];   // the lines going up (cyan) and down (yellow)
+function alignKey(m){return m.ei!=null?'e'+m.ei:'n'+m.id;}
+function alignOf(m){return (m&&ALIGN.get(alignKey(m)))||'off';}
+function alignOk(m){return !!m&&!(typeof brRow==='function'&&brRow(m));}   // point entities, nodes, static props
+function alignStoreKey(){return 'mohaaMapViewerAlign|'+String(D.name||'')+'|'+String((MAP&&MAP.ents[0]&&MAP.ents[0].kvl.map_time)||'');}
+function alignSave(){LS.set(alignStoreKey(),ALIGN.size?JSON.stringify([...ALIGN]):null);}
+function alignLoad(){try{const v=JSON.parse(LS.get(alignStoreKey())||'[]');
+  for(const[k,a]of v)if(/^[en]\d+$/.test(k)&&ALIGN_NAMES[a]&&a!=='off')ALIGN.set(k,a);}catch(_e){}}
+// a map entity with Align on keeps its row (an Undo to before it had one takes the row away)
+function alignRows(){
+  for(const k of ALIGN.keys()){if(k[0]!=='e')continue;const ei=+k.slice(1);
+    if(!MAP.ents[ei]||MOD.ents.some(m=>m.ei===ei)||!modTakes(ei))continue;
+    const kv=MAP.ents[ei].kv.map(x=>[x[0],x[1]]);MOD.ents.push({id:MOD.nid++,ei:ei,kv:kv,orig:kv.map(x=>x.slice())});}}
+function alignCycle(off){
+  const L=modSelEnts(true).filter(alignOk);if(!L.length)return;
+  const cur=alignOk(MOD.ents[MOD.sel])?MOD.ents[MOD.sel]:L[0];
+  const next=off?'off':ALIGN_MODES[(ALIGN_MODES.indexOf(alignOf(cur))+1)%ALIGN_MODES.length];
+  for(const m of L){if(next==='off')ALIGN.delete(alignKey(m));else ALIGN.set(alignKey(m),next);}
+  alignSave();
+  flash(next==='off'?'Align off'+(L.length>1?' ('+L.length+')':''):ALIGN_NAMES[next]+': lines from '+(L.length>1?'the origins of the '+L.length+' selected':modName(cur)+'\'s origin')+
+    ({straight:' along X, Y and Z',diag:' at 45 degrees (flat and upright)',angle:' along its forward, left and up'}[next])+', kept after it is deselected (Shift+click Align: off)');
+  modRender();lineDirty=true;requestDraw();}   // drawn now, not on the next camera move
+function alignBtnSync(){const b=$('bModAlign');if(!b)return;
+  const m=MOD.ents[MOD.sel],ok=alignOk(m),a=ok?alignOf(m):'off';
+  b.disabled=!ok;b.textContent=ALIGN_NAMES[a];b.classList.toggle('on',a!=='off');}
+const ALIGN_DIRS={straight:[[1,0,0],[-1,0,0],[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]],
+  diag:(()=>{const r=Math.SQRT1_2,o=[];for(const[a,b]of[[0,1],[0,2],[1,2]])for(const[p,q]of[[1,1],[1,-1],[-1,1],[-1,-1]]){const v=[0,0,0];v[a]=p*r;v[b]=q*r;o.push(v);}return o;})()};
+// the lines (rebuildLines): white, those going up cyan and down yellow; the selected ones'
+// with the selection (X-ray)
+function alignLines(H,L){
+  if(!ALIGN.size)return;
+  MOD.ents.forEach((m,i)=>{const a=alignOf(m);if(a==='off'||m.del||m.hid||!alignOk(m))return;
+    const o=modOrigin(m),hot=modIsSel(i),A=hot?H:L,al=hot?1:0.7,R=ALIGN_LEN;
+    let dirs=ALIGN_DIRS[a];
+    if(a==='angle'){const ax=anglesAxis(entAngles(modKvl(m)));dirs=[ax[0],ax[0].map(v=>-v),ax[1],ax[1].map(v=>-v),ax[2],ax[2].map(v=>-v)];}
+    // up cyan, down yellow (By angle: its own up and down vectors, so a pitch or roll shows)
+    dirs.forEach((d,k)=>{const up=a==='angle'?k===4:d[2]>1e-6,dn=a==='angle'?k===5:d[2]<-1e-6;
+      const c=up?ALIGN_UP:dn?ALIGN_DN:[1,1,1];
+      A.push(o[0],o[1],o[2],c[0],c[1],c[2],al,o[0]+d[0]*R,o[1]+d[1]*R,o[2]+d[2]*R,c[0],c[1],c[2],al);});});}
 function modRowHtml(m,i){
   const o=modOrigin(m),c=modColour(m),rgb='rgb('+c.map(v=>Math.round(v*255)).join(',')+')',map=modIsMap(m),ch=map&&modEdited(m);
   const tag=map&&m.del?'<span class="mtag ch" style="color:var(--err)" title="one of the map\'s own entities, deleted here: left out of the saved map (not saved yet). Restore puts it back">#'+m.ei+' DEL</span>':map?'<span class="mtag'+(ch?' ch':'')+'" title="'+(ch?'one of the map\'s own entities, changed here (not saved yet)':'one of the map\'s own entities, as the map has it')+'">#'+m.ei+(ch?' changed':' map')+'</span>':'<span class="mtag nw" title="added here, not saved yet">new</span>';
-  return '<div class="li'+(modIsSel(i)?' sel':'')+(m.hid||m.del?' hid':'')+'" data-mi="'+i+'"><span class="sw" style="'+(map?'border:2px solid '+rgb+';background:transparent':'background:'+rgb)+'"></span><span class="nm">'+esc(modName(m))+'</span>'+tag+'<span class="ct">( '+o.map(v=>+v.toFixed(1)).join(' ')+' )'+(modBusy(i)?' · editing':'')+'</span></div>';
+  const al=alignOf(m),atag=al==='off'?'':'<span class="mtag al" title="'+esc(ALIGN_NAMES[al])+' Align lines from its origin (the Align button, by trim step, turns them off)">'+ALIGN_TAGS[al]+'</span>';
+  return '<div class="li'+(modIsSel(i)?' sel':'')+(m.hid||m.del?' hid':'')+'" data-mi="'+i+'"><span class="sw" style="'+(map?'border:2px solid '+rgb+';background:transparent':'background:'+rgb)+'"></span><span class="nm">'+esc(modName(m))+'</span>'+tag+atag+'<span class="ct">( '+o.map(v=>+v.toFixed(1)).join(' ')+' )'+(modBusy(i)?' · editing':'')+'</span></div>';
 }
 function modListDraw(L){
   modListSetup(L);
@@ -11072,6 +11154,7 @@ function modListDraw(L){
 }
 function modRender(){
   const L=$('modList');if(!L)return;
+  try{alignRows();}catch(err){console.error(err);}
   modMultiPrune();modHideSync();
   modListDraw(L);                                   // windowed: only the rows in view
   $('bModAdd').classList.toggle('on',!!MOD.placing&&MOD.placing.move==null);
@@ -11079,6 +11162,7 @@ function modRender(){
   for(const id of['bModEdit','bModMove','bModTrim','bModYaw','bModLink','bModEye','bModFly','bModSf','bModDel'])$(id).disabled=!has;
   try{modAngSync();}catch(_e){}
   $('bModLink').classList.toggle('on',!!MOD.linking);
+  alignBtnSync();
   const nsel=modSelCount();
   $('bModDup').disabled=!nsel&&!(MOD.placing&&MOD.placing.copy);
   $('bModDup').classList.toggle('on',!!MOD.placing&&!!MOD.placing.copy);
@@ -11110,7 +11194,7 @@ function modRender(){
   {const ei=selFocusEnt(),e=ei>0&&MAP&&MAP.ents[ei],el=$('modScr');let t='';
     if(e&&!cur&&!modTakes(ei)){
       if(e.scr)t='This entity is spawned by the level script ('+scrWhere(e.scr.f,e.scr.l)+'): it can only be modified in the level script, not in the map viewer.';
-      else if(D.bsp&&isStaticProp(ei))t='This is a static model, not a .bsp entity: the map compiler moved it into the .bsp\'s static model lump, so it isn\'t in the entity lump and can\'t be modified in the map viewer. Change it in the map\'s .map source and compile again.';
+      else if(D.bsp&&isStaticProp(ei))t='This is a static model: the map compiler moved it into the .bsp\'s static model lump, not its entity lump. Turn Edit map on to move, turn or scale it here (Modify\'s Move, Trim origin, Yaw, angles, Edit parameters): Save as .bsp writes its place, turn and scale into that lump; deleting it, copies of it and other keys need Save as .map or Compile....';
       else if(ENTS[ei]&&ENTS[ei].hasGeo&&!WORLDLIKE[e.cls])t='This is a brush entity: only point entities can be modified in the map viewer.';}
     el.style.display=t?'':'none';el.textContent=t;}
 }
@@ -11205,8 +11289,30 @@ function mclKey(ev){
 function modEntsText(){return MOD.ents.filter(m=>!modIsMap(m)).map(modText).join('\n')+'\n';}
 // the map's entities changed here: by entity number (the decompiled .map keeps the entity
 // lump's order), with the class and origin they had, to check against the .bsp
-function modSets(){return MOD.ents.filter(m=>modIsMap(m)&&modEdited(m)).map(m=>({ei:m.ei,cls:MAP.ents[m.ei].cls,
-  origin:parseVec(edKey({kv:m.orig},'origin'),3),kv:m.del?m.orig:m.kv,del:!!m.del})).concat(worldSets());}
+function modSets(){return MOD.ents.filter(m=>modIsMap(m)&&modEdited(m)).map(m=>{
+  const r={ei:m.ei,cls:MAP.ents[m.ei].cls,origin:parseVec(edKey({kv:m.orig},'origin'),3),kv:m.del?m.orig:m.kv,del:!!m.del};
+  // a .bsp's static prop: its record in the static model lump, and the model it has there
+  const st=modStaticIdx(m.ei);if(st>=0){r.st=st;r.model=edKey({kv:m.orig},'model')||'';}
+  return r;}).concat(worldSets());}
+// the static model lump's record a map entity is (a .bsp's static props come after its
+// entities, in the lump's order), or -1
+function modStaticIdx(ei){const fs=D.bsp&&D.bsp.firstStatic;
+  return (fs>0&&ei>=fs&&ei<MAP.nMap&&MAP.ents[ei]&&!MAP.ents[ei].scr)?ei-fs:-1;}
+// what Save as .bsp can't write: a static prop deleted, given keys the static model lump
+// has no room for, another model (its baked vertex light is its model's) or another class; new static props (they'd be entities in the
+// entity lump, not static models). Text for the reason, or ''.
+const STATIC_KEYS=new Set(['classname','model','origin','angles','angle','scale']);
+function modBspStaticBad(sets){
+  for(const x of sets){if(x.st==null)continue;const nm=entName(x.ei);
+    if(x.del)return'Save as .bsp can\'t delete '+nm+': a static prop\'s record stays in the .bsp\'s static model lump. Save as .map or Compile... leaves it out';
+    const extra=x.kv.map(k=>k[0]).filter(k=>!STATIC_KEYS.has(k.toLowerCase()));
+    if(extra.length)return'Save as .bsp can\'t give '+nm+' the key'+(extra.length>1?'s ':' ')+extra.join(', ')+': the .bsp\'s static model lump holds only its model, origin, angles and scale. Save as .map or Compile... keeps them';
+    const c=edKey({kv:x.kv},'classname');if(String(c||'').toLowerCase()!==String(x.cls||'').toLowerCase())return'Save as .bsp can\'t make '+nm+' another class: it is a static model in the .bsp. Save as .map or Compile... does';
+    const md=edKey({kv:x.kv},'model'),n2=v=>String(v||'').replace(/\\/g,'/').toLowerCase();
+    if(md&&n2(md)!==n2(x.model))return'Save as .bsp can\'t give '+nm+' another model: its baked light in the .bsp is the old model\'s, vertex by vertex. Save as .map or Compile... does';}
+  const nw=MOD.ents.filter(m=>!modIsMap(m)&&/^static_/i.test(modCls(m)));
+  if(nw.length&&D.bsp&&D.bsp.firstStatic>0)return'Save as .bsp can\'t add '+(nw.length===1?'the new '+modCls(nw[0]):nw.length+' new static props')+': a .bsp\'s static models are made by the compiler (in the entity lump '+(nw.length===1?'it':'they')+' would be entities). Save as .map or Compile... makes '+(nw.length===1?'it a static model':'them static models');
+  return'';}
 // the .map with the changes: each changed (point) entity's block written again, the new ones added
 function modMapText(){
   let t=D.srcText;const ch=MOD.ents.filter(m=>modIsMap(m)&&modEdited(m)).sort((a,b)=>MAP.ents[b.ei].ts-MAP.ents[a.ei].ts);
@@ -11240,6 +11346,7 @@ function modSave(kind){
   if(!sets.length&&!nw.length)return;
   const nodes=nw.filter(modIsNode).length,have=pnEnts().length;
   if(have+nodes>4096){MOD.closeAfter=false;flash('More than 4096 path nodes: the game can\'t load that many');return;}
+  if(kind==='bsp'){const bad=modBspStaticBad(sets);if(bad){MOD.closeAfter=false;flash(bad);return;}}
   MOD.pendKey=modSaveKey();
   const req={kind:kind,ents:nw.length?modEntsText():'',set:sets,mapText:kind==='map'?modMapText():null,src:D.srcFile||'',vpath:D.path||'',mapFile:(D.bsp&&D.bsp.mapFile)||'',isBsp:D.kind==='bsp',name:D.name||''};
   try{if(window.chrome&&window.chrome.webview){window.chrome.webview.postMessage('mohaa-modify-save\n'+JSON.stringify(req));
@@ -11258,6 +11365,8 @@ function modSaved(ok,msg){flash(msg);$('modStat').textContent=msg;
   if(ok&&close)closeViewer();}
 function modInit(){
   $('modClsBtn').onclick=()=>MCL.el?mclClose():mclOpen();
+  $('bModAlign').onclick=e=>alignCycle(e.shiftKey);
+  alignLoad();
   window.addEventListener('resize',()=>{if(MCL.el)mclClose();});
   $('bModAdd').onclick=()=>modAdd(MOD.cls);
   $('bModEdit').onclick=()=>MOD.edit>=0?modEditClose(true):modEditOpen(MOD.sel);

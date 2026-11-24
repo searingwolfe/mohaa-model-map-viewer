@@ -2026,11 +2026,78 @@ def _map_safe(s):
     return s.replace("{", "(").replace("}", ")")
 
 
+STATIC_RECORD = 164
+STATIC_KEYS = ("classname", "model", "origin", "angles", "angle", "scale")
+
+
+def _vec(v, n, what):
+    try:
+        t = [float(x) for x in str(v).split()]
+    except ValueError:
+        t = []
+    if len(t) != n or not all(math.isfinite(x) for x in t):
+        raise BspError("%s: %r isn't %d numbers" % (what, v, n))
+    return t
+
+
+def _static_records(data, version, lumps, changes):
+    """The static model lump with the changed static props' records written again in place:
+    origin, angles and scale (each record's baked vertex light, and the leafs that
+    list it, are left as they are). changes: [{st, model, origin, kv}] from the page, st the
+    record's number, model and origin what the page had it as (checked against the record).
+    Returns (lump index, new lump bytes)."""
+    if version <= 17:
+        raise BspError("this .bsp (version %d) has no static model lump" % version)
+    li = LUMP_STATICMODELDEF + (1 if version <= 18 else 0)
+    ofs, ln = lumps[li]
+    lump = bytearray(data[ofs:ofs + ln])
+    n = len(lump) // STATIC_RECORD
+    for c in changes:
+        k = c.get("st")
+        if not isinstance(k, int) or not 0 <= k < n:
+            raise BspError("static prop %r: the .bsp has %d static models" % (k, n))
+        at = k * STATIC_RECORD
+        rec = lump[at:at + STATIC_RECORD]
+        was = _cstr(bytes(rec[:128]))
+        org = struct.unpack_from("<3f", rec, 128)
+        want = c.get("origin")
+        if (c.get("model") and was.lower() != str(c["model"]).lower()) or \
+                (want is not None and any(abs(a - float(b)) > 0.05 for a, b in zip(org, want))):
+            raise BspError("static prop %d isn't the one the page changed (%s at %s): rebuild the map and try again" % (k, was, org))
+        if c.get("del"):
+            raise BspError("a static prop can't be deleted in a .bsp (its record stays in the static model lump): save as .map or compile")
+        kv = [(str(a), str(b)) for a, b in (c.get("kv") or ())]
+        extra = [a for a, _b in kv if a.lower() not in STATIC_KEYS]
+        if extra:
+            raise BspError("the static model lump holds only model, origin, angles and scale, not %s: save as .map or compile" % ", ".join(extra))
+        get = lambda name: next((b for a, b in kv if a.lower() == name), None)
+        # the model stays: its baked vertex light (numVertexData colours from firstVertexData)
+        # is this model's, vertex by vertex (tr_model.cpp reads one per vertex drawn)
+        model = get("model") or was
+        if model.replace("\\", "/").lower() != was.replace("\\", "/").lower():
+            raise BspError("a static prop's model can't change in a .bsp (its baked light is the old model's, vertex by vertex): save as .map or compile")
+        enc = was.encode("latin-1", "replace")
+        origin = _vec(get("origin"), 3, "origin") if get("origin") is not None else list(org)
+        if get("angles") is not None:
+            angles = _vec(get("angles"), 3, "angles")
+        elif get("angle") is not None:
+            a = _vec(get("angle"), 1, "angle")[0]
+            angles = [-90.0, 0.0, 0.0] if a == -1 else [90.0, 0.0, 0.0] if a == -2 else [0.0, a, 0.0]
+        else:
+            angles = [0.0, 0.0, 0.0]
+        scale = _vec(get("scale"), 1, "scale")[0] if get("scale") is not None else 1.0
+        rec[:128] = enc + b"\0" * (128 - len(enc))
+        struct.pack_into("<3f3ff", rec, 128, *origin, *angles, scale)
+        lump[at:at + STATIC_RECORD] = rec
+    return li, bytes(lump)
+
+
 def write_bsp_entities(data, added, out_path, src_path=None, replace=None):
     """Write data (a .bsp's bytes) to out_path with the entities in added (entity-lump
     text) after its own, the map's entities in replace ([{ei, cls, origin, kv}]) given their
-    new keys, and a new map_time. Checked afterwards: every other lump byte for byte the
-    same, the entities read back. Returns (old map_time, new map_time, nodes before, nodes
+    new keys, and a new map_time. A change with "st" is a static prop: its record in the
+    static model lump is written again instead (_static_records). Checked afterwards: every
+    other lump byte for byte the same, the entities read back. Returns (old map_time, new map_time, nodes before, nodes
     after, entities)."""
     if src_path and os.path.normcase(os.path.abspath(src_path)) == os.path.normcase(os.path.abspath(out_path)):
         raise BspError("that is the .bsp the map was opened from: pick another name")
@@ -2038,8 +2105,13 @@ def write_bsp_entities(data, added, out_path, src_path=None, replace=None):
     text = bsp_entity_text(data)
     old = parse_entity_string(text)
     new = parse_entity_string(added)
-    if not new and not replace:
+    # a .bsp's static props ("st": their record in the static model lump) are written there,
+    # not in the entity lump
+    statics = [s for s in (replace or ()) if s.get("st") is not None]
+    replace = [s for s in (replace or ()) if s.get("st") is None]
+    if not new and not replace and not statics:
         raise BspError("no entities to add or change")
+    sl = _static_records(data, version, lumps, statics) if statics else None
     for e in new:
         if not any(k.lower() == "classname" and v for k, v in e):
             raise BspError("an added entity has no classname")
@@ -2094,6 +2166,9 @@ def write_bsp_entities(data, added, out_path, src_path=None, replace=None):
         raise BspError("the entity text holds a NUL byte")
     payload = text.encode("latin-1", "replace") + b"\0"
     out = bytearray(data)
+    if sl:
+        so = lumps[sl[0]][0]
+        out[so:so + len(sl[1])] = sl[1]        # the same size: in place
     while len(out) % 4:
         out.append(0)
     new_ofs = len(out)
@@ -2120,7 +2195,8 @@ def write_bsp_entities(data, added, out_path, src_path=None, replace=None):
             if i == le:
                 continue
             a, b = lumps[i], l2[i]
-            if a != b or data[a[0]:a[0] + a[1]] != d2[b[0]:b[0] + b[1]]:
+            want = sl[1] if sl and i == sl[0] else data[a[0]:a[0] + a[1]]
+            if a != b or want != d2[b[0]:b[0] + b[1]]:
                 raise BspError("checking the new file: lump %d differs" % i)
         back = parse_entity_string(bsp_entity_text(d2))
         if len(back) != len(old) + len(new) - ndel:

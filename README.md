@@ -407,9 +407,18 @@ click away: its targetname, origin, `setsize`, targets and ready-to-paste script
   viewer with Esc (or File > Close file), or opening another map, while changes aren't
   saved asks first: Save as .bsp, Save as .map, Discard changes or Cancel (Cancel keeps
   this map open; the other one opens after a save or a discard). Selecting one of the map's own point entities (a broken
-  path node, say) lists it in Modify too, to edit, move or trim it the same way, or to
+  path node, say) lists it in Modify too (every one selected, when several are), to edit, move or trim it the same way, or to
   **Delete** it from the saved copy (marked DEL until you save; Restore or Undo puts it
-  back). **Spawnflags** ticks the selected entity's spawnflags from its class's list (for
+  back). A `.bsp`'s static props (static_* models) aren't in its entity lump, so Modify
+  takes them only with Edit map on (below); without it, Copy, Move, Trim origin or Delete
+  with one in the selection says so and does nothing. **Align** (by trim step; click for
+  the next, Shift+click for off) draws white lines out of the selected entity's origin to
+  line other things up with: **Straight** along X, Y and Z, **Diagonal** at 45 degrees (flat
+  and upright), **By angle** along its own forward, left and up. Lines going up are cyan and
+  down yellow (By angle: its own up and down, so a pitch or roll shows). They stay after it
+  is deselected (its row stays in the list, tagged ┼ ╳ or ∠) until Align is set back to off
+  or the entity is deleted, and are kept for the map in the browser's storage. Off for
+  brushes and brush entities. **Spawnflags** ticks the selected entity's spawnflags from its class's list (for
   a path node DUCK, COVER, CORNER_LEFT, CRATE ...). **Make path**
   sets the selected entity's `target` by clicking the next one (waypoints, spline paths,
   script origins), drawn as a target link. **Grid** (+) draws a see-through 3D grid of MOHRadiant's sizes (1 to 512)
@@ -546,6 +555,16 @@ way here.
   Edit parameters), delete it, and undo. Saved as a `.bsp` it moves the way the game moves
   it (its origin); saved as a `.map` its brushes themselves move, with their textures kept
   in place.
+* **Static props** (a `.bsp`'s static_* models: furniture, lamps, crates ...) get a row in
+  Modify too, so Move, Trim origin, Yaw / angles and Edit parameters move, turn and scale
+  them. **Save as .bsp** writes their new origin, angles and scale into the `.bsp`'s static
+  model lump (each keeps its baked light and the leafs that list it, so a big move can
+  leave it drawn only where it was seen from before); deleting one, a copy of one, another
+  model or other keys need **Save as .map** or **Compile...**, and Save as .bsp says so.
+* **With only entities, path nodes or static props selected**, the Editor's Resize, Move,
+  Clip, Texture and Terrain buttons (and Trim) are off, as Modify's are while brushes are
+  selected: Modify moves and turns them. Select a brush, patch or terrain block (or click an
+  empty spot) and they come back.
 * **Level script...** opens the map's `.scr` (beside the map file; a starting script when
   there is none) in a box over the view. Save writes it (the old one kept as `.bak`) and
   builds the page again, so what the script spawns is redrawn; the camera and Modify's
@@ -612,12 +631,16 @@ way here.
   * **▦ Texture**: click a face to give it the Texture box's texture (Shift+click: every
     face of the brush; patches and terrain patches too). **Alt+click** takes the texture
     under the mouse into the box. **Ctrl+click** picks a face, then **Fit** (once across
-    the face), turn ⟲ ⟳, flip, shift, scale up or down, or **Natural** (reset).
+    the face), turn ⟲ ⟳, flip, shift, scale up or down, or **Natural** (reset). What a click
+    will paint is outlined in yellow under the mouse: the face, the whole brush while Shift
+    is held, the whole patch, or the terrain patch (512 x 512 units).
   * **Eyedropper** (the pipette button beside *- tool textures -*, with any tool): click
     it, then click any surface in the view (a brush face, a patch, a terrain patch or a
     `.bsp`'s own surface) and its texture goes into the Texture box, then the **▦ Texture**
-    tool comes on (terrain *paint texture* stays on) so each click lays it. A drag still
-    turns the camera; **Esc** or the button again cancels.
+    tool comes on (terrain *paint texture* stays on) so each click lays it. The surface it
+    will take from is outlined in yellow under the mouse (in place of the red selection
+    outline where they meet). A drag still turns the camera; **Esc** or the button again
+    cancels.
   * **The Texture box follows the selection**: selecting a brush, patch or terrain block
     puts its texture in the box (the face clicked, else the brush's most used texture).
     A texture chosen with **Browse...**, *- tool textures -* or the eyedropper goes on what
@@ -702,7 +725,8 @@ way here.
   its More info card says it is new and not in the map's file yet. Once Save as `.map` or
   Compile writes it, it is one of the map's own again (and follows the Show buttons).
 * **Changed geometry shows without the baked light** (the view draws the map as a `.map`
-  until it is compiled again), and Save as `.bsp` stays greyed after a brush, patch or
+  until it is compiled again; Undo back to the map as opened, after any kind of change,
+  brings the light back), and Save as `.bsp` stays greyed after a brush, patch or
   terrain change (a `.bsp` holds its brushes compiled). The changes are kept by Modify's
   recovery file, and Save as `.map` keeps them to carry on later.
 * **Compile...** (on the page, File > Compile map..., or F9) builds a `.bsp` from the map

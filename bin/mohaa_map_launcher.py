@@ -893,6 +893,9 @@ class MapApp(ML.App):
         if loose_path is None and self._reuse_ok():
             hp = os.path.join(self._outdir, subdir or "", self._viewer_html_name(entry))
             if os.path.exists(hp) and self._html_current(hp):
+                # (no build runs, so _last_build still names the map built before: the
+                # details pane's Rebuild goes by this instead)
+                self._shown = ("pk3", entry)
                 self._last_subdir = subdir; self._open_cached(hp, entry, subdir); return
         if not self._pk3_paths or not self._tmp:
             self._log_line("Load a .pk3 first.", "err"); return
@@ -924,6 +927,17 @@ class MapApp(ML.App):
                 MC.swallowed()
                 self._log_q.put(("err", f"Extract failed: {e}"))
         threading.Thread(target=work, daemon=True).start()
+
+    def _rebuild_shown(self):
+        """The details pane's Rebuild: the map on show. A pak map opened from its saved page
+        (_shown) is extracted and built again; otherwise the last build runs again."""
+        s = getattr(self, "_shown", None)
+        if s and s[0] == "pk3":
+            if self._viewer_open_busy(): return
+            self._run_opts = {"force": True}
+            self._close_viewer()
+            self._open_pk3_model(s[1]); return
+        super()._rebuild_shown()
 
     def _decompile_only(self, entry, edit=False):
         """Right-click > Decompile: write the .map into the output folder without building
@@ -998,6 +1012,7 @@ class MapApp(ML.App):
                 and not (self._tmp and path.startswith(self._tmp))):
             subdir = ML.STANDALONE_SUBDIR
         self._last_build = (path, None, None, None, subdir)
+        self._shown = None                      # Rebuild: _last_build is this map
         self._last_subdir = subdir
         disp = ("pk3 map: " + os.path.basename(path)) if (self._tmp and path.startswith(self._tmp)) else path
         self._path_var.set(disp)
@@ -1337,7 +1352,10 @@ class MapApp(ML.App):
                 import mohaa_bsp as MB
                 sets = req.get("set") or []
                 old, new, n0, n1, ne = MB.write_bsp_entities(data, added, out, src if loose else None, replace=sets)
-                msg = (f"saved {os.path.basename(out)}: {ne} entities ({len(sets)} changed), info_pathnode {n0} -> {n1}; "
+                nst = sum(1 for x in sets if isinstance(x, dict) and x.get("st") is not None)
+                msg = (f"saved {os.path.basename(out)}: {ne} entities ({len(sets) - nst} changed), "
+                       + (f"{nst} static prop{'' if nst == 1 else 's'} moved in the static model lump, " if nst else "")
+                       + f"info_pathnode {n0} -> {n1}; "
                        f"map_time {old!r} -> {new!r}, so the game rebuilds the AI paths")
             else:
                 # the page sends the whole .map when it has it (changed entities written again)
