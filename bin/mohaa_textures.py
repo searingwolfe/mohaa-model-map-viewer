@@ -259,6 +259,21 @@ def _parse_pulse_and_base(block):
             basefade=basefade or fade
     return pulse, basevisible, basefade
 
+def _tcmod_rotate(line):
+    """`tcmod rotate <speed> [start [coef]]` -> degrees per second, or None.
+
+    MOHAA's form takes a start angle and a speed coefficient (tr_shader.c ParseTexMod
+    "rotate": rotateStart 0, rotateCoef 1 when left out) and turns the texture by
+    -speed*coef*shaderTime - start (RB_CalcRotateTexCoords, tr_shade_calc.c:1599-1631). So
+    the Opel truck's wheel hubs (`tcmod rotate 5 0 -20`) turn at 100 deg/s, not 5."""
+    m=re.match(r'(?i)tcmod\s+rotate\s+([\-\d.]+)(?:\s+([\-\d.]+)(?:\s+([\-\d.]+))?)?', line)
+    if not m: return None
+    try:
+        v=float(m.group(1))*(float(m.group(3)) if m.group(3) else 1.0)
+    except ValueError:
+        return None
+    return v
+
 def parse_shader_props_file(txt):
     """Return {shadername_lower: render-hint dict} for one .shader script.
 
@@ -442,10 +457,7 @@ def parse_shader_props_file(txt):
                     if _msc and _bscr is None:
                         try: _bscr=(float(_msc.group(1)), float(_msc.group(2))); _scr_i=_li
                         except Exception: MC.swallowed(); _bscr=None
-                    _mr=re.match(r'(?i)tcmod\s+rotate\s+([\-\d.]+)', _l)
-                    if _mr and _brot is None:
-                        try: _brot=float(_mr.group(1))
-                        except Exception: MC.swallowed(); _brot=None
+                    if _brot is None: _brot=_tcmod_rotate(_l)
                 if _bmap:
                     _bundle0={"map":_bmap,"scale":list(_bsc or (1.0,1.0))}
                     # Base-stage `tcmod rotate` (RB_CalcRotateTexCoords, tr_shade_calc.c:1599-1631).
@@ -453,11 +465,9 @@ def parse_shader_props_file(txt):
                     for _line in _bp[0].splitlines():
                         _l=_line.strip()
                         if _l.startswith("//"): continue
-                        _mbr=re.match(r'(?i)tcmod\s+rotate\s+([\-\d.]+)', _l)
-                        if _mbr:
-                            try:
-                                _bundle0["brot"]=float(_mbr.group(1)); break
-                            except Exception: MC.swallowed()
+                        _r=_tcmod_rotate(_l)
+                        if _r is not None:
+                            _bundle0["brot"]=_r; break
                     # Animated bundle tcmods are applied by the viewer at runtime. tcmods run in listed
                     # order: scroll before scale (mortar_dirthit) drifts at the scroll rate in base UV
                     # space, scroll after scale drifts at rate/scale. `prescale` records which.
@@ -469,24 +479,29 @@ def parse_shader_props_file(txt):
         # spins the texture about (0.5,0.5), e.g. the prop/c47prop propeller discs. Only the part
         # of stage 0 before any nextbundle counts. `clamp` is exported only with a rotate, since
         # clamp vs repeat is invisible on a static clampmap.
-        _texrotate=None; _clampbase=False
+        # Base-stage `tcmod scroll <s> <t>` (RB_CalcScrollTexCoords, tr_shade_calc.c:1558-1577)
+        # adds s,t per second to the texcoords: the Opel truck's tyre tread (`tcmod scroll 0.2 0`).
+        _texrotate=None; _clampbase=False; _texscroll=None
         if _stlist:
             _s0base=re.split(r'(?im)^\s*nextbundle\b.*$', _stlist[0], maxsplit=1)[0]
             for _line in _s0base.splitlines():
                 _l=_line.strip()
                 if _l.startswith("//"): continue
-                if _texrotate is None:
-                    _mtr=re.match(r'(?i)tcmod\s+rotate\s+([\-\d.]+)', _l)
-                    if _mtr:
-                        try: _texrotate=float(_mtr.group(1))
-                        except Exception: MC.swallowed(); _texrotate=None
+                if _texrotate is None: _texrotate=_tcmod_rotate(_l)
+                if _texscroll is None:
+                    _mts=re.match(r'(?i)tcmod\s+scroll\s+([\-\d.]+)\s+([\-\d.]+)', _l)
+                    if _mts:
+                        try:
+                            _ts=[float(_mts.group(1)), float(_mts.group(2))]
+                            if _ts[0] or _ts[1]: _texscroll=_ts
+                        except ValueError: MC.swallowed()
                 if re.match(r'(?i)clampmap\s+\S', _l): _clampbase=True
         needs_alpha=bool(_has_atest or (not _base_opaque))
         # no explicit cull keyword -> fall back to the cull_* naming convention.
         if not sawcull and name.startswith("cull_"): twosided=True
         # Record any shader with render hints, so emitter sprites can tell an explicit
         # additive=False apart from "no shader info".
-        if additive or autosprite or frames or sawblend or sawsprite or pulse or twosided or needs_alpha or _sawrgb or _atest0 or _bundle0 or _texrotate or _flaps:
+        if additive or autosprite or frames or sawblend or sawsprite or pulse or twosided or needs_alpha or _sawrgb or _atest0 or _bundle0 or _texrotate or _texscroll or _flaps:
             rec={"additive":additive,"autosprite":autosprite,"autosprite2":autosprite2,"lightglow":lightglow,"frames":frames,"fps":fps,
                  "spritescale":spritescale,"sprite":sawsprite,"twosided":twosided,"sprite_type":sprite_type,
                  "pulse":pulse,"basevisible":basevisible,"needs_alpha":needs_alpha}
@@ -495,6 +510,9 @@ def parse_shader_props_file(txt):
             if _texrotate:
                 rec["texrotate"]=_texrotate
                 if _clampbase: rec["clamp"]=True
+            # not with a nextbundle: the page would move the whole surface, but the engine scrolls
+            # only the base bundle (opellights: the dust drifts, the beam stays)
+            if _texscroll and not _bundle0: rec["texscroll"]=_texscroll
             if _flaps: rec["flap"]=_flaps
             # distfade: inv=False fades out between near and near+range (leaf cards); inv=True
             # fades in over that range (the long-range billboard stand-ins).
@@ -928,6 +946,7 @@ def write_textures_manifest(vfs, skd_relpath, surface_names, shader_index, tik_i
         # Texture rotation (propeller discs) and clamp flag, carried on whichever entry shape
         # the surface ends up as.
         texrot=props.get("texrotate") if props else None
+        texscr=props.get("texscroll") if props else None
         clampf=bool(props and props.get("clamp"))
         dfade=props.get("distfade") if props else None
         # Keep the diffuse alpha only when the shader uses it as coverage (alpha test or a
@@ -950,6 +969,7 @@ def write_textures_manifest(vfs, skd_relpath, surface_names, shader_index, tik_i
             if len(frs)>1: entry["frames"]=frs
             if props.get("twosided"): entry["twosided"]=True
             if texrot: entry["texrotate"]=texrot
+            if texscr: entry["texscroll"]=texscr
             if clampf: entry["clamp"]=True
             if dfade: entry["distfade"]=dfade
             if props.get("atest"): entry["atest"]=props["atest"]
@@ -961,6 +981,7 @@ def write_textures_manifest(vfs, skd_relpath, surface_names, shader_index, tik_i
             extra={}
             if props and props.get("twosided"): extra["twosided"]=True
             if texrot: extra["texrotate"]=texrot
+            if texscr: extra["texscroll"]=texscr
             if clampf: extra["clamp"]=True
             if dfade: extra["distfade"]=dfade
             # alphaFunc on an opaque base means alpha-tested, not blended (tr_shader.c:1129-1146);

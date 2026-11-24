@@ -21,6 +21,7 @@ _bin_dir = os.path.dirname(os.path.abspath(__file__))
 if _bin_dir not in sys.path:
     sys.path.insert(0, _bin_dir)
 import mohaa_common as MC                       # logging, atomic writes, settings, Pillow guard
+import mohaa_skc_write as _SKW                  # chan_keys: .skc channel names keyed like stripped bone names
 import sys, os, struct, glob, json, re, webbrowser, math, subprocess, pathlib, base64
 
 def _cap(b,n,rec,what,path):
@@ -393,6 +394,9 @@ def _parse_skmd(b,path):
     bones=[]; off=ofsBone
     for _ in range(numBone):
         name=_cstr(b,off,32); parent=_cstr(b,off+0x20,32)
+        # the exact name when the file pads it with trailing spaces: the engine names the
+        # bone's .skc channels from it ("<raw> pos"), so a saved animation must use it
+        _rawname=b[off:off+32].split(b"\x00")[0].decode("latin-1","replace")
         bType=_i32(b,off+0x40); ofsBase=_i32(b,off+0x44); ofsChan=_i32(b,off+0x48)
         ofsBoneNames=_i32(b,off+0x4C); ofsEnd=_i32(b,off+0x50)
         baseLen=ofsChan-ofsBase
@@ -406,6 +410,7 @@ def _parse_skmd(b,path):
         #  5 HOSEROT  bendRatio,bendMax,spinRatio,basePos(3),scale(3),type - bends parent toward 1 target
         #  6 AVROT    rotRatio,basePos(3),scale(3)          - averages 2 reference bones
         bone={"name":name,"parent":parent,"boneType":bType}
+        if _rawname!=name: bone["rawName"]=_rawname
         if bType==0 and baseLen>=24:
             bindOffset=[_bf(0),_bf(1),_bf(2)]
         elif bType in (3,4) and baseLen>=24:
@@ -612,7 +617,9 @@ def parse_skc(path):
             ofsChan+numChan*32<=n and 0x30+numFrames*48<=n):
         raise ValueError(f"{path}: unsupported/old SKC layout (v{version}; numChan={numChan} "
                          f"numFrames={numFrames} ofsChan={ofsChan} size={n}) - skipping animation")
-    names=[_cstr(b,ofsChan+i*32,32) for i in range(numChan)]
+    # keyed the way the stripped bone names look them up (mohaa_skc_write.chan_keys): a bone whose name
+    # ends in spaces (opel.skd "tire_tilt_back_right  ") otherwise loses its animation
+    names=_SKW.chan_keys([_cstr(b,ofsChan+i*32,32) for i in range(numChan)])
     frames=[]
     # Each 48-byte frame record (skelAnimFileFrame_t) also holds the frame's bounds (mins,
     # maxs) and radius: the animation's bounds are the union of its frames'
@@ -1792,7 +1799,7 @@ def _driven_helpers(bones,helper_idx,leg_chains,chan):
 # --no-editor builds a page without it.
 EDITOR=True
 EDITOR_RIG_KEYS=("name","parentIdx","boneType","bindOffset","refIdx","solvable",
-                 "bendRatio","bendMax","spinRatio","avWeight","hoseType")
+                 "bendRatio","bendMax","spinRatio","avWeight","hoseType","rawName")
 EDITOR_SOLVER=os.path.join(os.path.dirname(os.path.abspath(__file__)),"mohaa_anim_solver.js")
 
 def editor_rig(bones):
@@ -2571,7 +2578,12 @@ function savePayload(){
     for(const t of w.T)for(let k=0;k<3;k++){if(t[k]<mn[k])mn[k]=t[k];if(t[k]>mx[k])mx[k]=t[k];}
     return{v:names.map(n=>raw[n]),b:[mn,mx],r:radiusFromBounds(mn,mx),
            d:(doc.fdelta[f]||[0,0,0]).slice(),a:doc.fang[f]||0};});
-  return{name:doc.name,frameTime:doc.frameTime,flags:doc.flags||0,names:names,frames:out,rotfkFrames:fkFrames};}
+  // the file's channel names use a bone's exact name: one padded with spaces (opel.skd
+  // "tire_tilt_back_right  ") keeps them, or the game finds no channel for that bone
+  const RAWB={};for(const b of BONES)if(b.rawName)RAWB[b.name]=b.rawName;
+  const fileNames=names.map(n=>{const m=/^(.*) (pos|rot|rotFK)$/.exec(n),r=m&&RAWB[m[1]]?RAWB[m[1]]+' '+m[2]:n;
+    return r!==n&&names.indexOf(r)>=0?n:r;});
+  return{name:doc.name,frameTime:doc.frameTime,flags:doc.flags||0,names:fileNames,frames:out,rotfkFrames:fkFrames};}
 function hasLauncher(){try{return !!(window.chrome&&chrome.webview);}catch(e){return false;}}
 $('edSave').onclick=()=>{
   if(!doc)return;
@@ -2800,6 +2812,9 @@ def build_payload(skd,anims_data,base_channels,referenced,convention,wT_payload,
                 # Base-stage `tcmod rotate` (RB_CalcRotateTexCoords, tr_shade_calc.c:1599-1631): the
                 # propeller discs (prop / c47prop). clamp keeps the clampmap border clean while spinning.
                 if ent.get("texrotate"): sr["texrotate"]=ent["texrotate"]
+                # base-stage `tcmod scroll` (RB_CalcScrollTexCoords, tr_shade_calc.c:1558-1577):
+                # the Opel truck's tyre tread
+                if ent.get("texscroll"): sr["texscroll"]=ent["texscroll"]
                 if ent.get("clamp"): sr["clamp"]=True
                 # alphaGen distFade LOD window (tr_shader.c:1168-1194): {near, range, inv}, e.g. swapping
                 # a tree's leaf cards for its billboard stand-in.
@@ -4082,7 +4097,7 @@ const view={tex:hasTex,mesh:true,wire:false,nodes:true,labels:true,wasd:false,sp
 // pulseOnly surfaces (_ghosting) have no solid base.
 function mkSurfTex(s){
   if(!s.tex&&!s.pulse)return null;
-  const rec={additive:!!s.additive,autosprite:!!s.autosprite,autosprite2:!!s.autosprite2,lightglow:!!s.lightglow,twosided:!!s.twosided,fps:s.fps||0,frames:null,pulse:null,pulseOnly:false,texrotate:s.texrotate||0,clamp:!!s.clamp,distfade:s.distfade||null,atest:s.atest||null,blend:!!s.blend};
+  const rec={additive:!!s.additive,autosprite:!!s.autosprite,autosprite2:!!s.autosprite2,lightglow:!!s.lightglow,twosided:!!s.twosided,fps:s.fps||0,frames:null,pulse:null,pulseOnly:false,texrotate:s.texrotate||0,texscroll:s.texscroll||null,clamp:!!s.clamp,distfade:s.distfade||null,atest:s.atest||null,blend:!!s.blend};
   if(s.tex){const im=new Image();im.onload=()=>{im._ok=1;draw();};im._clamp=!!s.clamp;im.src=s.tex;rec.img=im;}
   if(s.frames&&s.frames.length>1){
     rec.frames=s.frames.map(u=>{const f=new Image();f.onload=()=>{f._ok=1;draw();};f.src=u;return f;});
@@ -4117,10 +4132,10 @@ let _effStarted=false;
 function startEffLoop(){if(_effStarted)return;_effStarted=true;requestAnimationFrame(effLoop);}
 // True when the host or an attachment has a surface that needs the effect clock.
 function liveEffectSurf(){return LTEX.some(t=>t&&(t.additive||t.autosprite||t.autosprite2
-  ||t.pulse||t.texrotate||(t.frames&&t.frames.length>1)));}
+  ||t.pulse||t.texrotate||t.texscroll||(t.frames&&t.frames.length>1)));}
 // Surfaces with a base-stage `tcmod rotate` (propeller discs) need the effect clock
 // running even when the model isn't playing.
-const hasTexRot=DATA.surfRanges.some(s=>s.texrotate);
+const hasTexRot=DATA.surfRanges.some(s=>s.texrotate||s.texscroll);
 // World-space centre + radius of a surface (for autosprite billboarding), from the live
 // skinned verts so it follows animation.
 function surfCenterRadius(si){const s=LSR[si];const V=model;
@@ -5982,6 +5997,11 @@ function draw2DScene(){ctx.clearRect(0,0,W,H);
        if(tex&&tex.texrotate){const _th=-tex.texrotate*effT*Math.PI/180.0,_c=Math.cos(_th),_s=Math.sin(_th);
          const _rot=(u,v)=>{const du=u-0.5,dv=v-0.5;return[_c*du-_s*dv+0.5,_s*du+_c*dv+0.5];};
          let _r;_r=_rot(_u0,_v0);_u0=_r[0];_v0=_r[1];_r=_rot(_u1,_v1);_u1=_r[0];_v1=_r[1];_r=_rot(_u2,_v2);_u2=_r[0];_v2=_r[1];}
+       // Base-stage `tcmod scroll <s> <t>` (RB_CalcScrollTexCoords, tr_shade_calc.c:1558-1577):
+       // s,t per second added to the texcoords, wrapped to [0,1) (the tyre tread). The repeat
+       // pattern below tiles it.
+       if(tex&&tex.texscroll){let _ss=tex.texscroll[0]*effT,_st=tex.texscroll[1]*effT;_ss-=Math.floor(_ss);_st-=Math.floor(_st);
+         _u0+=_ss;_u1+=_ss;_u2+=_ss;_v0+=_st;_v1+=_st;_v2+=_st;}
        const p0x=_u0*iw,p0y=_v0*ih,p1x=_u1*iw,p1y=_v1*ih,p2x=_u2*iw,p2y=_v2*ih;
        const e1x=p1x-p0x,e1y=p1y-p0y,e2x=p2x-p0x,e2y=p2y-p0y;
        const det=e1x*e2y-e2x*e1y;
@@ -5995,7 +6015,9 @@ function draw2DScene(){ctx.clearRect(0,0,W,H);
          if(img._pat===undefined){try{img._pat=ctx.createPattern(img,'repeat');}catch(e){img._pat=null;}}
          // _spin: a `tcmod rotate` propeller disc. Clamp it so the rotating corners never wrap, and
          // skip the flat-shade darkening so the transparent border stays clear.
-         const _spin=!!(tex&&tex.texrotate);
+         // A rotating `map` (not clampmap, e.g. the Opel truck's wheel hubs) repeats like any
+         // other texture, so it keeps the pattern fill and the shade pass.
+         const _spin=!!(tex&&tex.texrotate&&tex.clamp);
          // alphaFunc is a pass/discard test, not a blend (tr_shader.c:1129-1146), so draw the
          // thresholded variant, clamped, and skip the flat-shade pass (which would fill a grey box
          // behind every leaf card). The distFade ramp feeds the test as vertex alpha, since the
@@ -7193,7 +7215,7 @@ function attGeomFail(key,msg){
 // build_payload writes for host surfaces, so once an attachment is in LSR/LTEX every draw
 // path treats it like the host's own surfaces.
 const ATT_SR_KEYS=['additive','autosprite','autosprite2','lightglow','twosided',
-                   'clamp','texrotate','fps','frames','atest','distfade','pulse'];
+                   'clamp','texrotate','texscroll','fps','frames','atest','distfade','pulse'];
 function attRebuild(){
   // Rebuild the live arrays: the host geometry, then every ready attachment appended as extra
   // surfaces with indices shifted past the host's vertices.
@@ -8693,12 +8715,14 @@ function initGLRenderer(){
  // whose base stage has `tcmod rotate` (RB_CalcRotateTexCoords, tr_shade_calc.c:1599-1631)
  // - the aircraft propeller discs (prop / c47prop). enabled<=0.5 leaves UVs untouched.
  // The transform is affine, so rotating per-vertex then interpolating vUV is exact.
- const VSRC='attribute vec3 aPos;attribute vec2 aUV;uniform mat4 uMVP;uniform vec3 uTexRot;'+
+ // uTexScr: a base-stage `tcmod scroll` offset (RB_CalcScrollTexCoords, tr_shade_calc.c:1558-1577),
+ // added after the spin; (0,0) for every other surface.
+ const VSRC='attribute vec3 aPos;attribute vec2 aUV;uniform mat4 uMVP;uniform vec3 uTexRot;uniform vec2 uTexScr;'+
    'varying vec3 vPos;varying vec2 vUV;'+
    'void main(){vPos=aPos;vec2 uv=aUV;'+
    ' if(uTexRot.z>0.5){vec2 d=uv-vec2(0.5);'+
    '   uv=vec2(uTexRot.x*d.x-uTexRot.y*d.y, uTexRot.y*d.x+uTexRot.x*d.y)+vec2(0.5);}'+
-   ' vUV=uv;gl_Position=uMVP*vec4(aPos,1.0);}';
+   ' vUV=uv+uTexScr;gl_Position=uMVP*vec4(aPos,1.0);}';
  // uMode: 0 flat-shaded palette fill, 1 textured + shade, 2 additive texture (blendfunc add),
  //        3 pulse overlay (additive, scaled by the wave glow), 4 unshaded lines (grid, wire).
  // Shading matches the 2D path: sh = 0.35 + 0.65*|dot(N,L)|, and textured surfaces are
@@ -8737,7 +8761,7 @@ function initGLRenderer(){
  const aPos=gl.getAttribLocation(prog,'aPos'),aUV=gl.getAttribLocation(prog,'aUV');
  const uMVP=gl.getUniformLocation(prog,'uMVP'),uMode=gl.getUniformLocation(prog,'uMode'),
        uColor=gl.getUniformLocation(prog,'uColor'),uAlpha=gl.getUniformLocation(prog,'uAlpha'),
-       uTex=gl.getUniformLocation(prog,'uTex'),uTexRot=gl.getUniformLocation(prog,'uTexRot'),
+       uTex=gl.getUniformLocation(prog,'uTex'),uTexRot=gl.getUniformLocation(prog,'uTexRot'),uTexScr=gl.getUniformLocation(prog,'uTexScr'),
        uAtest=gl.getUniformLocation(prog,'uAtest');
  gl.uniform1i(uTex,0);
  gl.enableVertexAttribArray(aPos);
@@ -8822,7 +8846,10 @@ function initGLRenderer(){
  function setTexRot(si){
    const r=LTEX[si]&&LTEX[si].texrotate;
    if(r){const th=-r*effT*Math.PI/180.0;gl.uniform3f(uTexRot,Math.cos(th),Math.sin(th),1.0);}
-   else gl.uniform3f(uTexRot,1.0,0.0,0.0);}
+   else gl.uniform3f(uTexRot,1.0,0.0,0.0);
+   const sc=LTEX[si]&&LTEX[si].texscroll;
+   if(sc){let a=sc[0]*effT,b=sc[1]*effT;gl.uniform2f(uTexScr,a-Math.floor(a),b-Math.floor(b));}
+   else gl.uniform2f(uTexScr,0.0,0.0);}
  function hexRGB(h){if(!h)return[0,0,0];h=(''+h).trim();
    if(h[0]==='#'){if(h.length>=7)return[parseInt(h.slice(1,3),16)/255,parseInt(h.slice(3,5),16)/255,parseInt(h.slice(5,7),16)/255];
      if(h.length>=4)return[parseInt(h[1]+h[1],16)/255,parseInt(h[2]+h[2],16)/255,parseInt(h[3]+h[3],16)/255];}
@@ -8850,7 +8877,7 @@ function initGLRenderer(){
    const nearP=Math.max(0.05,rad*0.002),farP=dist+rad*40;
    gl.useProgram(prog);
    gl.uniformMatrix4fv(uMVP,false,buildMVP(nearP,farP));
-   gl.uniform3f(uTexRot,1.0,0.0,0.0);   // default: no texcoord spin (set per prop surface below)
+   gl.uniform3f(uTexRot,1.0,0.0,0.0);gl.uniform2f(uTexScr,0.0,0.0);   // default: no texcoord spin (set per prop surface below)
    // attRebuild can redraw before it calls rebuildSurfaces, so check here too.
    if(bufLSR!==LSR)resyncSurfaces();
    if(dirty){gl.bindBuffer(gl.ARRAY_BUFFER,posBuf);gl.bufferData(gl.ARRAY_BUFFER,model,gl.DYNAMIC_DRAW);dirty=false;}
@@ -8897,7 +8924,7 @@ function initGLRenderer(){
    const fill=d=>{setCull(d.cull);
      gl.uniform1i(uMode,d.mode);
      gl.uniform1f(uAlpha,d.fa===undefined?1:d.fa);gl.uniform1f(uAtest,d.at||0);
-     if(d.mode===0){const pc=hexRGB(palette[d.si%palette.length]);gl.uniform3f(uColor,pc[0],pc[1],pc[2]);gl.uniform3f(uTexRot,1.0,0.0,0.0);}
+     if(d.mode===0){const pc=hexRGB(palette[d.si%palette.length]);gl.uniform3f(uColor,pc[0],pc[1],pc[2]);gl.uniform3f(uTexRot,1.0,0.0,0.0);gl.uniform2f(uTexScr,0.0,0.0);}
      else{gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,texFor(d.img));setTexRot(d.si);}
      const b=surfBufs[d.si];gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,b.tb);
      gl.drawElements(gl.TRIANGLES,b.tn,idxType,0);};
@@ -8915,7 +8942,7 @@ function initGLRenderer(){
      gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,texFor(d.img));setTexRot(d.si);
      const b=surfBufs[d.si];gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,b.tb);
      gl.drawElements(gl.TRIANGLES,b.tn,idxType,0);}
-   gl.uniform3f(uTexRot,1.0,0.0,0.0);   // pulse/wire passes below never spin their texcoords
+   gl.uniform3f(uTexRot,1.0,0.0,0.0);gl.uniform2f(uTexScr,0.0,0.0);   // pulse/wire passes below never spin their texcoords
    gl.uniform1i(uMode,3);
    for(const d of pulses){gl.uniform1f(uAlpha,d.g);
      gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,texFor(d.img));
@@ -9299,7 +9326,7 @@ def main(argv):
                 # one-sided card. The page's mkSurfTex understands all of these keys.
                 if isinstance(_du,dict):
                     for _k in ("additive","autosprite","autosprite2","lightglow","twosided",
-                               "clamp","texrotate","fps","frames","atest","distfade","pulse","blend"):
+                               "clamp","texrotate","texscroll","fps","frames","atest","distfade","pulse","blend"):
                         _v=_du.get(_k)
                         if _v: _sr[_k]=_v
                     # `cull` arrives as a raw shader keyword on some entries and as `twosided` on others;

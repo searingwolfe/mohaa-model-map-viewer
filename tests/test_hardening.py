@@ -642,6 +642,20 @@ class UpdaterGit(TempDirCase):
         self.assertIsNone(self.ML._update_git_sync(self.d, "c" * 40))
 
 
+class ShaderTexMods(unittest.TestCase):
+    """Base-stage tcmods the model page animates (scripts/opel.shader)."""
+    def test_rotate_coef_and_scroll(self):
+        import mohaa_textures as MTX
+        props = MTX.parse_shader_props_file(
+            "opelhub\n{\n{\nmap a.tga\ntcmod rotate 5 0 -20\n}\n}\n"
+            "opeltread\n{\n{\nmap b.tga\ntcmod scroll 0.2 0\n}\n}\n"
+            "prop\n{\n{\nclampmap c.tga\ntcmod rotate 5000\n}\n}\n")
+        self.assertEqual(props["opelhub"]["texrotate"], -100.0)   # speed * coef (tr_shade_calc.c:1608)
+        self.assertEqual(props["opeltread"]["texscroll"], [0.2, 0.0])
+        self.assertEqual(props["prop"]["texrotate"], 5000.0)
+        self.assertTrue(props["prop"].get("clamp"))
+
+
 class BspSave(TempDirCase):
     def test_save_verifies_then_keeps_bak(self):
         out = self.p("m_mod.bsp")

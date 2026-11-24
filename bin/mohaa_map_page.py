@@ -5914,18 +5914,22 @@ function cspecClass(cls){const C=D.cspec;if(!C||!C.classes)return null;
   return CSPEC_BY.get(String(cls||'').toLowerCase())||null;}
 // [{c: class, own: before the general classes (ScriptSlave, Trigger, Entity...), keys}]; a key a
 // subclass lists isn't listed again for its parent
+const CSPEC_COMPILER=new Set(['light']);   // classes whose keys the map compiler reads, not the game
 function cspecGroups(cls){
   const C=D.cspec,first=cspecClass(cls);if(!first)return null;
   const out=[],seen=new Set(),names=new Set();let c=first,own=true;
   // a trigger's own keys are Trigger's (wait, delay, setthread...)
   const trig=/^trigger_/i.test(String(cls||''));
+  // a class only the map compiler reads (a light: the game removes it as it spawns) takes its
+  // keys in every game, Allied Assault too: no SH / BT, which compare the game modules' lists
+  const comp=CSPEC_COMPILER.has(String(cls||'').toLowerCase());
   while(c&&C.classes[c]&&!seen.has(c)){seen.add(c);if(c!==first&&CSPEC_STOP.has(c)&&!(trig&&c==='Trigger'))own=false;
     const K=[];for(const[k,sig,v]of C.classes[c].k){const l=k.toLowerCase();if(names.has(l))continue;
       const ev=(C.events[l]||[]).find(x=>x.a+'|'+x.an===sig);if(!ev)continue;
       // a key without a value only where it sets something (lock, alwaysaway...), not the
       // events the game sends itself (doorclosed, trysolid...)
       if(!ev.a&&!/^(makes?|sets?|turns?|lock|unlock|enables?|disables?|allows?|start)/i.test(ev.d))continue;
-      names.add(l);K.push({n:k,a:ev.a,an:ev.an,d:ev.d,v:v||C.classes[c].v||''});}
+      names.add(l);K.push({n:k,a:ev.a,an:ev.an,d:ev.d,v:comp?'':(v||C.classes[c].v||'')});}
     out.push({c:c,own:own,keys:K});c=C.classes[c].p;}
   return out;}
 // what a key's value is: its argument types and names ("float open_angle"); capitals optional
@@ -5943,8 +5947,9 @@ function cspecInfo(ei){
   const val=cspecValues(ei),rows=[];
   for(const g of own)for(const k of g.keys){const v=val.get(k.n.toLowerCase());
     rows.push([k.n,(v!=null?'<b>'+esc(v)+'</b> ':'<span class="co">-</span> ')+cspecBadge(k.v)+'<div class="co">'+esc(cspecArgs(k))+(k.d?' · '+esc(k.d):'')+'</div>']);}
+  const comp=CSPEC_COMPILER.has(String(e.kvl.classname||e.cls||'').toLowerCase());
   return '<h4>Class specs ('+esc(own.map(g=>g.c).join(', '))+')</h4>'+kvTable(rows)+
-    '<div class="note">The keys this class takes from the map (from OpenMoHAA\'s game code); SH / BT: Spearhead / Breakthrough only. '+
+    '<div class="note">The keys this class takes from the map (from OpenMoHAA\'s game code); '+(comp?'read by the map compiler as it bakes the lighting, in every game (Allied Assault too): the game itself never spawns it. ':'SH / BT: Spearhead / Breakthrough only. ')+
     'Edit them in the EDITOR section\'s Class specs (Edit map on); the other keys it takes, from '+esc(G.filter(g=>!g.own).map(g=>g.c).join(', ')||'its parent classes')+', are listed there too.</div>';}
 // the Ladder part of a func_ladder's info card (FuncLadder, OpenMoHAA misc.cpp): its "angle"
 // is the way a climber looks at it (SetLadderFacing); CanUseLadder takes a climber within

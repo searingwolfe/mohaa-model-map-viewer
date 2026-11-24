@@ -3688,3 +3688,44 @@ look of the walk and the doors should be confirmed by eye in the launcher.
   the Editor's Draw plane, the Rotate / Axes buttons (Modify's and the Editor's) and the
   model viewer's animation browser. Checked headless: all 296 map-page and 138 model-page
   tooltips come out formatted in the page, none changed by a second pass.
+- Class specs: a light's keys ("light" and the rest) showed SH, as if Allied Assault couldn't
+  use them. The tag compares the game modules' own key lists, but a light is read by the map
+  compiler as it bakes the lighting (the game never spawns it), in every game. Classes only
+  the compiler reads (`CSPEC_COMPILER`: light) get no SH / BT tags, and their card says so.
+
+## Model Viewer: bones whose names end in spaces (November 2026)
+
+- The Opel truck's back-right wheel (every opeltruck model, the static ones too) sat at its
+  bind pose, in the middle of the truck. Its bone is named `tire_tilt_back_right  ` (two
+  trailing spaces) in opel.skd, and the engine names a bone's channels from its exact name,
+  so the .skc holds `tire_tilt_back_right   pos` / `rot`. The viewer strips bone names, so it
+  looked up `tire_tilt_back_right pos`, found nothing, and left the wheel and everything under
+  it (its tag "spew tire back right", Box03, the wheel mesh) unanimated. The truck's `exhaust `
+  bone had the same fault. Channel names are now keyed like the stripped bone names
+  (`chan_key` / `chan_keys` in mohaa_skc_write.py, used by mohaa_view.parse_skc and
+  read_skc_bytes): the spaces before " pos" / " rot" / " rotFK" become one. A name whose key
+  another channel already has keeps its exact spelling, as in opel_opening.skc, where two
+  exhaust bones (`exhaust  ` and `exhaust `) would otherwise clash.
+- The same fix applies to the other shipping models whose animated bones end in spaces (Pak0
+  .skc files with such channels in brackets): the Colt clip (1), the dog's weapon tags (28), the
+  hidden cabinets' doors (4), the sdkfz exits (8), the dead Tiger's door (3) and the M1
+  Garand's root bone `m1garand ` (155, the garand's own animations).
+- Saving in the Animation Editor writes the game's spelling back: each such bone carries its
+  exact name (`rawName` in the page's rig), and savePayload names its channels from it, so the
+  saved .skc still drives that bone in the game. Rewriting an unedited .skc stays
+  byte-for-byte, and the editor's read-back check compares keyed names.
+
+## Model Viewer: the Opel truck's wheels turn at the game's speed (November 2026)
+
+- The wheel hubs (`opelhub`: `tcmod rotate 5 0 -20`) turned at 5 deg/s: only the first number
+  was read. MOHAA's `tcmod rotate <speed> [start [coef]]` turns the texture by
+  -speed*coef*shaderTime - start (ParseTexMod "rotate" and RB_CalcRotateTexCoords,
+  tr_shade_calc.c:1599-1631), so the hubs turn at 100 deg/s, as in the game. `_tcmod_rotate`
+  in mohaa_textures.py reads all three numbers for the base stage and the nextbundle stages.
+  The propeller discs (`tcmod rotate 5000`) are unchanged.
+- The tyre tread (`opeltread`: `tcmod scroll 0.2 0`) didn't move: the model page had no base-stage
+  scroll. It is now exported as `texscroll` and added to the texcoords each frame
+  (RB_CalcScrollTexCoords, tr_shade_calc.c:1558-1577), in the WebGL renderer (uTexScr) and the 2D
+  one. A stage with a nextbundle doesn't get it, since the engine scrolls only its base bundle.
+- A rotating `map` (the hubs) keeps the repeat fill and the shading; only a rotating clampmap
+  (the propeller discs) is drawn clamped and unshaded.

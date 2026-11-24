@@ -108,6 +108,29 @@ class TestNewAnim(unittest.TestCase):
         self.assertEqual(W.read_skc_bytes(W.write_skc(a))["names"][4], "y" * 31)
 
 
+class TestPaddedBoneNames(unittest.TestCase):
+    """opel.skd's bone "tire_tilt_back_right  " (2 trailing spaces) has channels
+    "tire_tilt_back_right   pos/rot"; the viewer strips bone names, so the channels must be
+    keyed the same way or the back-right wheel stays at the bind pose."""
+    def test_keys(self):
+        self.assertEqual(W.chan_key("tire_tilt_back_right   pos"), "tire_tilt_back_right pos")
+        self.assertEqual(W.chan_key("Bip01 L Thigh rotFK"), "Bip01 L Thigh rotFK")
+        self.assertEqual(W.chan_key("EYE_blink"), "EYE_blink")
+        # opel_opening.skc: two exhaust bones whose keys would clash: the second stays exact
+        self.assertEqual(W.chan_keys(["exhaust   pos", "exhaust  pos"]), ["exhaust pos", "exhaust  pos"])
+
+    def test_viewer_and_writer(self):
+        names = ["tire_tilt_back_right   pos", "tire_tilt_back_right   rot"]
+        a = W.new_anim(names, [[[1, 2, 3, 0], [0, 0, 0, 1]]], frameTime=0.05)
+        data = W.write_skc(a)
+        r = W.read_skc_bytes(data)
+        self.assertEqual(r["names"], ["tire_tilt_back_right pos", "tire_tilt_back_right rot"])
+        self.assertEqual(W.write_skc(r), data)            # exact spelling kept on rewrite
+        with tempfile.TemporaryDirectory() as d:
+            f = os.path.join(d, "t.skc"); open(f, "wb").write(data)
+            self.assertIn("tire_tilt_back_right pos", V.parse_skc(f)["frames"][0])
+
+
 class TestRoundTrip(unittest.TestCase):
     def check(self, name, data):
         st, detail = W.roundtrip_bytes(data, name)

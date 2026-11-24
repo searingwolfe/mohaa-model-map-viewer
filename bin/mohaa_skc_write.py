@@ -27,7 +27,29 @@ import os
 _bin_dir = os.path.dirname(os.path.abspath(__file__))
 if _bin_dir not in sys.path:
     sys.path.insert(0, _bin_dir)
-import struct, math, zipfile, argparse
+import struct, math, zipfile, argparse, re
+
+_CHAN_RE = re.compile(r"^(.*?\S)\s+(pos|rot|rotFK)$")
+def chan_key(name):
+    """A channel name keyed like the viewer's stripped bone names. The engine names a bone's
+    channels from its exact 32-byte name + " pos" / " rot", so a bone padded with spaces
+    (opel.skd "tire_tilt_back_right  ") has channels "tire_tilt_back_right   pos"; the viewer
+    strips bone names, so it reads that as "tire_tilt_back_right pos". write_skc writes names
+    as given, so a caller that wants the exact spelling back passes it (the page's
+    savePayload does, from each bone's rawName)."""
+    m = _CHAN_RE.match(name)
+    return m.group(1) + " " + m.group(2) if m else name
+
+def chan_keys(names):
+    """chan_key for a whole channel table. A name whose key another channel already took
+    keeps its exact spelling, so no two channels share a key (opel_opening.skc has
+    "exhaust   pos" and "exhaust  pos", for its bones "exhaust  " and "exhaust ")."""
+    out, seen = [], set(names)
+    for n in names:
+        k = chan_key(n)
+        if k != n and k in seen: k = n
+        seen.add(k); out.append(k)
+    return out
 
 SKC_IDENT = b"SKAN"
 SKC_VERSION = 13                 # TIKI_SKC_HEADER_OLD_VERSION: the raw format the engine converts
@@ -81,7 +103,7 @@ def read_skc_bytes(b, path="<bytes>"):
         raise SkcError(f"{path}: bad SKC layout (numChan={numChan} numFrames={numFrames} "
                        f"ofsChannelNames={ofsNames} size={n})")
     rawNames = [bytes(b[ofsNames + i * NAME_SIZE: ofsNames + (i + 1) * NAME_SIZE]) for i in range(numChan)]
-    names = [r.split(b"\x00")[0].decode("latin-1", "replace").rstrip() for r in rawNames]
+    names = chan_keys([r.split(b"\x00")[0].decode("latin-1", "replace").rstrip() for r in rawNames])
     frames = []
     for f in range(numFrames):
         v = _FRM.unpack_from(b, HEADER_SIZE + f * FRAME_SIZE)
@@ -135,8 +157,8 @@ def write_skc(anim, keep_raw=True, allow_duplicates=False):
         dup = sorted({x for x in names if names.count(x) > 1})
         raise SkcError(f"duplicate channel names: {dup}")
     raw = anim.get("rawNames") if keep_raw else None
-    if raw and len(raw) == nc and all(
-            r.split(b"\x00")[0].decode("latin-1", "replace").rstrip() == nm for r, nm in zip(raw, names)):
+    if raw and len(raw) == nc and chan_keys(
+            [r.split(b"\x00")[0].decode("latin-1", "replace").rstrip() for r in raw]) == chan_keys(names):
         nameBlock = b"".join(raw)
     else:
         nameBlock = b"".join(_name_field(nm) for nm in names)

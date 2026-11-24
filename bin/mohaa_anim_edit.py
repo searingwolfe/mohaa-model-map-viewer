@@ -161,12 +161,13 @@ class AnimApp(ML.App):
             for va, vb in zip(fa["values"], fb["values"]):
                 for x, y in zip(va, vb):
                     if f32(x) != y: worst = max(worst, abs(x - y))
-        if r["names"] != anim["names"] or len(r["frames"]) != len(anim["frames"]) or worst:
+        keys = SKW.chan_keys(anim["names"])     # the readers key padded bone names stripped
+        if r["names"] != keys or len(r["frames"]) != len(anim["frames"]) or worst:
             return False, f"{name}: read back with different contents (largest difference {worst})", name
         try:
             import mohaa_view as MV
             v = MV.parse_skc(path)
-            if v["numFrames"] != len(anim["frames"]) or v["names"] != anim["names"]:
+            if v["numFrames"] != len(anim["frames"]) or v["names"] != keys:
                 return False, f"{name}: mohaa_view.parse_skc reads it differently", name
         except Exception as e:
             MC.swallowed()
