@@ -32,6 +32,10 @@ _QUAKED = re.compile(r'/\*QUAKED[ \t]+([^\s(]+)[ \t]*\(([^)]*)\)[ \t]*'
                      r'(\?|\(([^)]*)\)[ \t]*\(([^)]*)\))?([^\n]*)\n(.*?)\*/', re.S)
 
 
+# a .tik's game class: "classname Health" in its init's server block (before its header)
+_TIK_CLASS = re.compile(r"^[ \t]*classname[ \t]+([A-Za-z_]\w*)", re.M)
+
+
 def _floats(s, n):
     """The first n numbers of a space-separated string, or None if there are fewer."""
     out = []
@@ -85,6 +89,9 @@ class EntityDefs:
                 d["tik"] = tik
                 self.tik_for_class[d["name"].lower()] = tik
                 self.class_for_tik.setdefault(tik.lower(), d["name"])
+                g = _TIK_CLASS.search((text or "").split("/*QUAKED", 1)[0])
+                if g:
+                    d["game"] = g.group(1)          # the game class it spawns as (init: classname)
 
     def scan_vfs(self, vfs, log=None):
         """Read every .tik and code/*.cpp|*.def in the loaded paks for definitions."""
@@ -110,6 +117,19 @@ class EntityDefs:
         """The definition of a class (any case), or None."""
         return self.defs.get((classname or "").lower())
 
+    def sf_capable(self, classname):
+        """Whether a class has spawnflags of its own (SPAWNFLAG_CLASSES above): its header names
+        some, the game reads some for it, or its .tik spawns a game class that does."""
+        cl = (classname or "").lower()
+        if cl in SPAWNFLAG_CLASSES:
+            return True
+        d = self.get(cl)
+        if not d:
+            return False
+        if any(f and f.lower() != "x" for f in d.get("flags") or ()):
+            return True
+        return str(d.get("game") or "").lower() in SPAWNFLAG_CPP
+
     def static_classname(self, model_path):
         """Class name for a static model path such as "static//tree_oak.tik"."""
         p = (model_path or "").replace("\\", "/").lower()
@@ -118,6 +138,64 @@ class EntityDefs:
         if p.startswith("models/"):
             p = p[7:]
         return self.class_for_tik.get(p)
+
+
+# Classes with spawnflags of their own: the game reads bits of "spawnflags" for them (beyond
+# the !Easy ... !DeathMatch bits and DETAIL every entity has: G_SpawnEntities, Entity::
+# SpawnFlagsEvent). From OpenMoHAA's code/fgame: every class whose C++ class, or a class it
+# derives from (CLASS_DECLARATION), reads spawnflags (Trigger's respondto and TRIGGER_DAMAGE,
+# ScriptSlave's NOT_SOLID and ALWAYS_DRAW, Door, Item, Vehicle, Camera ...). A class whose
+# /*QUAKED*/ header names flags has them too (light, info_pathnode: the compiler's or the
+# path builder's); sf_capable says. SPAWNFLAG_CPP is for a .tik's class (its init's
+# "classname", e.g. Health for the health items); SPAWNFLAG_CLASSES for the game's own names.
+SPAWNFLAG_CPP = frozenset((
+    "ammoentity", "armor", "barrelobject", "camera", "carryableturret", "crateobject",
+    "damagemodel", "door", "drivablevehicle", "drivablevehicletandem", "dynitem",
+    "explodeobject", "exploder", "explodingwall", "fallingrock", "fixedturret", "fulcrum",
+    "funcbeam", "gib", "gravpath", "gravpathmanager", "gravpathnode", "health",
+    "inventoryitem", "item", "mover", "multiexploder", "navmaster", "playerintermission",
+    "portableturret", "projectilegenerator", "projectilegenerator_gun",
+    "projectilegenerator_heavy", "projectilegenerator_projectile", "randomspawn",
+    "randomspeaker", "respawn", "rotatingdoor", "scriptaimedstrafinggunfire", "scriptdoor",
+    "scriptmodel", "scriptmodelrealdamage", "scriptorigin", "scriptsimplestrafinggunfire",
+    "scriptskyorigin", "scriptslave", "sinkobject", "slidingdoor", "soundmanager", "spawn",
+    "spawnchain", "spawnoutofsight", "teleporter", "throbbingbox_explodeflak88",
+    "throbbingbox_explodenebelwerfer", "throbbingbox_explodeplayerflak88",
+    "throbbingbox_explodeplayernebelwerfer", "throbbingbox_explosive",
+    "throbbingbox_stickybomb", "touchanim", "touchfield", "trigger", "triggerall",
+    "triggerbox", "triggerbypushobject", "triggercamerause", "triggerchangelevel",
+    "triggerclickitem", "triggerdamagetargets", "triggerentity", "triggerexit",
+    "triggergivepowerup", "triggerhurt", "triggerlandmine", "triggermusic",
+    "triggernodamage", "triggeronce", "triggerplaysound", "triggerpush", "triggerpushany",
+    "triggerrelay", "triggerreverb", "triggersave", "triggersecret", "triggersideduse",
+    "triggerspeaker", "triggeruse", "triggeruseonce", "triggervehicle", "turretgun",
+    "useanim", "useobject", "vehicle", "vehiclehalftrack", "vehiclepoint", "vehicletank",
+    "vehicletanktandem", "vehicleturretgun", "vehicleturretguntandem", "vehiclewheelsx2",
+    "vehiclewheelsx4", "viewjitter", "weapon", "windowobject"))
+SPAWNFLAG_CLASSES = frozenset((
+    "damagemodel", "drivablevehicletandem", "func_barrel", "func_beam", "func_camera",
+    "func_crate", "func_door", "func_explodeobject", "func_exploder", "func_explodingwall",
+    "func_fallingrock", "func_fulcrum", "func_multi_exploder", "func_randomspawn",
+    "func_respawn", "func_rotatingdoor", "func_sinkobject", "func_spawn", "func_spawnchain",
+    "func_spawnoutofsight", "func_touchanim", "func_useanim", "func_useobject",
+    "func_viewjitter", "func_window", "gib", "health_020", "info_grav_pathnode",
+    "info_player_intermission", "info_vehiclepoint", "mover", "normaldoor",
+    "play_sound_triggered", "projectilegenerator", "projectilegenerator_gun",
+    "projectilegenerator_heavy", "projectilegenerator_projectile",
+    "script_aimedstrafinggunfire", "script_door", "script_drivablevehicle", "script_model",
+    "script_model_realdamage", "script_object", "script_origin",
+    "script_simplestrafinggunfire", "script_skyorigin", "script_vehicle",
+    "sound_randomspeaker", "sound_speaker", "throbbingbox_explodeflak88",
+    "throbbingbox_explodenebelwerfer", "throbbingbox_explodeplayerflak88",
+    "throbbingbox_explodeplayernebelwerfer", "throbbingbox_explosive",
+    "throbbingbox_stickybomb", "trigger_box", "trigger_camerause", "trigger_changelevel",
+    "trigger_clickitem", "trigger_damagetargets", "trigger_entity", "trigger_exit",
+    "trigger_givepowerup", "trigger_hurt", "trigger_landmine", "trigger_multiple",
+    "trigger_multipleall", "trigger_music", "trigger_nodamage", "trigger_once",
+    "trigger_push", "trigger_pushany", "trigger_pushobject", "trigger_relay",
+    "trigger_save", "trigger_secret", "trigger_sideduse", "trigger_teleport", "trigger_use",
+    "trigger_useonce", "trigger_vehicle", "vehiclehalftrack", "vehicletank",
+    "vehicletanktandem", "vehicleturretguntandem", "vehiclewheelsx2", "vehiclewheelsx4"))
 
 
 # The four extra check boxes MOHRadiant's entity window shows under every class's own

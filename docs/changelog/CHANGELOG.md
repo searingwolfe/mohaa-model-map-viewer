@@ -3636,3 +3636,22 @@ look of the walk and the doors should be confirmed by eye in the launcher.
   longer keeps an unchanged row (a changed one stays, so its change can still be saved).
   The side panel scrolls back to its top on each toggle. Tested headless on mohdm1: the
   loveseat's note, row and Move button follow Edit map on, off, on.
+- Selection panel: **Same spawnflags** is hidden, not greyed, for a class without spawnflags
+  of its own (static props, actors, script_origin ...: `sfCapable`, from the class's QUAKED
+  header; path nodes and any entity with spawnflags set keep it), and **Same error** is shown
+  only with path nodes selected (the only errors it selects by). Checked headless across
+  every class in m3l1b.
+- Same spawnflags: which classes have spawnflags now comes from OpenMoHAA's game code, not
+  only the definitions' flag names. `mohaa_entdefs.SPAWNFLAG_CPP` / `SPAWNFLAG_CLASSES`:
+  every class whose C++ class or a base of it (CLASS_DECLARATION) reads spawnflags in
+  code/fgame (Trigger's respondto and TRIGGER_DAMAGE, ScriptSlave's NOT_SOLID / ALWAYS_DRAW,
+  Door, Item, Vehicle, Camera, TurretGun ...; not the !Easy ... and DETAIL bits every
+  entity has), 104 C++ classes and 87 class names. A .tik class counts through its init's
+  "classname" (stored as `game`: Health for the health items, TurretGun for the turrets;
+  Actor, Animate and Object don't). `sf_capable` adds the classes whose /*QUAKED*/ header
+  names flags (light, info_pathnode, func_objective ...); the page gets it as `D.defs[cls].sf`.
+  So script_origin, trigger_vehicle and the turrets show it (greyed while none are set);
+  actors, animate_ and interactobject_ models, info_player_start, func_ladder and static
+  props don't. The index cache is `mapindex_v2_*` (definitions carry `game`). Checked
+  against OpenMoHAA's 96 QUAKED headers (the built-in table matches; info_player_deathmatch's
+  "initial" flag is in g_client.cpp's #if 0 block, a Quake 3 leftover; playerstart.cpp's has none). Tests: `SpawnflagClasses`.

@@ -199,6 +199,28 @@ class BspBrushModel(unittest.TestCase):
         self.assertEqual(MB.ent_get(back, "origin"), "%g %g %g" % (o[0] + 48, o[1], o[2] + 8))
 
 
+class SpawnflagClasses(unittest.TestCase):
+    """Which classes Same spawnflags shows for (mohaa_entdefs.sf_capable, from OpenMoHAA's
+    code): the game's own classes, header flags, and a .tik's game class from its init."""
+    def test_classes(self):
+        import mohaa_entdefs as ME
+        ed = ME.EntityDefs()
+        for c in ("trigger_multiple", "trigger_vehicle", "script_origin", "script_model", "func_door",
+                  "func_rotatingdoor", "light", "info_pathnode", "func_crate"):
+            self.assertTrue(ed.sf_capable(c), c)
+        for c in ("info_player_start", "func_ladder", "info_waypoint", "static_furniture_loveseat", "ai_actor"):
+            self.assertFalse(ed.sf_capable(c), c)
+
+    def test_tik_game_class(self):
+        import mohaa_entdefs as ME
+        ed = ME.EntityDefs()
+        ed.add_text("TIKI\ninit\n{\n server\n {\n  classname Health\n }\n}\n/*QUAKED item_health_x (0 0 1) (-8 -8 0) (8 8 16)\n*/\n", "x.tik", "items/x.tik")
+        ed.add_text("TIKI\ninit\n{\n server\n {\n  classname Actor\n }\n}\n/*QUAKED ai_x (0 0 1) (-8 -8 0) (8 8 16)\n*/\n", "y.tik", "human/y.tik")
+        self.assertEqual(ed.get("item_health_x")["game"], "Health")
+        self.assertTrue(ed.sf_capable("item_health_x"))
+        self.assertFalse(ed.sf_capable("ai_x"))
+
+
 class RebuildShown(unittest.TestCase):
     """The details pane's Rebuild rebuilds the map on show: mohdm1 built, mohdm2 built, then
     mohdm1 opened from its saved page (no build, so _last_build still names mohdm2)."""

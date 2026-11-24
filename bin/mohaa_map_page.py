@@ -333,8 +333,8 @@ window.setEditorMode=function(on){window.__EDITON__=!!on;
        <button class="sm" id="bHide" title="Hide the selection (Backspace). Shift+H shows everything again.">Hide</button>
        <button class="sm" id="bClear" title="Clear the selection (Esc)">Clear</button>
        <button class="sm" id="bEye" style="display:none" title="Eye view: put the camera where the entity sees from, facing its angles or its target">Eye view</button>
-       <button class="sm" id="bSameSf" disabled title="Select every entity of the same class with the same spawnflags (the selected entity has none)">Same spawnflags</button>
-       <button class="sm" id="bSameErr" disabled title="Select every path node with the same error as the selected path node(s): none of the selected path nodes has an error">Same error</button>
+       <button class="sm" id="bSameSf" disabled style="display:none" title="Select every entity of the same class with the same spawnflags (the selected entity has none)">Same spawnflags</button>
+       <button class="sm" id="bSameErr" disabled style="display:none" title="Select every path node with the same error as the selected path node(s): none of the selected path nodes has an error">Same error</button>
        <button class="sm" id="bSame" title="Select everything of the same kind: same class for entities, same texture for brushes (Alt+click)">Same kind</button>
        <button class="sm" id="bPath" style="display:none" title="Select the whole path through this entity: everything its &quot;target&quot; leads to and everything that leads to it (Ctrl+Alt+click)">Same path</button>
        <button class="sm" id="bTname" style="display:none" title="Select every entity with this targetname ($, that is Shift+4)">Same targetname</button>
@@ -8121,6 +8121,17 @@ function selectSameKind(h,add){
 // Same spawnflags: every shown entity of the same class whose spawnflags are the same (for
 // example every CRATE path node). Needs a selected entity with non-zero spawnflags.
 function sfOf(ei){return ei>0&&!isWorldlike(ei)?(parseInt(MAP.ents[ei].kvl.spawnflags||'0',10)|0):0;}
+// whether the entity's class has spawnflags of its own: a path node, or a class the game
+// reads some for (mohaa_entdefs.sf_capable, from OpenMoHAA's code: the page's D.defs[cls].sf),
+// else one whose definition (its QUAKED header) names some. A static prop has none: the compiler makes it
+// scenery, and the editor's !Easy ... flags every class shares don't count
+function sfCapable(ei){
+  if(!(ei>0)||!MAP.ents[ei]||isWorldlike(ei))return false;
+  const cls=MAP.ents[ei].cls;if(cls==='info_pathnode')return true;
+  if(isStaticProp(ei))return false;
+  const d=(D.defs||{})[cls];if(d&&d.sf!=null)return !!d.sf;   // worked out from OpenMoHAA's code when the page was built
+  const f=d&&d.f?d.f:[];
+  return f.some(n=>n&&String(n).toLowerCase()!=='x');}
 function selectSameSpawnflags(ei){
   const sf=sfOf(ei);
   if(!sf){flash('Select an entity that has spawnflags');return;}
@@ -8923,11 +8934,13 @@ function updateSelPanel(){
   const ev=(pe>0&&!isWorldlike(pe))?eyeView(pe):null;
   $('bEye').style.display=ev?'':'none';$('bEye').dataset.ei=pe;
   if(ev)$('bEye').title=ev.why;
-  // Same spawnflags: greyed out unless the one selected entity has spawnflags
-  {const sf=sfOf(pe);$('bSameSf').disabled=!sf;
-    $('bSameSf').title=sf?'Select every '+MAP.ents[pe].cls+' with spawnflags '+sf:'Select every entity of the same class with the same spawnflags (the selected entity has none)';}
-  // Same error: greyed out unless at least one selected path node has an error
-  {const b=$('bSameErr'),e=selNodeErrors();b.disabled=!(e&&e.kinds.size);
+  // Same spawnflags: shown for a class that has spawnflags of its own (its definition names
+  // some; a path node's) or an entity that has some set; greyed out while it has none
+  {const sf=sfOf(pe),b=$('bSameSf');b.style.display=sf||sfCapable(pe)?'':'none';b.disabled=!sf;
+    b.title=sf?'Select every '+MAP.ents[pe].cls+' with spawnflags '+sf:'Select every entity of the same class with the same spawnflags (the selected entity has none)';}
+  // Same error: shown with path nodes selected (the errors the viewer finds are path nodes');
+  // greyed out unless one of them has an error
+  {const b=$('bSameErr'),e=selNodeErrors();b.style.display=ents.some(ei=>MAP.ents[ei]&&MAP.ents[ei].cls==='info_pathnode')?'':'none';b.disabled=!(e&&e.kinds.size);
     b.title=(e&&e.kinds.size)?'Select every path node with '+(e.kinds.size>1?'any of these errors':'this error')+': '+[...e.kinds.values()].join(', '):'Select every path node with the same error as the selected path node(s): none of the selected path nodes has an error';}
   // Same targetname: when other entities share its targetname
   const tn=(pe>0&&!isWorldlike(pe))?MAP.ents[pe].kvl.targetname:'', tl=tn?(ENTS.tn.get(tn)||[]):[];

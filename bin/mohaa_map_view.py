@@ -1282,7 +1282,8 @@ def build_indexes(vfs, paks, cache_dir=None, say=log):
     """(shaders, entity definitions) for the loaded paks, from the cache when it
     matches. The launcher calls this once after the paks load so builds start fast."""
     sig = pak_signature(paks)
-    path = os.path.join(cache_dir, "mapindex_%s.json" % sig) if cache_dir else None
+    # (v2: definitions carry their .tik's game class, "game")
+    path = os.path.join(cache_dir, "mapindex_v2_%s.json" % sig) if cache_dir else None
     if path and os.path.isfile(path):
         try:
             with open(path, encoding="utf-8") as f:
@@ -4804,7 +4805,7 @@ def build(src, args):
                             "b": [list(d["box"][0]), list(d["box"][1])] if d.get("box") else None,
                             "br": bool(d.get("brush")), "f": list(d.get("flags") or ()),
                             "d": (d.get("desc") or "")[:6000], "s": d.get("source", ""),
-                            "t": d.get("tik", "")}
+                            "t": d.get("tik", ""), "sf": 1 if entdefs.sf_capable(cl) else 0}
     # ---- the game's sky: sky boxes and cloud layers (.bsp and .map) -------------------------
     skies, clouds = sky_boxes(texs, blobs, vfs)
     if clouds:
