@@ -1618,7 +1618,7 @@ function edToolHtml(){
   if(ED.tool==='draw')h+=edRow('shape '+edSel('edShape',[['box','box'],['prism','n-sided prism'],['cyl','cylinder / pipe (curved patch)'],['cone','cone (curved patch)'],['elbow','pipe bend (curved patch)']],ED.shape)+
     (ED.shape==='prism'?' sides '+edSel('edSides',[3,4,5,6,7,8,9,10,12,16].map(n=>[String(n),String(n)]),String(ED.sides)):'')+
     '<label title="Put new brushes and patches in the selected brush entity instead of the world"><input type="checkbox" id="edIntoEnt"'+(ED.into?' checked':'')+'>in entity</label>'+
-    '<button class="sm" id="bEdDPlane" title="'+esc('Which plane a new brush\'s outline is drawn on (click for the next): Draw any axis - the surface under the mouse, a slope too (the brush stands square on it); Draw XY - flat, as a floor; Draw XZ and Draw YZ - upright, facing y or x, through the point clicked. Then the mouse sets its depth.')+'">▭ '+({any:'Draw any axis',xy:'Draw XY',xz:'Draw XZ',yz:'Draw YZ'}[ED.dplane||'any'])+'</button>');
+    '<button class="sm" id="bEdDPlane" title="'+esc('Which plane a new brush\'s outline is drawn on (click for the next):\nDraw any axis: the surface under the mouse, a slope too (the brush stands square on it)\nDraw XY: flat, as a floor\nDraw XZ: upright, facing y, through the point clicked\nDraw YZ: upright, facing x, through the point clicked\nThen the mouse sets its depth.')+'">▭ '+({any:'Draw any axis',xy:'Draw XY',xz:'Draw XZ',yz:'Draw YZ'}[ED.dplane||'any'])+'</button>');
   if(ED.tool==='terrain'){h+=edRow(edSel('edTerrMode',[['holes','cut / fill triangles'],['raise','raise / lower'],['flatten','flatten'],['smooth','smooth'],['paint','paint texture'],['new','draw a new block']],ED.terr)+
     (['raise','flatten','smooth'].indexOf(ED.terr)>=0?' radius '+edSel('edTrad',[64,128,192,256,384,512,768,1024].map(n=>[String(n),String(n)]),String(ED.trad)):'')+
     (ED.terr==='new'?'<label title="Give the new block\'s edges the heights of the terrain round it, and blend its inside between them"><input type="checkbox" id="edTFit" checked>meet the terrain round it</label>':''));}
@@ -1639,7 +1639,7 @@ function edToolHtml(){
   // copies of Modify's trim step and Display's grid, by the tools that use them (they stay
   // one setting: moving either moves both)
   if(ED.tool==='move'||ED.tool==='resize')h+='<div class="row co" style="align-items:center;margin-top:3px">trim step <input type="range" id="edStepC" min="0" max="13" step="1" value="'+MOD.stepI+'" style="flex:1;min-width:0" title="Trim step, 1 to 50 units: each key press while Trim is on moves the selected brushes (✥ Trim) or pushes their faces out (⇕ Trim) by this many units, step by step, as Modify\'s Trim origin moves the selected entity or node. The same setting as Modify\'s trim step"><span id="edStepCV" style="min-width:22px;text-align:right">'+MOD_STEPS[MOD.stepI]+'</span></div>';
-  if(['move','resize','draw','clip'].includes(ED.tool))h+='<div class="row co" style="align-items:center;margin-top:3px"><button class="sm" id="edGridPC" style="min-width:66px" title="Which planes the grid draws (click for the next): Grid XY, XZ, YZ or all. While Grid is on, the selected brushes snap to the grid shown (Modify: the selected entity or node). The same as Display\'s">'+$('bGrid').textContent+'</button>'+
+  if(['move','resize','draw','clip'].includes(ED.tool))h+='<div class="row co" style="align-items:center;margin-top:3px"><button class="sm" id="edGridPC" style="min-width:66px" title="Which planes the grid draws (click for the next):\nGrid XY: flat, like the floor\nGrid XZ: upright, facing y\nGrid YZ: upright, facing x\nGrid all: the whole 3D lattice\nWhile Grid is on, the selected brushes snap to the grid shown (Modify: the selected entity or node). The same as Display\'s">'+$('bGrid').textContent+'</button>'+
     '<input type="range" id="edGridSzC" min="0" max="9" step="1" value="'+GRID.i+'" style="flex:1;min-width:0" title="Grid size, 1 to 512 units ({ and }): while Grid is on, Move and Resize snap the selected brushes to the grid shown, in steps of this size (Draw brush and Clip always use it), and Modify\'s Add and Move snap the entity or node to it. The same as Display\'s"><span id="edGridVC" style="min-width:30px;text-align:right">'+gridSize()+'</span>'+
     '<button class="sm'+(GRID.on?' on':'')+'" id="edGridOnC" title="The grid on or off (+). On: the selected brushes snap to the grid shown as you Move or Resize them, and Modify\'s selected entity or node as you Add or Move it. Off: they go in single units (Draw brush and Clip still use the grid\'s size). The same as Display\'s Grid">Grid +</button></div>';
   if(ED.tool==='clip'&&ED.clip&&ED.clip.pts.length>=2)
@@ -1967,11 +1967,12 @@ function edCarryBuild(c){
   if(!isFinite(mn[0]))throw new Error('the selection has no size to place');
   return{groups:groups,ents:ents,base:[(mn[0]+mx[0])/2,(mn[1]+mx[1])/2,mn[2]],terr:terr,off:null,n:n,ed:ED.n};
 }
-function edCarryEnd(){if(!ED.carry)return;ED.carry=null;edCarryAt=null;edShow();try{edCopyBtn();modRender();}catch(_e){}}
+function edCarryEnd(){if(!ED.carry)return;ED.carry=null;ED.cx=null;edCarryAt=null;edShow();try{edCopyBtn();modRender();}catch(_e){}}
 // the offset that puts the copies' middle under the mouse and their bottom on what it is over
 function edCarryOff(x,y){
   const C=ED.carry;let p=null;
-  try{const h=edHit(x,y);if(h&&h.face>=0&&h.point)p=h.point;}catch(_e){}
+  if(ED.cx)p=extPoint(ED.cx,x,y);                 // Shift: out from the face along its normal
+  else try{const h=edHit(x,y);if(h&&h.face>=0&&h.point)p=h.point;}catch(_e){}
   if(!p)p=rayPlane(x,y,[0,0,1],C.base[2]);if(!p)return null;
   const xy=C.terr?(v=>Math.round(v/64)*64):snapV;
   return[xy(p[0]-C.base[0]),xy(p[1]-C.base[1]),snapV(p[2]-C.base[2])];}
@@ -1979,6 +1980,8 @@ function edCarryShow(o,C0){
   const C=C0||ED.carry,H=[],c=C_HOT();
   for(const g of C.groups.values())for(const it of g)it.lines(H,o,c);
   for(const E of C.ents)for(const it of E.items)it.lines(H,o,c);
+  if(ED.cx&&ED.cx.q){const Y=[1,0.9,0.35,1],p=ED.cx.p;segPush(H,p,ED.cx.q,Y);
+    for(let k=0;k<3;k++){const a=p.slice(),b=p.slice();a[k]-=6;b[k]+=6;segPush(H,a,b,Y);}}
   edShow(H,null);}
 // a list of changes made as one (one Undo, one rebuild): applied from the end of the text back
 function edDoMany(ops,what){
@@ -1996,7 +1999,7 @@ function edDoMany(ops,what){
 function edCarryPlace(o){
   const C=ED.carry;if(!C)return;
   if(C.ed!==ED.n){edCarryEnd();throw new Error('The map changed while copying: copy again');}
-  ED.carry=null;edCarryAt=null;edShow();
+  ED.carry=null;ED.cx=null;edCarryAt=null;edShow();
   edCopyDo(C,o);}
 // the copies written (one change) and made the selection
 function edCopyDo(C,o){
@@ -2050,6 +2053,16 @@ window.addEventListener('mouseup',e=>{
   e.stopPropagation();try{drag=null;}catch(_e){}
   const[x,y]=edXY(e);
   try{const o=edCarryOff(x,y);if(!o){flash('Point at the map to put the copy down');return;}edCarryPlace(o);}catch(err){flash(err.message);}},true);
+// Shift while carrying a copy: out from the face under the cursor along its normal (as
+// Modify's placing: MODX), a yellow line back to the spot; let go: back on the surfaces
+function edCarryRedo(){const C=ED.carry;if(!C||!edCarryXY)return;try{const o=edCarryOff(edCarryXY[0],edCarryXY[1]);if(o){C.off=o;edCarryShow(o);}}catch(err){console.error(err);}}
+window.addEventListener('keydown',e=>{
+  if(e.key!=='Shift'||e.repeat||!ED.carry||ED.cx||!edCarryXY||!MAP)return;
+  let h=null;try{h=edHit(edCarryXY[0],edCarryXY[1]);}catch(_e){}
+  if(!h||h.face<0||!h.point)return;
+  ED.cx={p:h.point.slice(),n:hitNormal(h),t:0,x0:edCarryXY[0],y0:edCarryXY[1]};ED.cx.q=ED.cx.p.slice();
+  flash('Shift: the mouse moves the copy out from the face, along its normal (let go of Shift: back on the surfaces)');edCarryRedo();},true);
+window.addEventListener('keyup',e=>{if(e.key!=='Shift'||!ED.cx)return;ED.cx=null;edCarryRedo();},true);
 window.addEventListener('keydown',e=>{
   if(!ED.carry||e.key!=='Escape')return;
   e.stopPropagation();e.preventDefault();edCarryEnd();flash('Copy: taken away');},true);
@@ -2104,7 +2117,7 @@ function edAngHtml(){
   if(typeof MAP==='undefined'||!MAP||!edRotPrims().length)return'';
   return edLine('Angles',edCap('pitch')+edField('edAngP','0',40)+edCap('yaw')+edField('edAngY','0',40)+edCap('roll')+edField('edAngR','0',40)+
     edBtn('bEdAng','Turn','Turn the selection by these angles about its middle (pitch, yaw, roll in degrees, as an entity\'s angles). One Undo.')+
-    '<button class="sm'+(ED.rmode==='rotate'?' on':'')+'" id="bEdRotT" title="'+esc('A circle round the selection, facing you: drag inside it to turn the selection about the line you look along; hold Shift to tumble it. Whole degrees, Ctrl: 15 at a time. The angles above show the turn as you drag; letting go makes it.')+'">⟳ Rotate</button>'+
+    '<button class="sm'+(ED.rmode==='rotate'?' on':'')+'" id="bEdRotT" title="'+esc('A circle round the selection, facing you: drag inside it to turn the selection about the line you look along; whole degrees. The angles above show the turn as you drag; letting go makes it.\nShift: tumble it\nCtrl: 15 degrees at a time')+'">⟳ Rotate</button>'+
     '<button class="sm'+(ED.rmode==='axes'?' on':'')+'" id="bEdAxesT" title="'+esc('Three rings round the selection: the world\'s X (red), Y (green) and Z (blue). Drag a ring to turn the selection about that axis. Whole degrees, Ctrl: 15 at a time.')+'">⊕ Axes</button>',
     'A turn for the selected brushes and patches about their middle; Rotate and Axes turn them with the mouse');}
 function edRotMode(m){ED.rmode=ED.rmode===m?null:m;edRotHov=-1;if(ED.rmode&&MROT.mode){MROT.mode=null;try{modAngSync();}catch(_e){}}edPanel();requestDraw();

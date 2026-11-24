@@ -474,7 +474,7 @@ window.setEditorMode=function(on){window.__EDITON__=!!on;
        <input type="color" id="gridcol" value="#6fd6e8" style="width:44px;height:22px;padding:1px;border:1px solid var(--line);border-radius:6px;background:var(--btn);cursor:pointer" title="Colour of the grid's lines and numbers (Grid, +). Remembered.">
        <button class="sm" id="bgReset" title="Return the backdrop and the grid to the theme's default colours">Default</button>
      </div>
-     <div class="row co" style="align-items:center"><button class="sm" id="bGrid" style="min-width:66px" title="Which planes the grid draws: Grid XY (flat, like the floor), Grid XZ and Grid YZ (upright), or Grid all (the whole 3D lattice). Click for the next. The grid itself turns on and off with Grid in the buttons above (+)">Grid XY</button><input type="range" id="gridSz" min="0" max="9" step="1" value="3" style="flex:1;min-width:0" title="Grid size: MOHRadiant's 1, 2, 4, 8, 16, 32, 64, 128, 256 or 512 units ({ and }). While Grid is on, Modify's Add and Move snap the entity or node to the grid shown, and Edit map's Move and Resize snap the selected brushes to it"><span id="gridV" style="min-width:34px;text-align:right">8</span></div>
+     <div class="row co" style="align-items:center"><button class="sm" id="bGrid" style="min-width:66px" title="Which planes the grid draws (click for the next):&#10;Grid XY: flat, like the floor&#10;Grid XZ: upright, facing y&#10;Grid YZ: upright, facing x&#10;Grid all: the whole 3D lattice&#10;The grid itself turns on and off with Grid in the buttons above (+)">Grid XY</button><input type="range" id="gridSz" min="0" max="9" step="1" value="3" style="flex:1;min-width:0" title="Grid size: MOHRadiant's 1, 2, 4, 8, 16, 32, 64, 128, 256 or 512 units ({ and }). While Grid is on, Modify's Add and Move snap the entity or node to the grid shown, and Edit map's Move and Resize snap the selected brushes to it"><span id="gridV" style="min-width:34px;text-align:right">8</span></div>
      <div class="row co" id="cvarRow"><button id="cvarBtn" title="The game's debugging cvars, doing here what they do in game: what the renderer draws from where the camera is (r_showtris, r_shownormals, r_lockpvs, r_showsky, r_farplane...), its lightmaps and light grid (r_lightmap, r_light_showgrid), entity numbers, boxes and info (sv_showentnums, sv_showbboxes, g_entinfo), cameras, rain and the AI's path nodes. Type a cvar and a value in its box as in the game's console. (` like the game's console key)"><span class="albl">&mdash; game cvars &mdash;</span><span class="acar">&#9668;</span></button><span id="cvarCount">none set</span></div>
    </div>
    <div class="sect">
@@ -516,8 +516,8 @@ window.setEditorMode=function(on){window.__EDITON__=!!on;
      <div class="row co" style="margin-top:6px;flex-wrap:nowrap">trim step <input type="range" id="modStep" min="0" max="13" step="1" value="4" style="flex:1;min-width:0" title="Trim step, 1 to 50 units: each key press of Trim origin moves the selected entity or node by this many units, step by step (and Edit map's Trim moves or resizes the selected brushes the same)"><span id="modStepV" style="min-width:22px;text-align:right">5</span><button class="sm" id="bModAlign" disabled style="flex:none;min-width:76px" title="Align: lines out of the selected entity's origin to line other things up with, kept after it is deselected (click for the next):&#10;Align off&#10;Straight: along X, Y and Z&#10;Diagonal: 45 degrees, flat and upright&#10;By angle: its own forward, left and up, from its angles&#10;Shift+click: turn Align off. This button applies to all selected entities">Align off</button></div>
      <div class="row co" id="modAngRow" style="gap:3px;flex-wrap:wrap;align-items:center" title="The selected entity's angles: pitch, yaw, roll in degrees (Enter sets them on every selected entity). A path node or other info_ entity (not info_splinepath) only turns on its yaw. Rotate and Axes turn them with the mouse">angles
        <input type="text" id="modAngP" title="pitch" style="width:36px;padding:1px 3px;font:inherit;font-size:11px"><input type="text" id="modAngY" title="yaw" style="width:36px;padding:1px 3px;font:inherit;font-size:11px"><input type="text" id="modAngR" title="roll" style="width:36px;padding:1px 3px;font:inherit;font-size:11px">
-       <button class="sm" id="bModRot" title="A circle round the selected entity, facing you: drag inside it to turn it about the line you look along (Shift: tumble it). A path node or other info_ entity: a flat circle that turns its yaw. Whole degrees, Ctrl: 15 at a time; letting go makes it (one Undo), Esc cancels">&#10227; Rotate</button>
-       <button class="sm" id="bModAxes" title="Three rings round the selected entity, the world's X (red), Y (green) and Z (blue): drag one to turn it about that axis. A path node or other info_ entity: only Z (its yaw). Whole degrees, Ctrl: 15 at a time; letting go makes it (one Undo), Esc cancels">&#8853; Axes</button></div>
+       <button class="sm" id="bModRot" title="A circle round the selected entity, facing you: drag inside it to turn it about the line you look along (Shift: tumble it). A path node or other info_ entity: a flat circle that turns its yaw. Whole degrees; letting go makes the turn (one Undo).&#10;Ctrl: 15 degrees at a time&#10;Esc cancels">&#10227; Rotate</button>
+       <button class="sm" id="bModAxes" title="Three rings round the selected entity, the world's X (red), Y (green) and Z (blue): drag one to turn it about that axis. A path node or other info_ entity: only Z (its yaw). Whole degrees; letting go makes the turn (one Undo).&#10;Ctrl: 15 degrees at a time&#10;Esc cancels">&#8853; Axes</button></div>
      <div class="row" style="gap:4px;flex-wrap:wrap">
        <button class="sm" id="bModSaveBsp" title="Save a copy of the .bsp with the new entities in its entity lump (everything else byte for byte) and a new &quot;map_time&quot;, so the game rebuilds the AI's .pth. Never over the original.&#10;&#10;A quick save, not a compile: only entities and path nodes change (their keys, origins, angles; added, copied, deleted). Brushes, patches and terrain are copied as they were compiled, so once any of them is changed in Edit map this button is off: use Save as .map, then Compile... (Edit map) to build a new .bsp">Save as .bsp</button>
        <button class="sm" id="bModSaveMap" title="Save the .map with the new entities added, as a new file.&#10;&#10;A quick save, not a compile: it writes the .map text (entities and path nodes, and the brushes, patches and terrain changed in Edit map), but the game plays a .bsp: Compile... (Edit map) builds one from it">Save as .map</button>
@@ -8510,7 +8510,7 @@ window.addEventListener('mousemove',e=>{
     else if(drag.b===1){const a=camAxes(),s=Math.max(0.5,moveSpeed/250);moveBy(a.r,-dx*s);moveBy(a.u,dy*s);camChanged();requestDraw();}
     return;
   }
-  if(x>=0&&y>=0&&x<W&&y<H){hoverAt=[x,y];hoverDirty=true;}
+  if(x>=0&&y>=0&&x<W&&y<H){hoverAt=[x,y];hoverDirty=true;if(MODX)requestDraw();}   // (Shift off a face: drawModify follows the mouse)
 });
 window.addEventListener('mouseup',e=>{
   if(!drag)return;const d=drag;drag=null;
@@ -10516,7 +10516,7 @@ function modAdd(cls){
   MOD.placing={cls:cls};MOD.ghost=null;modRender();
   flash('Click anywhere on the map to place the '+cls+' (Esc cancels)');
 }
-function modPlaceCancel(){if(!MOD.placing)return;const P=MOD.placing,mv=P.move!=null;MOD.placing=null;MOD.ghost=null;
+function modPlaceCancel(){if(!MOD.placing)return;const P=MOD.placing,mv=P.move!=null;MOD.placing=null;MOD.ghost=null;MODX=null;
   // a Copy not put down: the copies go again, as if it never happened
   if(P.copy&&MOD.undo.length){modRestore(MOD.undo.pop());modChanged(true);flash('Not copied');return;}
   if(mv)paDirty();modRender();requestDraw();flash(mv?'Not moved':'Not placed');}
@@ -10539,6 +10539,57 @@ function modMove(){
   modGroupStart(m,L.slice(1),false);
   flash('Move: click anywhere on the map to put the '+(L.length>1?L.length+' selected (as they are spaced now)':modCls(m))+' there (Esc or Move again cancels)');
 }
+// ---- Shift while placing (Add, Move, Copy): off the face it is on, along the face's normal ---
+// Held down, the point the cursor was on stays (MODX.p) and the mouse (or the camera) slides
+// the entity out from it along the face's normal (MODX.n, toward the camera), whole units or
+// grid steps, never into the face; a yellow line joins them. Let go: back on the surfaces.
+let MODX=null;
+// the normal of the surface a hit is on, facing the camera: a brush face's plane, else the
+// triangle the point lies on (patch, terrain, model surface); straight up for an entity
+function hitNormal(h){
+  const e=cam.pos,p=h&&h.point;if(!p)return[0,0,1];let n=null;
+  if(h.face>=0){const f=h.face,pl=SC.facePlane[f];
+    if(pl&&SC.faceKind[f]===0)n=[pl[0],pl[1],pl[2]];
+    else{const P=SC.pos,T=SC.tri,i0=SC.faceI0[f],m=SC.faceIN[f];let bd=Infinity;
+      for(let k=i0;k<i0+m;k+=3){const a=T[k]*3,b=T[k+1]*3,c=T[k+2]*3,A=[P[a],P[a+1],P[a+2]],B=[P[b],P[b+1],P[b+2]],C=[P[c],P[c+1],P[c+2]];
+        const nn=vnorm(vcross(vsub(B,A),vsub(C,A)));if(!nn)continue;
+        const d=Math.abs(vdot(nn,vsub(p,A)));if(d>bd||d>1)continue;
+        // inside it (barycentric, with a little slack at the edges)
+        const v0=vsub(C,A),v1=vsub(B,A),v2=vsub(p,A),d00=vdot(v0,v0),d01=vdot(v0,v1),d02=vdot(v0,v2),d11=vdot(v1,v1),d12=vdot(v1,v2),den=d00*d11-d01*d01;
+        if(Math.abs(den)<1e-9)continue;const u=(d11*d02-d01*d12)/den,v=(d00*d12-d01*d02)/den;
+        if(u<-0.01||v<-0.01||u+v>1.01)continue;bd=d;n=nn;}}}
+  if(!n)n=[0,0,1];
+  if(vdot(n,vsub(e,p))<0)n=[-n[0],-n[1],-n[2]];
+  return n;}
+// how far along the line P + dir*t the mouse ray passes closest
+function rayLineAt(x,y,P,dir){const o=cam.pos,r=screenRay(x,y),w=vsub(P,o),a=vdot(dir,dir),b=vdot(dir,r),c=vdot(r,r),d=vdot(dir,w),e=vdot(r,w),den=a*c-b*b;
+  if(Math.abs(den)<1e-9)return 0;return(b*e-c*d)/den;}
+// a point out from X.p along X.n (0 or more; grid steps with the grid on, else whole units):
+// where the mouse ray passes closest to that line, or, when the line points at the camera
+// (a face seen head-on: it shows less than 24 pixels per 64 units), by how far the mouse has
+// gone up the screen since Shift went down (X.x0, X.y0), at the face's distance
+function extPoint(X,x,y){
+  const a=project(X.p),b=project([X.p[0]+X.n[0]*64,X.p[1]+X.n[1]*64,X.p[2]+X.n[2]*64]);
+  let t;
+  if(!a||!b||Math.hypot(b[0]-a[0],b[1]-a[1])<24){
+    const dz=Math.hypot(X.p[0]-cam.pos[0],X.p[1]-cam.pos[1],X.p[2]-cam.pos[2]),k=2*Math.tan(fovX*Math.PI/360)/W;
+    t=(X.t0||0)+((X.y0!=null?X.y0:y)-y)*Math.max(dz,256)*k;}   // (a near face: as if 256 away, so the mouse still gets somewhere)
+  else t=rayLineAt(x,y,X.p,X.n);
+  if(!isFinite(t))t=0;t=Math.max(0,t);
+  t=GRID.on?Math.round(t/gridSize())*gridSize():Math.round(t);X.t=t;
+  return X.q=[X.p[0]+X.n[0]*t,X.p[1]+X.n[1]*t,X.p[2]+X.n[2]*t];}
+function modExtStart(){
+  if(!MOD.placing||MODX||!hoverAt)return;
+  const[x,y]=hoverAt,h=hitInfo(pickAt(x,y),x,y);if(!h||!h.point)return;
+  MODX={p:h.point.slice(),n:hitNormal(h),h:h,t:0,x0:x,y0:y};MODX.q=MODX.p.slice();
+  flash('Shift: the mouse moves it out from the face, along its normal (let go of Shift: back on the surfaces)');requestDraw();}
+function modExtEnd(){if(!MODX)return;MODX=null;
+  if(MOD.placing&&hoverAt){const[x,y]=hoverAt;modGhost(hitInfo(pickAt(x,y),x,y));}requestDraw();}
+// the hit a placing click or the ghost uses: out along the normal while Shift is held
+function modExtHit(x,y){const q=extPoint(MODX,x,y);return Object.assign({},MODX.h,{point:q.slice()});}
+window.addEventListener('keydown',e=>{if(e.key==='Shift'&&!e.repeat&&MOD&&MOD.placing)modExtStart();},true);
+window.addEventListener('keyup',e=>{if(e.key==='Shift')modExtEnd();},true);
+window.addEventListener('blur',()=>modExtEnd());
 // where a click at hit h puts a new entity of class cls: a path node 16 units over the
 // spot (the game drops it to the floor from 36 up), anything else with its box's bottom on it
 function modPlaceAt(h,cls){
@@ -10561,7 +10612,8 @@ function modFaces(cls){
 }
 function modPlaceClick(x,y){
   const P=MOD.placing;if(!P)return false;
-  const o=modPlaceAt(hitInfo(pickAt(x,y),x,y),P.cls);
+  const o=modPlaceAt(MODX?modExtHit(x,y):hitInfo(pickAt(x,y),x,y),P.cls);
+  if(o)MODX=null;
   if(!o){flash('Nothing under the cursor there: click on the map (Esc cancels)');return true;}
   if(P.move!=null){const m=MOD.ents[P.move];MOD.placing=null;MOD.ghost=null;
     if(!P.copy)modHist();                       // (a Copy's step was kept when it was made)
@@ -10590,6 +10642,7 @@ function modPlacedSel(){
 // while placing: where it would go under the cursor (the hover read-out finds it)
 function modGhost(h){
   if(!MOD.placing)return;
+  if(MODX&&hoverAt)h=modExtHit(hoverAt[0],hoverAt[1]);
   const o=modPlaceAt(h,MOD.placing.cls),k=o?o.join(','):'',was=MOD.ghost?MOD.ghost.join(','):'';
   MOD.ghost=o;if(k!==was)requestDraw();
 }
@@ -10885,7 +10938,7 @@ let PMODT=null,PMODM=null;
 // facing, target, trim arrows) and the outline of one being placed.
 function drawModify(vp){
   try{modDrawRot(vp);}catch(_e){}
-  if((!MOD.ents.length&&!MOD.ghost)||!gl)return;
+  if((!MOD.ents.length&&!MOD.ghost&&!MODX)||!gl)return;
   const T=[],L=[],M=[];
   const tri=(a,b,c,col)=>{for(const p of[a,b,c])T.push(p[0],p[1],p[2],p[0],p[1],p[2],col[0],col[1],col[2],col[3]);};
   const lin=(p,q,c)=>{L.push(p[0],p[1],p[2],q[0],q[1],q[2],c[0],c[1],c[2],c[3],q[0],q[1],q[2],p[0],p[1],p[2],c[0],c[1],c[2],c[3]);};
@@ -10939,6 +10992,11 @@ function drawModify(vp){
     // (its facing arrow and target links are drawn with the map's: rebuildLines)
     if(sel&&MOD.trim)trimArrows(mn,mx);
   });
+  // Shift held: where it is out along the face's normal (the camera may have moved), and a
+  // yellow line back to the spot on the face, with a small cross there
+  if(MOD.placing&&MODX&&hoverAt){const g=modPlaceAt(modExtHit(hoverAt[0],hoverAt[1]),MOD.placing.cls);if(g)MOD.ghost=g;
+    const Y=[1,0.9,0.35,1],p=MODX.p,q=MODX.q;lin(p,q,Y);
+    for(let k=0;k<3;k++){const a=p.slice(),b=p.slice();a[k]-=6;b[k]+=6;lin(a,b,Y);}}
   // the one being placed, under the cursor
   if(MOD.placing&&MOD.ghost){const G0=MOD.ghost,P0=MOD.placing,lead=P0.move!=null?MOD.ents[P0.move]:null;
     const list=[[lead,G0]];if(P0.group)P0.group.forEach((m,k)=>{const d=P0.offs[k];list.push([m,[G0[0]+d[0],G0[1]+d[1],G0[2]+d[2]]]);});

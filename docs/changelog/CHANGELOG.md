@@ -3655,3 +3655,36 @@ look of the walk and the doors should be confirmed by eye in the launcher.
   props don't. The index cache is `mapindex_v2_*` (definitions carry `game`). Checked
   against OpenMoHAA's 96 QUAKED headers (the built-in table matches; info_player_deathmatch's
   "initial" flag is in g_client.cpp's #if 0 block, a Quake 3 leftover; playerstart.cpp's has none). Tests: `SpawnflagClasses`.
+- Edit map's toggle: the click left the keyboard with the launcher, so the selection carried
+  over (a brush selected with Edit map off) took no keys (Alt+C copy, Trim's keys, Delete)
+  until the view was clicked again, which looked like it had to be selected again. The
+  toggle now gives the keyboard back to the page (`_give_view_keyboard`: the WebView2
+  control's Focus, 60 ms after, on the Tk thread). The selection itself already carried
+  over both ways (checked headless: a world brush and a trigger selected with Edit map off,
+  then Alt+C with it on, on m3l1b's .map and .bsp and on mohdm1). Test: `EditToggleKeyboard`.
+- Modify's Add, Move and Copy, and Edit map's Copy (Alt+C): hold **Shift** while placing to
+  lift what is being placed off the face under the cursor, along that face's normal (a brush
+  face's plane, else the triangle the point is on, facing the camera; straight up for an
+  entity), instead of only along the surfaces. The spot on the face stays (a small yellow
+  cross), a yellow line joins it to the entity, and the distance follows the mouse: where its
+  ray passes closest to the normal's line (`rayLineAt`), or, with the face seen head-on (the
+  line under 24 pixels per 64 units on screen), how far the mouse goes up the screen. Never
+  into the face; grid steps with the grid on, else whole units; worked out again each frame,
+  so moving the camera moves it too (`MODX`, `extPoint`, `hitNormal`; the editor's
+  `ED.cx`). Letting go of Shift puts it back on the surfaces; a click places it out there.
+  Tested headless on m3l1b: a light lifted 20 units off a wall and placed; a brush copy the
+  same. Edit map's Move tool keeps Shift+drag for up and down.
+- Tooltips, a line each, in both viewers and both launchers: a hotkey in brackets goes to a
+  `Hotkey: ...` line at the end ("Areaportal brushes (Ctrl+P) - click to show / hide" ->
+  two lines); a clause that starts with a key (Shift+click, Alt+click, Ctrl+..., Esc, Enter,
+  Tab, Shift:, Ctrl:) starts its own line, a bracketed one too (after its sentence when it
+  sits mid-sentence); "On: ... Off: ..." a line each; a list of settings after "(click for
+  the next):" or written "Name: what; Name: what; ..." a line per setting; an existing
+  "Hotkey:" line moves up under the text. Done as the page sets each title (TIP_JS in
+  mohaa_view.py, added to KEYS_JS so the model and map pages both carry it; a
+  MutationObserver formats every title as it is set, memoised), and in the launchers'
+  Tooltip (`tip_lines` in mohaa_common.py, the same rules; a test runs both on the same
+  cases). Written as lines by hand: Grid XY / XZ / YZ / all (Display's and the Editor's),
+  the Editor's Draw plane, the Rotate / Axes buttons (Modify's and the Editor's) and the
+  model viewer's animation browser. Checked headless: all 296 map-page and 138 model-page
+  tooltips come out formatted in the page, none changed by a second pass.

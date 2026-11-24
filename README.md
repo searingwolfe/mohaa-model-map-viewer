@@ -389,7 +389,9 @@ click away: its targetname, origin, `setsize`, targets and ready-to-paste script
 * **Modify** (above Find): add entities, most of all AI path nodes: Add, then click on the
   map where it goes. A new node is drawn
   see-through until saved, its parameters edit as entity-lump text (applied as you type),
-  **Move** picks it up again with the mouse, **Trim origin** nudges it with W A S D / the arrows by a trim step of 1 to 50 units
+  **Move** picks it up again with the mouse (Add, Move and Copy alike: hold **Shift** to lift
+  it off the face it is on along that face's normal, a yellow line back to the spot, as far
+  as the mouse or the camera takes it; let go of Shift and it follows the surfaces again), **Trim origin** nudges it with W A S D / the arrows by a trim step of 1 to 50 units
   while the camera stays put (white arrows out of its sides, red the way it just went; a
   door or other brush entity's from round its brushes, faint where a wall is in front),
   **angles** (under trim step) shows the selected entity's pitch, yaw and roll to type over
@@ -622,7 +624,8 @@ way here.
     whole). Selecting every brush of an entity counts as the entity: Copy makes a new one.
   * **Copy (Alt+C)**, with any tool: the selected brushes, patches, terrain blocks and
     brush entities (Shift+click selects more) follow the mouse, their middle under it and
-    their bottom on the surface it is over, on the grid, until a click puts them down; a
+    their bottom on the surface it is over, on the grid, until a click puts them down (hold
+    **Shift** to lift them off that face along its normal, a yellow line back to the spot); a
     drag still turns the camera, **Esc** or Alt+C again takes them away. Brushes go into
     the entity they came from; a brush entity becomes a new entity, without its
     `targetname` or `target`. One Undo (Alt+Z) takes the whole copy away. Brushes and

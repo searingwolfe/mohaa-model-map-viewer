@@ -199,6 +199,65 @@ class BspBrushModel(unittest.TestCase):
         self.assertEqual(MB.ent_get(back, "origin"), "%g %g %g" % (o[0] + 48, o[1], o[2] + 8))
 
 
+class TooltipLines(unittest.TestCase):
+    """Tooltips a line each: tip_lines (launchers) and its twin tipLines in TIP_JS (both
+    viewer pages) put hotkeys and per-setting descriptions on lines of their own, agree, and
+    change nothing the second time."""
+    CASES = [
+        ("Areaportal brushes (Ctrl+P) - click to show / hide", "Areaportal brushes - click to show / hide\nHotkey: Ctrl+P"),
+        ("Hide the selection (Backspace). Shift+H shows everything again.", "Hide the selection.\nShift+H shows everything again.\nHotkey: Backspace"),
+        ("Click a face to give it the texture in the Texture box (Shift+click: the whole brush); Alt+click takes a texture from the view; Ctrl+click picks a face.",
+         "Click a face to give it the texture in the Texture box\nShift+click: the whole brush\nAlt+click takes a texture from the view\nCtrl+click picks a face."),
+        ("Simple Sky (K). On: the sky brushes solid. Off: the game's sky box.", "Simple Sky.\nOn: the sky brushes solid.\nOff: the game's sky box.\nHotkey: K"),
+        ("Which plane (click for the next): Draw any axis - the surface; Draw XY - flat; Draw XZ - upright",
+         "Which plane (click for the next):\nDraw any axis - the surface\nDraw XY - flat\nDraw XZ - upright"),
+        ("Undo the last change (3 to undo)\n\nHotkey: Alt+Z", "Undo the last change (3 to undo)\nHotkey: Alt+Z"),
+        ("A plain tooltip with nothing to split.", "A plain tooltip with nothing to split."),
+    ]
+
+    def test_python(self):
+        import mohaa_common as MC
+        for src, want in self.CASES:
+            got = MC.tip_lines(src)
+            self.assertEqual(got, want, src)
+            self.assertEqual(MC.tip_lines(got), got, src)
+
+    def test_js_agrees(self):
+        import shutil, subprocess
+        node = shutil.which("node")
+        if not node: self.skipTest("node not found")
+        import mohaa_common as MC
+        with tempfile.TemporaryDirectory() as d:
+            js = os.path.join(d, "t.js")
+            with open(js, "w", encoding="utf-8") as f:
+                import mohaa_view as MVW
+                f.write("global.window={};global.document={body:null,addEventListener(){}};\n" + MVW.TIP_JS +
+                        "\nconst T=JSON.parse(require('fs').readFileSync(process.argv[2],'utf8'));"
+                        "process.stdout.write(JSON.stringify(T.map(t=>window.tipLines(t))));")
+            src = os.path.join(d, "t.json")
+            with open(src, "w", encoding="utf-8") as f: json.dump([c[0] for c in self.CASES], f)
+            out = json.loads(subprocess.run([node, js, src], capture_output=True, text=True, check=True).stdout)
+        self.assertEqual(out, [MC.tip_lines(c[0]) for c in self.CASES])
+
+
+class EditToggleKeyboard(unittest.TestCase):
+    """Edit map's toggle gives the keyboard back to the page (the click took it to the
+    launcher), so the selection carried over takes Alt+C, Trim's keys, Delete at once."""
+    def test_focus(self):
+        import mohaa_launcher as ML
+        app = _editor()
+        got = []
+        class Web:
+            def Focus(self): got.append("focus")
+        class Pane: web = Web()
+        app._webview = Pane()
+        app._give_view_keyboard()
+        self.assertEqual(got, ["focus"])
+        app._webview = None
+        app._give_view_keyboard()                 # no page: nothing
+        self.assertEqual(got, ["focus"])
+
+
 class SpawnflagClasses(unittest.TestCase):
     """Which classes Same spawnflags shows for (mohaa_entdefs.sf_capable, from OpenMoHAA's
     code): the game's own classes, header flags, and a .tik's game class from its init."""

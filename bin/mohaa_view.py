@@ -3397,6 +3397,83 @@ function kxBuild(host,P,opt){
 }
 """
 
+# Tooltips a line each (both viewer pages, with KEYS_JS): every title attribute the page sets
+# is reformatted as it is set. tip_lines in mohaa_common.py does the same for the launchers'
+# tooltips; tests/test_map_editor.py checks the two agree.
+TIP_JS = r"""
+(function(){
+// ---- tooltips, a line each: hotkeys and per-setting descriptions -------------------------
+// Every title attribute is reformatted when it is set (tipLines; the observer below watches
+// the page; tip_lines in mohaa_common.py is the launchers' twin):
+// a hotkey in brackets, "(Ctrl+P)", goes to a "Hotkey: Ctrl+P" line at the end; a clause
+// that starts with a key ("Shift+click: ...", "Alt+click takes ...", "Esc cancels") starts
+// its own line, and so does a bracketed one; a list of settings after "(click for the
+// next):" or written "Name: what; Name: what" gets a line per setting. Lines already there
+// stay. Idempotent: formatting a formatted tooltip changes nothing.
+const TIP_MOD='(?:(?:Ctrl|Shift|Alt)\\+)';
+const TIP_KEY='(?:'+TIP_MOD+'*(?:F\\d{1,2}|Esc|Enter|Tab|Space|Backspace|Delete|Home|End|PgUp|PgDn|Insert|wheel|click|drag|[a-z]+-click|[A-Z0-9]|[\\[\\]{}\\\\$+=\\-.,\\/`])|'+TIP_MOD+'+[A-Za-z0-9]+)';
+const TIP_KEYS_RE=new RegExp('^'+TIP_KEY+'(?:(?:,? or |, | and | \\/ )'+TIP_KEY+')*$');
+const TIP_START='(?:'+TIP_MOD+'+[^\\s,;:()]+|(?:Ctrl|Shift|Alt):|On:|Off:|Hotkey:|Esc\\b|Enter\\b|Tab\\b|Backspace\\b|Double-click\\b|Right-click\\b|Middle-click\\b)';
+const TIP_START_RE=new RegExp('^'+TIP_START);
+const TIP_SPLIT_RE=new RegExp('([.;,:])\\s+(?='+TIP_START+')','g');
+const TIP_PAREN_RE=/\s*\(([^()]*)\)/g;
+const TIP_MODSTART_RE=new RegExp('^(?:'+TIP_MOD+'+\\S|(?:Ctrl|Shift|Alt):)');
+const TIP_ITEM_RE=/^[A-Z][^:;]{0,32}(?::| - )\s*\S/;
+function tipLine(L,keys){
+  if(/^Hotkey:/.test(L))return[L];
+  // bracketed: hotkeys alone go to the end; a clause starting with a key gets its own line
+  // (one in the middle of a sentence goes after that sentence)
+  const later=[];
+  L=L.replace(TIP_PAREN_RE,(m,c,at,all)=>{const t=c.trim();
+    if(TIP_KEYS_RE.test(t)){keys.push(t);return'';}
+    if(TIP_MODSTART_RE.test(t)){const nx=all.slice(at+m.length);
+      if(/^\s*(,|:|[a-z])/.test(nx)){later.push([at,t]);return'\u0003';}
+      return'\u0002'+t+'\u0002';}
+    return m;});
+  while(L.indexOf('\u0003')>=0){const i=L.indexOf('\u0003'),t=later.shift()[1];L=L.slice(0,i)+L.slice(i+1);
+    const r=L.slice(i).search(/[.;](\s|$)/),j=r<0?L.length:i+r+1;L=L.slice(0,j)+'\u0002'+t+'\u0002'+L.slice(j);}
+  // a list of settings: after "(click for the next):", or "Name: what; Name: what"
+  let out=[];
+  const cfn=L.indexOf('(click for the next):');
+  if(cfn>=0){const head=L.slice(0,cfn+21),rest=L.slice(cfn+21).trim();out.push(head);
+    if(rest)out.push(...(rest.split(/;\s+/).length>1?rest.split(/;\s+/):[rest]));}
+  else{const seg=L.split(/;\s+/);
+    if(seg.length>=3&&seg.slice(1).filter(x=>TIP_ITEM_RE.test(x)).length>=2){
+      const c=seg[0].lastIndexOf(': ');
+      if(c>0&&TIP_ITEM_RE.test(seg[0].slice(c+2))){out.push(seg[0].slice(0,c+1));out.push(seg[0].slice(c+2));}else out.push(seg[0]);
+      out.push(...seg.slice(1));}
+    else out.push(L);}
+  // a clause that starts with a key starts a line (the full stop stays; a comma or semicolon
+  // goes), and ends at its sentence's end
+  out=out.flatMap(l=>l.split('\u0002')).flatMap(l=>/^Hotkey:/.test(l)?[l]:l.replace(TIP_SPLIT_RE,(m,p)=>p==='.'?'.\n':p===':'?':\n':'\n').split('\n'))
+    .flatMap(l=>{l=l.replace(/^[\s;,]+|^\.\s+/,'');if(!TIP_START_RE.test(l))return[l];const i=l.search(/\.\s+(?=[A-Z])/);return i<0?[l]:[l.slice(0,i+1),l.slice(i+1)];});
+  return out.map(l=>l.replace(/\s+([.,;:])$/,'$1').replace(/\s{2,}/g,' ').trim()).filter(Boolean);}
+function tipLines(s){
+  if(typeof s!=='string'||!s||s.length<12)return s;
+  const keys=[],have=new Set(),out=[];
+  for(const L of s.split('\n')){if(!L.trim()){out.push('');continue;}
+    for(const l of tipLine(L,keys))out.push(l);}
+  for(const l of out)if(/^Hotkey:/.test(l))have.add(l.replace(/^Hotkey:\s*/,''));
+  const add=keys.filter(k=>!have.has(k));
+  let r=out.join('\n').replace(/\n{3,}/g,'\n\n').replace(/\n\n(?=Hotkey:)/g,'\n').trim();   // (the hotkey right under the rest)
+  if(add.length)r+='\nHotkey: '+add.join('; ');
+  return r;}
+
+const TIP_MEMO=new Map();
+function tipFix(el){const t=el.getAttribute('title');if(!t)return;let f=TIP_MEMO.get(t);
+  if(f===undefined){try{f=tipLines(t);}catch(_e){f=t;}if(TIP_MEMO.size>4000)TIP_MEMO.clear();TIP_MEMO.set(t,f);TIP_MEMO.set(f,f);}
+  if(f!==t)el.setAttribute('title',f);}
+function tipAll(n){if(!n||n.nodeType!==1)return;if(n.hasAttribute('title'))tipFix(n);n.querySelectorAll('[title]').forEach(tipFix);}
+function tipStart(){tipAll(document.body);
+  new MutationObserver(L=>{for(const m of L){if(m.type==='attributes')tipFix(m.target);else m.addedNodes.forEach(tipAll);}})
+    .observe(document.body,{subtree:true,childList:true,attributes:true,attributeFilter:['title']});}
+window.tipLines=tipLines;
+if(document.body)tipStart();else document.addEventListener('DOMContentLoaded',tipStart);
+})();
+"""
+KEYS_JS += TIP_JS
+
+
 def write_html(path,title,payload,theme=None):
     # Model data is untrusted (it comes from whatever .pk3 was loaded). json.dumps leaves '<'
     # alone, so a '</script>' in a string would end the inline block early. Escaping <, > and
@@ -3672,7 +3749,7 @@ window.setEditorMode=function(on){window.__EDITON__=!!on;
    </div>
    <div class="sect">
      <h2>Animation</h2>
-     <div class="row"><button id="animBtn" style="flex:1;min-width:0;text-align:left" title="Browse every animation this model can reach. Categories follow the model's own $include / includes{} structure. Up/Down to move, Enter to open, Left or Backspace to go back.">&mdash; bind pose (rest) &mdash;</button><span class="co" id="animKind" title="Anim names come from the opened .tik's animations{} list (resolved through its $include chain), or from sibling .skc files for a bare model"></span></div>
+     <div class="row"><button id="animBtn" style="flex:1;min-width:0;text-align:left" title="Browse every animation this model can reach. Categories follow the model's own $include / includes{} structure.&#10;Up / Down: move&#10;Enter: open&#10;Left or Backspace: go back">&mdash; bind pose (rest) &mdash;</button><span class="co" id="animKind" title="Anim names come from the opened .tik's animations{} list (resolved through its $include chain), or from sibling .skc files for a bare model"></span></div>
      <div class="row co" id="animPath" style="display:none;word-break:break-all"></div>
      <div class="row co">&nbsp;</div>
      <div class="row">

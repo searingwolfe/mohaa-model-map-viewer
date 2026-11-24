@@ -756,3 +756,101 @@ def child_env(extra=None):
     if extra:
         env.update(extra)
     return env
+
+
+# ---- tooltips, a line each ------------------------------------------------------------------
+# The launchers' twin of tipLines in the viewer pages (TIP_JS in mohaa_view.py): a hotkey in
+# brackets, "(Ctrl+P)", goes to a "Hotkey: Ctrl+P" line at the end; a clause that starts with
+# a key ("Shift+click: ...", "Alt+click takes ...", "Esc cancels") starts its own line, and so
+# does a bracketed one (after its sentence when it sits mid-sentence); "On: ... Off: ..." a
+# line each; a list of settings after "(click for the next):" or written "Name: what; Name:
+# what; ..." a line per setting. Lines already there stay; formatting twice changes nothing.
+_TIP_MOD = r"(?:(?:Ctrl|Shift|Alt)\+)"
+_TIP_KEY = (r"(?:" + _TIP_MOD + r"*(?:F\d{1,2}|Esc|Enter|Tab|Space|Backspace|Delete|Home|End|PgUp|PgDn|Insert|wheel|click|drag|[a-z]+-click|[A-Z0-9]|[\[\]{}\\$+=\-.,/`])|"
+            + _TIP_MOD + r"+[A-Za-z0-9]+)")
+_TIP_KEYS_RE = re.compile(r"^" + _TIP_KEY + r"(?:(?:,? or |, | and | / )" + _TIP_KEY + r")*$")
+_TIP_START = (r"(?:" + _TIP_MOD + r"+[^\s,;:()]+|(?:Ctrl|Shift|Alt):|On:|Off:|Hotkey:|Esc\b|Enter\b|Tab\b|Backspace\b|"
+              r"Double-click\b|Right-click\b|Middle-click\b)")
+_TIP_START_RE = re.compile(r"^" + _TIP_START)
+_TIP_SPLIT_RE = re.compile(r"([.;,:])\s+(?=" + _TIP_START + r")")
+_TIP_PAREN_RE = re.compile(r"\s*\(([^()]*)\)")
+_TIP_MODSTART_RE = re.compile(r"^(?:" + _TIP_MOD + r"+\S|(?:Ctrl|Shift|Alt):)")
+_TIP_ITEM_RE = re.compile(r"^[A-Z][^:;]{0,32}(?::| - )\s*\S")
+
+
+def _tip_line(L, keys):
+    if L.startswith("Hotkey:"):
+        return [L]
+    later = []
+
+    def paren(m):
+        t = m.group(1).strip()
+        if _TIP_KEYS_RE.match(t):
+            keys.append(t)
+            return ""
+        if _TIP_MODSTART_RE.match(t):
+            if re.match(r"^\s*(,|:|[a-z])", m.string[m.end():]):
+                later.append(t)
+                return "\x03"
+            return "\x02" + t + "\x02"
+        return m.group(0)
+    L = _TIP_PAREN_RE.sub(paren, L)
+    while "\x03" in L:
+        i = L.index("\x03")
+        t = later.pop(0)
+        L = L[:i] + L[i + 1:]
+        r = re.search(r"[.;](\s|$)", L[i:])
+        j = len(L) if r is None else i + r.start() + 1
+        L = L[:j] + "\x02" + t + "\x02" + L[j:]
+    out = []
+    cfn = L.find("(click for the next):")
+    if cfn >= 0:
+        head, rest = L[:cfn + 21], L[cfn + 21:].strip()
+        out.append(head)
+        if rest:
+            parts = re.split(r";\s+", rest)
+            out.extend(parts)
+    else:
+        seg = re.split(r";\s+", L)
+        if len(seg) >= 3 and sum(1 for x in seg[1:] if _TIP_ITEM_RE.match(x)) >= 2:
+            c = seg[0].rfind(": ")
+            if c > 0 and _TIP_ITEM_RE.match(seg[0][c + 2:]):
+                out.append(seg[0][:c + 1])
+                out.append(seg[0][c + 2:])
+            else:
+                out.append(seg[0])
+            out.extend(seg[1:])
+        else:
+            out.append(L)
+    res = []
+    for l0 in out:
+        for l1 in l0.split("\x02"):
+            l2 = l1 if l1.startswith("Hotkey:") else _TIP_SPLIT_RE.sub(
+                lambda m: ".\n" if m.group(1) == "." else (":\n" if m.group(1) == ":" else "\n"), l1)
+            for l in l2.split("\n"):
+                l = re.sub(r"^[\s;,]+|^\.\s+", "", l, count=1)
+                if _TIP_START_RE.match(l):
+                    m = re.search(r"\.\s+(?=[A-Z])", l)
+                    if m:
+                        res.extend([l[:m.start() + 1], l[m.start() + 1:]])
+                        continue
+                res.append(l)
+    return [x for x in (re.sub(r"\s{2,}", " ", re.sub(r"\s+([.,;:])$", r"\1", l)).strip() for l in res) if x]
+
+
+def tip_lines(s):
+    """A tooltip's text with its hotkeys and per-setting descriptions on lines of their own."""
+    if not isinstance(s, str) or len(s) < 12:
+        return s
+    keys, out = [], []
+    for L in s.split("\n"):
+        if not L.strip():
+            out.append("")
+            continue
+        out.extend(_tip_line(L, keys))
+    have = {re.sub(r"^Hotkey:\s*", "", l) for l in out if l.startswith("Hotkey:")}
+    add = [k for k in keys if k not in have]
+    r = re.sub(r"\n\n(?=Hotkey:)", "\n", re.sub(r"\n{3,}", "\n\n", "\n".join(out))).strip()   # the hotkey right under the rest
+    if add:
+        r += "\nHotkey: " + "; ".join(add)
+    return r

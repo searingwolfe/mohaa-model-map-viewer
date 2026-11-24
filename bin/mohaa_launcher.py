@@ -1186,7 +1186,8 @@ class Tooltip:
         if self.tip or not self.text: return
         try:
             x=self.w.winfo_rootx()+12; y=self.w.winfo_rooty()+self.w.winfo_height()+6
-            self.tip=_tip_window(self.w,self.text,x,y,wrap=340)
+            # hotkeys and per-setting descriptions a line each, as the viewer pages show theirs
+            self.tip=_tip_window(self.w,MC.tip_lines(self.text),x,y,wrap=340)
         except Exception:
             MC.swallowed()
             self.tip=None
@@ -6341,6 +6342,20 @@ class App(tk.Tk):
         if url:
             self._embed_url=re.sub(r"&edit=1","",url)+self._editor_hash()
         self._embed_js("try{if(typeof setEditorMode==='function')setEditorMode(%s)}catch(e){}"%("true" if on else "false"))
+        # the click on the toggle took the keyboard to the launcher: give it back to the page,
+        # so the selection carried over can be used at once (Alt+C, Trim's keys, Delete ...)
+        try: self.after(60,self._give_view_keyboard)
+        except Exception: MC.swallowed()
+
+    def _give_view_keyboard(self):
+        """Keyboard focus to the embedded page (Windows: the WebView2 control's Focus, on the
+        Tk thread, which is its STA thread). The Linux pane takes it on its next click."""
+        wv=self._webview
+        if wv is None: return
+        try:
+            web=getattr(wv,"web",None)
+            if web is not None and hasattr(web,"Focus"): web.Focus()
+        except Exception: MC.swallowed("the page couldn't take the keyboard")
 
     def _page_message(self, m):
         """A page message the shared handler doesn't know (a subclass's own). Runs on the
