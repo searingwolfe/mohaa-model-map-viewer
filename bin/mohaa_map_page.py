@@ -8745,7 +8745,10 @@ function escape(){
   if(helpOv.style.display!=='none'){toggleHelp(false);return;}
   if(legOv.style.display!=='none'){toggleLegend(false);return;}
   if($('info').classList.contains('on')){hideInfo();return;}
-  if(MOD.sel>=0){modDeselect();return;}
+  // Modify's entry for one of several map entities selected (a whole path from Same path):
+  // one Esc lets go of them all, not one at a time
+  if(MOD.sel>=0){const m=MOD.ents[MOD.sel],all=m&&modIsMap(m)&&SEL.size>1&&SEL.has('e'+m.ei);
+    modDeselect();if(all&&SEL.size){SEL.clear();selectionChanged();if(MOD.sel>=0)modDeselect();}return;}
   if(SEL.size){SEL.clear();selectionChanged();return;}
   closeViewer();
 }

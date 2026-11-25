@@ -3879,3 +3879,10 @@ look of the walk and the doors should be confirmed by eye in the launcher.
   going by the folder it was opened from even though the pak pipeline builds from a copy in
   the workspace (`App._note_loose`). Pages already in the standalone folders are rebuilt
   there once; Clear built maps / models removes the old ones.
+
+## Esc lets go of a whole path at once (November 2026)
+
+- With a path selected (Same path, Ctrl+Alt+click), Modify's entry followed the selection to
+  one of its entities, so each Esc let go of only that one and the next took its place. Esc
+  now clears the whole selection when Modify's entry is one of several map entities selected,
+  as it already did for several path nodes picked by hand (`escape`).
