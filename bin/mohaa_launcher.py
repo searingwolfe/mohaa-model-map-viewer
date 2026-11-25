@@ -530,7 +530,7 @@ def init_runtime(app_name="mohaa_launcher"):
 #  docs/ and the RUN .bat. On each release, bump VERSION here and in docs/version.txt,
 #  then tag the release commit v<version>.
 # ============================================================================
-VERSION="1.0.012"
+VERSION="1.0.013"
 VERSION_LABEL="version "+VERSION
 # GitHub coordinates for the update check. The check compares every program file here
 # with the same file on GitHub's main branch, by its Git fingerprint (the blob SHA-1 the

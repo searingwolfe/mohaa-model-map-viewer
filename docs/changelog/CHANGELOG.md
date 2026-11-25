@@ -3933,3 +3933,16 @@ look of the walk and the doors should be confirmed by eye in the launcher.
   it where the Save dialog says, keeps the old file as .bak and reads it back. Bounds and
   radius are kept. An edit started from the clip (Edit animations) starts from the changed
   pose.
+
+## 1.0.013 (November 2026)
+
+- Released as v1.0.013: everything since 1.0.012 (the sections above). In the Map Viewer:
+  the sea rolls and the shoreline fades as in game, the level script's start-of-level
+  `hide` / `$world` fog are followed, maps (and models) of the same name from different
+  folders get their own page, Esc lets go of a whole path, Same spawnflags shows only when
+  there are some. In the Map Editor: Draw brush draws each shape's own outline and adds
+  pyramids, wedges, brush spheres and patch spheres and domes; Clip says why it can't cut a
+  patch; a `.map` gets a light preview with Full Brightness off. In the Model Viewer: the
+  Baked in list (eye look, blinks, lip sync, face, head and body turn, movement) with
+  Save .skc. `VERSION` (`mohaa_launcher.py`, `mohaa_envcheck.py`) and `docs/version.txt` say
+  1.0.013; the updater finds it by the tag `v1.0.013`.

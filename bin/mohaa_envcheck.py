@@ -56,7 +56,7 @@ except Exception:                               # a damaged install: no log file
 # ==============================================================================
 #  Constants
 # ==============================================================================
-VERSION = "1.0.012"
+VERSION = "1.0.013"
 # (pip requirement, distribution name, minimum version, import check run in a NEW process)
 # Pillow's floor is a SECURITY floor (see docs/SECURITY.md); importing PIL._imaging catches
 # a compiled extension built for a different Python (the libs folder outlived a Python update).

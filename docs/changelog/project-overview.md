@@ -113,14 +113,16 @@ Model Viewer and what both share; the Map Viewer has its own notes in
 
 ## Current state
 
-- Version 1.0.012, with both viewers and the Map Editor (Edit map: brushes, patches,
+- Version 1.0.013, with both viewers and the Map Editor (Edit map: brushes, patches,
   terrain, Modify, the level script, Compile with the built-in compiler ommap) and
   SIMULATE's ladder climb. `VIEWER_REV` 82; the Map Viewer's `MAP_VIEWER_REV` 110 and
   `INDEX_VERSION` 11. 1.0.010 added the Map Editor and the compiler; 1.0.011 adds the
   ladder climb and the editor's trim, draw-plane and angle tools; 1.0.012 the editor's
   Align, Clip and Texture rework, static props in Save as .bsp, the model viewer's padded
   bone names, wheel spin and beam shaders, and .bsp lumps in the header's order so maps load
-  from a .pk3 (see the changelog). 1.0.001 was the hardening pass (see
+  from a .pk3; 1.0.013 water and shorelines as in game, the level script's start (hidden
+  entities, fog), Draw brush's new shapes, the .map light preview and the Model Viewer's
+  Baked in list (see the changelog). 1.0.001 was the hardening pass (see
   [hardening-notes.md](hardening-notes.md)); 1.0.002 makes Modify's list and undo cheap
   with many entities; 1.0.003 adds Simulate on path nodes (a human with a weapon who
   plays a node's animation and runs or walks the AI's routes, opening doors), deleting the
