@@ -1947,6 +1947,44 @@ def _bsp_header(data):
     return version, lumps, LUMP_ENTITIES + (1 if version <= 18 else 0)
 
 
+def lumps_in_order(data):
+    """Whether a .bsp's lumps lie in the file in the order the header lists them (as the
+    game's own compiler writes them)."""
+    _v, lumps, _le = _bsp_header(data)
+    offs = [o for o, ln in lumps if ln]
+    return offs == sorted(offs)
+
+
+def canonical_layout(data):
+    """The .bsp's bytes with its lumps laid out in the header's order (4-byte aligned), every
+    lump's bytes unchanged.
+
+    The game reads a .bsp lump by lump, seeking to each (CM_LoadMap, R_LoadWorldMap and the
+    navigation's loaders each go through them in the header's order). Inside a .pk3 the
+    original game can only seek forward through a compressed file, so a lump that lies before
+    the one read last fails with "CM_LoadLump: Error seeking to lump.", while the same .bsp as a
+    loose file loads. ommap writes its lumps in q3map's order (the entities in the middle, the
+    lightmaps after the draw surfaces), and an entity lump put back at the end of the file did
+    the same; the game's own compiler writes them in the header's order, which only ever reads
+    forward."""
+    version, lumps, _le = _bsp_header(data)
+    head = 12 + 8 * len(lumps)
+    out = bytearray(data[:head])
+    for i, (ofs, ln) in enumerate(lumps):
+        while len(out) % 4:
+            out.append(0)
+        struct.pack_into("<ii", out, 12 + 8 * i, len(out), ln)
+        out += data[ofs:ofs + ln]
+    while len(out) % 4:
+        out.append(0)
+    out = bytes(out)
+    _v2, l2, _le2 = _bsp_header(out)
+    for (a, n), (b, m) in zip(lumps, l2):
+        if n != m or data[a:a + n] != out[b:b + m]:
+            raise BspError("laying out the lumps: a lump came out different")
+    return out
+
+
 def bsp_entity_text(data):
     """The entity lump of a .bsp's bytes, as text."""
     _v, lumps, le = _bsp_header(data)
@@ -2097,7 +2135,8 @@ def write_bsp_entities(data, added, out_path, src_path=None, replace=None):
     text) after its own, the map's entities in replace ([{ei, cls, origin, kv}]) given their
     new keys, and a new map_time. A change with "st" is a static prop: its record in the
     static model lump is written again instead (_static_records). Checked afterwards: every
-    other lump byte for byte the same, the entities read back. Returns (old map_time, new map_time, nodes before, nodes
+    other lump byte for byte the same, the entities read back. The lumps are laid out in the
+    header's order (canonical_layout), so the .bsp also loads from a .pk3. Returns (old map_time, new map_time, nodes before, nodes
     after, entities)."""
     if src_path and os.path.normcase(os.path.abspath(src_path)) == os.path.normcase(os.path.abspath(out_path)):
         raise BspError("that is the .bsp the map was opened from: pick another name")
@@ -2176,6 +2215,9 @@ def write_bsp_entities(data, added, out_path, src_path=None, replace=None):
     while len(out) % 4:
         out.append(0)
     struct.pack_into("<ii", out, 12 + le * 8, new_ofs, len(payload))
+    # every lump in the header's order, the new entity lump in its place: inside a .pk3 the
+    # game can't seek back to a lump (canonical_layout)
+    out = bytearray(canonical_layout(bytes(out)))
     # Write a temp file beside the destination, read it back and check it fully, and only
     # then move it into place: a copy that fails the check never reaches out_path (an
     # earlier copy there is kept as .bak).
@@ -2196,7 +2238,7 @@ def write_bsp_entities(data, added, out_path, src_path=None, replace=None):
                 continue
             a, b = lumps[i], l2[i]
             want = sl[1] if sl and i == sl[0] else data[a[0]:a[0] + a[1]]
-            if a != b or want != d2[b[0]:b[0] + b[1]]:
+            if a[1] != b[1] or want != d2[b[0]:b[0] + b[1]]:
                 raise BspError("checking the new file: lump %d differs" % i)
         back = parse_entity_string(bsp_entity_text(d2))
         if len(back) != len(old) + len(new) - ndel:

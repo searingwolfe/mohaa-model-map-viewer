@@ -3804,3 +3804,35 @@ look of the walk and the doors should be confirmed by eye in the launcher.
 - The Texture box, Browse, tool textures and the eyedropper show only with Draw brush,
   Texture and Terrain, the tools that use a texture. A face Clip cuts gets the brush's own most
   used texture (it had the Texture box's).
+
+## .bsp lumps in the header's order, so a map loads from a .pk3 (November 2026)
+
+- A .bsp compiled here (m3l1b) loaded as a loose file in main/maps but not from the mod's .pk3:
+  "CM_LoadLump: Error seeking to lump." The game reads a .bsp one lump at a time, seeking to
+  each, and its readers (the collision map, the renderer, the navigation) go through the lumps
+  in the header's order. Inside a .pk3 the original game can only seek forward through a
+  compressed file, so a lump lying before the one read last can't be reached. ommap writes its
+  lumps in q3map's order (the entities in the middle, the lightmaps after the draw surfaces),
+  and Save as .bsp put the new entity lump at the end of the file; the game's own compiler
+  writes them in the header's order, which only ever reads forward.
+- Compile now lays the lumps out in the header's order before it writes the .bsp
+  (`mohaa_bsp.canonical_layout`, every lump's bytes unchanged; the log says so), and Save as
+  .bsp writes its entity lump in place the same way. The header (its checksum, the game's map
+  checksum) and the map_time are unchanged, and the .vis holds only the visibility lump's bytes.
+  The game keeps a .pth only while the .bsp isn't newer than it (PathSearch::ArchiveLoadNodes),
+  so a .bsp rewritten by hand wants its .pth written after it.
+
+## 1.0.012 (November 2026)
+
+- Released as v1.0.012: everything since 1.0.011 (the sections above). In the Map Editor:
+  the face hover for the eyedropper and the Texture tool, Undo back to the baked light,
+  static props that move and save into a .bsp's static model lump, Modify's Align and its
+  list of every selected entity, Shift lifting a placed object off the face, tooltips on lines,
+  Clip on the grid with the half that stays shown as the selection and cuts square to the face,
+  the Texture tool selecting a face and holding what the eyedropper takes. In the Model Viewer:
+  bones whose names end in spaces animate again (the Opel truck's wheel), the wheel hubs and
+  treads turn at the game's speed, and the searchlight and headlight beams draw as in the game
+  (nextbundle, rgbGen / alphaGen dot, additive culling). Compile and Save as .bsp lay the lumps
+  out in the header's order, so a map loads from a .pk3. `VERSION` (`mohaa_launcher.py`,
+  `mohaa_envcheck.py`) and `docs/version.txt` say 1.0.012; the updater finds it by the tag
+  `v1.0.012`.

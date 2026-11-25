@@ -683,6 +683,32 @@ class BspSave(TempDirCase):
         self.assertEqual(open(out + ".bak", "rb").read(), first)
         self.assertEqual(len(MB.parse_entity_string(MB.bsp_entity_text(open(out, "rb").read()))), 4)
 
+    def test_lumps_stay_in_header_order(self):
+        """Inside a .pk3 the game can't seek back to a lump ("CM_LoadLump: Error seeking to
+        lump."): a saved .bsp keeps its lumps in the header's order, the new entities in place."""
+        out = self.p("m_order.bsp")
+        node = '{\n"classname" "info_pathnode"\n"origin" "8 8 8"\n}\n'
+        MB.write_bsp_entities(bsp_seed(), node, out)
+        d = open(out, "rb").read()
+        self.assertTrue(MB.lumps_in_order(d))
+        # a shuffled .bsp (entities and planes moved to the end) is put back in order, every lump kept
+        src = bytearray(bsp_seed())
+        _v, lumps, _le = MB._bsp_header(bytes(src))
+        for i in (14, 1):
+            o, n = lumps[i]
+            while len(src) % 4:
+                src.append(0)
+            struct.pack_into("<ii", src, 12 + 8 * i, len(src), n)
+            src += bytes(src[o:o + n])
+        src = bytes(src)
+        self.assertFalse(MB.lumps_in_order(src))
+        fixed = MB.canonical_layout(src)
+        self.assertTrue(MB.lumps_in_order(fixed))
+        _v, l1, _le = MB._bsp_header(src)
+        _v, l2, _le = MB._bsp_header(fixed)
+        for (a, n), (b, m) in zip(l1, l2):
+            self.assertEqual(src[a:a + n], fixed[b:b + m])
+
     def test_failed_check_never_reaches_destination(self):
         """SIMULATED: the read-back check fails; the destination must not be created."""
         out = self.p("bad.bsp")

@@ -1146,6 +1146,17 @@ def compile_map(map_path, vfs, work, steps=STEPS, log=print, procs=None, origin_
     dest = side + ".bsp"
     with open(out_bsp, "rb") as f:
         data = f.read()
+    # ommap writes its lumps in q3map's order; the game reading the .bsp from a .pk3 can only
+    # seek forward, so they are laid out in the header's order, as the game's own compiler
+    # writes them (mohaa_bsp.canonical_layout)
+    try:
+        import mohaa_bsp as MB
+        if not MB.lumps_in_order(data):
+            data = MB.canonical_layout(data)
+            log("(lumps laid out in the header's order, so the .bsp also loads from a .pk3)")
+    except Exception as e:
+        MC.swallowed()
+        log("(the lumps couldn't be put in order: %s; the .bsp may not load from a .pk3)" % str(e)[:160])
     MC.atomic_write_bytes(dest, data, backup=True)
     with open(dest, "rb") as f:
         if f.read() != data:
