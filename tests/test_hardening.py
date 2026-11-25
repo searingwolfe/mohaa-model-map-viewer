@@ -673,6 +673,38 @@ class ShaderTexMods(unittest.TestCase):
         self.assertEqual(props["addbundle"]["bundle"].get("env"), "add")
 
 
+class WaterAndScriptStart(unittest.TestCase):
+    """m3l1a's water: flap keeps its spread, tCoord alpha, and what the level script hides
+    and sets as the level starts."""
+    def test_flap_and_tcoord(self):
+        import mohaa_map_view as MV
+        d = MV._fx_deform("flap t 10 sin 0 10 0 .10 0 10".split())
+        self.assertEqual(d[0], 5)                               # along t
+        self.assertEqual(d[-3:], [0.0, 10.0, 0.1])              # min, max, 1 / div (the spread)
+        self.assertEqual(MV._fx_alpha(["tcoord", "1.8", "-0.01"], ["c"]), ["tc", 1.8, -0.01, 0.0, 1.0])
+        self.assertEqual(MV._fx_rgb(["scoord", "0", "1", "0.2", "0.9"], False), ["sc", 0.0, 1.0, 0.2, 0.9])
+
+    def _read(self, text, names):
+        import mohaa_map_view as MV
+        ents = [{"kvd": {}}] + [{"kvd": {"targetname": n}} for n in names]
+        ls = MV.LevelScript(lambda p: (text, "x") if p.endswith("t.scr") else (None, None), ents)
+        ls.read("maps/t.scr")
+        return ls
+
+    def test_start_hide_and_fog(self):
+        ls = self._read(
+            "main:\nlevel waittill prespawn\n$world farplane 3500\n$world farplane_color (.62 .62 .61)\n"
+            "$world farplane local.x\nthread prep\nlevel waittill spawn\nthread later\nend\n"
+            "prep:\n$wavy hide\n$calm show\nwait 2\n$calm hide\nend\n"
+            "later:\nwait 1\n$wavy show\nend\n"
+            "event:\n$calm hide\nend\n", ["wavy", "calm"])
+        self.assertEqual({k: v[0] for k, v in ls.prehide.items()}, {1: 1, 2: 0})
+        out = ls.payload(3)
+        self.assertEqual([h[0] for h in out["prehide"]], [1])
+        self.assertEqual(out["prewld"]["farplane"][0], "3500")     # local.x isn't a value
+        self.assertEqual(out["prewld"]["farplane_color"][0], ".62 .62 .61")
+
+
 class BspSave(TempDirCase):
     def test_save_verifies_then_keeps_bak(self):
         out = self.p("m_mod.bsp")

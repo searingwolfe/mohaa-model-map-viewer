@@ -4011,12 +4011,17 @@ function applyFlap(){
     const fl=FLAPS[si]; if(!fl)continue;
     const sr=DATA.surfRanges[si];
     for(const d of fl){
-      const sc=waveVal(d.func,d.base,d.amp,d.phase,d.freq,effT);
-      if(!sc)continue;
+      const sc0=waveVal(d.func,d.base,d.amp,d.phase,d.freq,effT);
+      // each vertex's phase shifted by (x + y + z) / spread, as deformVertexes wave does: the
+      // game's sea shows it (its horizon rolls), though OpenMoHAA's RB_CalcFlapVertexes
+      // works the shift out and leaves it unused
+      const spr=d.freq?(d.spread||0):0;
+      if(!sc0&&!spr)continue;
       const ax=(d.axis==='s')?0:1, mn=d.min, span=d.max-d.min;
       for(let v=sr.vstart;v<sr.vend;v++){
         const i3=v*3;
         const st=UVa?UVa[v*2+ax]:0;
+        const sc=spr?waveVal(d.func,d.base,d.amp,d.phase+(modelBase[i3]+modelBase[i3+1]+modelBase[i3+2])*spr,d.freq,effT):sc0;
         const w=sc*(span*st+mn);
         model[i3]+=w*VN[i3];model[i3+1]+=w*VN[i3+1];model[i3+2]+=w*VN[i3+2];}
     }

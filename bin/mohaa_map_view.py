@@ -2224,7 +2224,7 @@ def _fx_deform(words):
     """One deformVertexes (tr_shader.c ParseDeform) as the page's FX program takes it:
     [kind, wave function, base, amplitude, phase, frequency, x, y, z], kind 1 wave (x the
     spread, 1 / div), 2 bulge (width, height, speed), 3 move (the vector), 4 / 5 flap
-    along s / t (min, max), 6 normal (amplitude, frequency). None for the rest."""
+    along s / t (min, max, 1 / div), 6 normal (amplitude, frequency). None for the rest."""
     w = [x.lower() for x in words]
     k = w[0] if w else ""
     if k == "wave" and len(w) >= 7:
@@ -2236,7 +2236,8 @@ def _fx_deform(words):
         return [3] + _wave(w[4:9]) + [_atof(w[1]), _atof(w[2]), _atof(w[3])]
     if k == "flap" and len(w) >= 8 and w[1][:1] in ("s", "t"):
         mn, mx = (_atof(w[8]), _atof(w[9])) if len(w) >= 10 else (0.0, 1.0)
-        return [4 if w[1][0] == "s" else 5] + _wave(w[3:8]) + [mn, mx, 0.0]
+        div = _atof(w[2])
+        return [4 if w[1][0] == "s" else 5] + _wave(w[3:8]) + [mn, mx, 1.0 / div if div else 100.0]
     if k == "normal" and len(w) >= 3:
         return [6, "sin", 0.0, _atof(w[1]), 0.0, _atof(w[2]), 0.0, 0.0, 0.0]
     return None
@@ -2263,14 +2264,28 @@ def _fx_rgb(rg, lit_default):
     if kind in ("dot", "oneminusdot"):
         lo, hi = (n + [0.0, 1.0])[:2] if n else (0.0, 1.0)
         return ["dot" if kind == "dot" else "1dot", lo, hi]
+    if kind in ("scoord", "tcoord"):
+        return _fx_coord(kind, n)
     return ["c", 1.0, 1.0, 1.0]
+
+
+def _fx_coord(kind, n):
+    """rgbGen / alphaGen sCoord or tCoord (tr_shader.c ParseStage; RB_CalcRGBFromTexCoords,
+    RB_CalcAlphaFromTexCoords): ["sc" | "tc", min, max, low cap, high cap], the value
+    min + (max - min) x the vertex's own s or t (before its tcMods), held between the caps
+    (0 and 1 when the shader gives none). deepbluesea_shoreline's `alphaGen tCoord 1.8 -0.01`
+    fades its water out up the beach."""
+    lo, hi = (n + [0.0, 1.0])[:2] if n else (0.0, 1.0)
+    cap_lo = n[2] if len(n) > 2 else 0.0
+    cap_hi = n[3] if len(n) > 3 else 1.0
+    return ["sc" if kind == "scoord" else "tc", lo, hi, cap_lo, cap_hi]
 
 
 def _fx_alpha(ag, rg):
     """A stage's alphaGen for the page: ["c", a], ["v"] / ["1v"], ["w", wave],
     ["dot" | "1dot", min, max] (as the engine does it, these set the colour, not the
     alpha: RB_CalcAlphaFromDot), ["df" | "1df", near, range] (distFade), ["hf", min, max]
-    (heightFade), ["sky"] / ["1sky"]. With none, a vertex-coloured stage keeps the
+    (heightFade), ["sky"] / ["1sky"], ["sc" | "tc", ...] (sCoord / tCoord, _fx_coord). With none, a vertex-coloured stage keeps the
     vertex alpha and the others are opaque (AGEN_IDENTITY)."""
     kind, args = (ag[0], ag[1:]) if ag else ("", [])
     n = _nums(args)
@@ -2295,6 +2310,8 @@ def _fx_alpha(ag, rg):
         return ["sky"]
     if kind == "oneminusskyalpha":
         return ["1sky"]
+    if kind in ("scoord", "tcoord"):
+        return _fx_coord(kind, n)
     return ["c", 1.0]
 
 
@@ -3423,6 +3440,16 @@ class LevelScript:
         # how they stand when the game makes the AI's paths (Level::PreSpawnSentient)
         self.prespawned = False
         self.presolid = {}        # map entity -> 1 solid / 0 notsolid
+        # "$x hide" / "$x show" on the map's entities at the start
+        # of the level: run from the script's top (main's threads and waitthreads) before
+        # anything in that thread waits. m3l1a hides $ocean_wavy in level_prep and shows it
+        # later, when the player is in the water: the start shows only $ocean_calm. (A
+        # "remove" isn't followed: the script often removes its own markers and triggers,
+        # which the viewer keeps to show where they are.)
+        self.prehide = {}         # map entity -> 1 hidden / 0 shown, [file, line]
+        self.waited = False       # the thread being read has waited (wait, waittill ...)
+        self.at_start = True      # reading the start of the level (not a label run on its own)
+        self.prewld = {}          # "$world <key> <value>" at the start (as prehide): key -> [value, file, line]
         self.fi = 0
         self.line = 0
         self.lines = []
@@ -4213,6 +4240,16 @@ class LevelScript:
                 and T[1][0] == "w" and T[1][1].lower() in ("solid", "notsolid"):
             for ei in self.map_tn_all.get(s0[1:], ()):
                 self.presolid[ei] = 1 if T[1][1].lower() == "solid" else 0
+        if l0 in ("wait", "waitframe", "waittill", "waittillframeend") or (
+                len(words) >= 2 and words[1] in ("waittill", "waittillframeend") and words[0] != "level") or (
+                len(words) >= 3 and words[0] == "level" and words[1] == "waittill"
+                and words[2] not in ("prespawn", "spawn")):
+            self.waited = True
+        if len(T) == 2 and k0 == "w" and s0.startswith("$") and T[1][0] == "w" \
+                and T[1][1].lower() in ("hide", "show") \
+                and self.at_start and not self.waited:
+            for ei in self.map_tn_all.get(s0[1:], ()):
+                self.prehide[ei] = [0 if T[1][1].lower() == "show" else 1, self.fi, self.line, T[1][1].lower()]
         if l0 == "break" and len(T) == 1:
             if self._brk and self._brk[-1] == "loop":
                 raise _ScrBreak()
@@ -4248,6 +4285,13 @@ class LevelScript:
             if (self.fi, self.line) not in self._world_seen:
                 self._world_seen.add((self.fi, self.line))
                 self.world.append([self._text(), self.fi, self.line])
+            # the fog the level starts with (m3l1a: "$world farplane 3500" after prespawn,
+            # its colour the line after): plain numbers only, a variable's value is the game's
+            if self.at_start and not self.waited and T[1][0] == "w":
+                nums = [s for k, s in T[2:] if k == "n"]
+                rest = [s for k, s in T[2:] if k != "n" and s not in ("(", ")")]
+                if nums and not rest and len(nums) in (1, 3):
+                    self.prewld[T[1][1].lower()] = [" ".join(nums), self.fi, self.line]
             return
         if k0 != "w":
             return
@@ -4410,9 +4454,11 @@ class LevelScript:
         else:
             fi = self.fi
         keep = dict(self.level) if side else None
+        waited = self.waited
         self._run_label(fi, label.lower(), who, args, queue)
         if keep is not None:
             self.level = keep
+            self.waited = waited               # a thread's waits don't hold up its caller
 
     def _run_file(self, fi, queue):
         """A file as it is read on its own: what comes before its labels, then each label
@@ -4430,10 +4476,19 @@ class LevelScript:
             self._brk = brk
             self._unscope(save)
         key = self.files[fi][0].replace("\\", "/").lower().lstrip("/")
-        for lab in self.fdata[fi]["order"]:
+        # labels nothing runs are game events, except the first when the lines before it
+        # don't end: the script runs on into it ("main:" / "start:" at the top of the file)
+        start = self.at_start
+        top = self.fdata[fi]["top"]
+        falls = not any(n[0] == "s" and n[1][:1] == [("w", "end")] for n in top)
+        for k, lab in enumerate(self.fdata[fi]["order"]):
+            self.at_start = start and k == 0 and falls
             if (fi, lab) in self._ran or (key, lab) in self._called:
                 continue
+            if not self.at_start:
+                self.waited = False
             self._run_label(fi, lab, None, None, queue)
+        self.at_start = start
 
     def read(self, path):
         """Read a script and the map scripts it runs, as the game would find them."""
@@ -4446,7 +4501,9 @@ class LevelScript:
         try:
             while queue:
                 fi = queue.pop(0)
+                self.waited = False
                 self._run_file(fi, queue)
+            self.at_start = False
             # labels run by name somewhere the walk never reached: on their own
             for fi in range(len(self.files)):
                 for lab in self.fdata[fi]["order"]:
@@ -4491,7 +4548,9 @@ class LevelScript:
                 "rain": self.rain, "rainv": sorted(self.rain_varies), "glob": sorted(self.globals),
                 "mods": list(last.values())[:5000], "stop": int(self.stopped),
                 "cvars": self.cvars[:2000], "world": self.world[:200], "miss": self.missing[:50],
-                "presolid": [[k, v] for k, v in sorted(self.presolid.items())]}
+                "presolid": [[k, v] for k, v in sorted(self.presolid.items())],
+                "prehide": [[k] + v[1:] for k, v in sorted(self.prehide.items()) if v[0]],
+                "prewld": self.prewld}
 
 
 def script_payload(vfs, vpath, src, paks, ents, say=log, tik_class=None):
@@ -4542,6 +4601,10 @@ def script_payload(vfs, vpath, src, paks, ents, say=log, tik_class=None):
         % (ls.files[0][1], " and %d more" % (len(ls.files) - 1) if len(ls.files) > 1 else "",
            len(ls.ents), len(out["ents"]), len(out["mods"]), "" if len(out["mods"]) == 1 else "s",
            len(ls.cvars), len(ls.world), "" if len(ls.world) == 1 else "s"))
+    if out["prehide"]:
+        names = sorted({ents[h[0]]["kvd"].get("targetname", "#%d" % h[0]) for h in out["prehide"]})
+        say("  hidden at the start of the level: " + ", ".join("$" + n for n in names[:12])
+            + (" and %d more" % (len(names) - 12) if len(names) > 12 else ""))
     if ls.stopped:
         say("! level script: stopped after %d statements (loops that run a very long way)" % ls.MAX_STEPS)
     if ls.missing:

@@ -305,8 +305,9 @@ click away: its targetname, origin, `setsize`, targets and ready-to-paste script
   (path nodes coloured by their targetname and spawnflags, facing arrows, stand-in cubes).
 * **Lit like the game:** a `.bsp` opens with its own lightmaps, vertex light, baked
   static-prop light, light-grid model colours and sky box (with its moving cloud
-  layers), and its moving surfaces play as in game: water ripples and flows, and
-  scrolling, pulsing and animated textures move, so you see what a player sees. **Full Brightness** (`B`) switches to
+  layers), and its moving surfaces play as in game: water ripples, rolls (`deformVertexes
+  flap`, each vertex in its own phase) and flows, shorelines fade up the beach (`alphaGen tCoord`),
+  and scrolling, pulsing and animated textures move, so you see what a player sees. **Full Brightness** (`B`) switches to
   MOHRadiant's flat, fully bright look. The sky is drawn behind everything, as in game;
   **Simple Sky** (`K`) shows MOHRadiant's solid, tiled sky brushes instead, and the
   **Sun flare** (`J`) is drawn the way the game draws it.
@@ -334,7 +335,9 @@ click away: its targetname, origin, `setsize`, targets and ready-to-paste script
   (also one given through fields of the script's own, `local.t.setsize1 = ( ... )` then
   `local.t setsize local.t.setsize1 local.t.setsize2`) is a small marker under Script
   ents, and **Show → Script trigs** draws its volume, see-through like a trigger brush
-  (hidden by the In-game look).
+  (hidden by the In-game look). What the script does as the level starts is shown too: the
+  map's entities it hides then are hidden (m3l1a's `$ocean_wavy`; Shift+H shows them), and
+  a map with no farplane of its own takes the fog the script sets (`$world farplane`).
 * **Open door** (`O`) opens and closes doors as the game does.
 * **Run exploder** sets off an exploder's `#set` as `global/exploder.scr` does: the
   building goes and its chunks fly toward their targets, land and sink away. **Reset
@@ -473,7 +476,7 @@ It uses the same Python and packages as the Model Viewer, and both can be open a
 Press `H` in the viewer or `F1` in the launcher for every shortcut.
 
 **Planned:** following more of what a level script does as it runs (moving and removing
-the map's own entities).
+the map's own entities; it follows their `hide` / `show` at the start of the level).
 
 ## Map Viewer screenshots
 
@@ -875,7 +878,7 @@ copy a numbered folder's contents over the program folder.
 |---|---|---|
 | Settings | `output/mohaa_viewer_config.json` | `output/mohaa_map_viewer_config.json` |
 | Console log | `output/output_console.log` | `output/output_console_map.log` |
-| Built pages | `output/models/`, mirroring the pak's folders; files opened from disk go to `output/standalone/` | `output/maps/`, with each decompiled `.map` beside its page; files opened from disk go to `output/maps_standalone/` |
+| Built pages | `output/models/`, mirroring the pak's folders; files opened from disk go to `output/standalone/`, a folder for each folder they came from | `output/maps/`, with each decompiled `.map` beside its page; files opened from disk go to `output/maps_standalone/`, a folder for each folder they came from |
 | Scratch space | a `mohaaview_*` folder in your system temp folder | a `mohaamap_*` folder in your system temp folder |
 | Program logs | `output/logs/mohaa_launcher.log` and `mohaa_view.log` (page builds) | `output/logs/mohaa_map_launcher.log` and `mohaa_map_view.log` (page builds) |
 | Settings backups | `mohaa_viewer_config.json.bak` beside the settings | `mohaa_map_viewer_config.json.bak` beside the settings |

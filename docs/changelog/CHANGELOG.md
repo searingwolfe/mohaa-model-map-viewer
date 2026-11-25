@@ -3845,3 +3845,37 @@ look of the walk and the doors should be confirmed by eye in the launcher.
   links and its extracted-folder name, and the privacy notice (`docs/PRIVACY.md` and
   `PRIVACY_TEXT`) use the new name. GitHub redirects the old address, so copies that still
   look there keep finding updates.
+
+## Water and shorelines as in the game (November 2026)
+
+- `deformVertexes flap` moves each vertex with its own phase, (x + y + z) / div as
+  `RB_CalcFlapVertexes` works it out (`deformVertexes wave` already did): the ocean's horizon now rolls in
+  traveling kinks at the patch's grid points instead of tilting as one plane. Map water, map
+  static models (leaves) and the Model Viewer all do it.
+- `rgbGen` / `alphaGen sCoord` and `tCoord` (`RB_CalcRGBFromTexCoords`,
+  `RB_CalcAlphaFromTexCoords`): min + (max - min) x the vertex's own s or t, held between the
+  caps. `deepbluesea_shoreline` (m3l1a, m3l1b) fades from the ocean to the sand instead of
+  drawing as an opaque strip.
+- The level script's start: `$x hide` / `$x show` on the map's entities, run from the script's
+  top (main falls through into its first label, its threads and waitthreads) before anything
+  in that thread waits, are followed. m3l1a hides `$ocean_wavy` in level_prep (it lies over
+  `$ocean_calm` and shows only once the player is in the water), so the two oceans no longer
+  cut through each other. The build log and the script line say what is hidden; Shift+H or
+  the entity's square in the Find list shows it. `remove` isn't followed (scripts remove their
+  own markers and triggers, which the viewer keeps).
+- Fog: a map with no farplane of its own takes the `$world farplane` / `farplane_color` the
+  script sets as the level starts (m3l1a 3500, m3l1b 6900), and the fog starts at farplane x
+  0.18 (`RE_RenderScene`'s farplane_bias) instead of 0.25. Fog stays off until the Fog
+  button (8) turns it on; the looks leave it alone.
+
+## Maps and models of the same name from different folders get their own page (November 2026)
+
+- A map opened from disk was built into `output/maps_standalone/<stem>_bsp_view.html`, so
+  a second `m3l1b.bsp` from another folder found the first one's page and opened it (its
+  check only looked at the files the first was built from). Each is now built into a folder
+  of its own, `maps_standalone/<folder name>_<8 hex of the folder's path>/`, page and
+  decompiled `.map` together (`App._standalone_out`, shared by both launchers). The Model
+  Viewer does the same in `output/standalone/` for a `.tik` / `.skd` opened from disk,
+  going by the folder it was opened from even though the pak pipeline builds from a copy in
+  the workspace (`App._note_loose`). Pages already in the standalone folders are rebuilt
+  there once; Clear built maps / models removes the old ones.

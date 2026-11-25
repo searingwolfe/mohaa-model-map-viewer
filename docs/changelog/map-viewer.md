@@ -30,7 +30,9 @@ run at once.
    `%TEMP%/mohaamap_*/cache`, so each build reads them from there.
 2. **Open.** A pak map is extracted to the temp workspace and built into
    `output/maps/<subfolder>/` (`maps/DM/x.bsp` and `maps/dm/x.bsp` share `dm/`). A
-   file opened from disk goes to `output/maps_standalone/`.
+   file opened from disk goes to `output/maps_standalone/<its folder's name>_<8 hex>/`
+   (the hex from the folder's whole path), so maps of the same name in different folders
+   each get their own page and `.map`.
 3. **Decompile** (`.bsp` only). `mohaa_bsp.py` writes `<stem>.map` beside the page.
    A `.map` of that name that the program didn't write (the mapper's own source next to
    the `.bsp`) is never replaced: the decompile goes to `<stem>_decompiled.map` instead.

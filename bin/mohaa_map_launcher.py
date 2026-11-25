@@ -546,6 +546,7 @@ class MapApp(ML.App):
         stem, ext = os.path.splitext(os.path.basename(map_path))
         return f"{stem}_{(ext[1:] or 'map').lower()}_view.html"
 
+
     def _entry_subdir(self, entry):
         """maps/dm/mohdm1.bsp -> dm (the output folder IS the maps folder). Folder names
         are lower-cased so maps/DM and maps/dm land together."""
@@ -1056,7 +1057,7 @@ class MapApp(ML.App):
             if bgen is not None and bgen != self._build_gen: return
             vpath = self._vpath_for.get(path) or os.path.basename(path)
             if self._outdir_on.get():
-                outdir = self._standalone_dir() if subdir == ML.STANDALONE_SUBDIR else (
+                outdir = self._standalone_out(path) if subdir == ML.STANDALONE_SUBDIR else (
                     os.path.join(self._outdir, subdir) if subdir else self._outdir)
             else:
                 outdir = os.path.dirname(os.path.abspath(path))

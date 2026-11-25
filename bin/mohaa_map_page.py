@@ -1782,13 +1782,16 @@ float wf(int f,float x){x=fract(x);
   return sin(x*6.28318530718);}
 void main(){vec4 p=vec4(aPos,1.0);
   // deformVertexes wave / flap (tr_shade_calc.c RB_CalcDeformVertexes, RB_CalcFlapVertexes):
-  // along the vertex's normal by base + amplitude x wave(phase + time x frequency), a wave
-  // shifted by (x + y + z) / spread, a flap scaled by min .. max along s or t. A static
-  // model's four are scaled by r_static_shadermultiplier0 .. 3 (it has no entity)
+  // along the vertex's normal by base + amplitude x wave(phase + time x frequency), the
+  // phase shifted by (x + y + z) / spread, a flap scaled by min .. max along s or t. (The
+  // flap's shift is what the game shows, its sea's horizon rolling; OpenMoHAA works it out
+  // and leaves it unused.) A static model's four are scaled by r_static_shadermultiplier0 .. 3
+  // (it has no entity)
   if(uDv.x>0.5&&uAuto2==0){vec4 q=uDw;if(aIStatic>0.5)q*=uMul;
     float sc;
     if(uDv.x<1.5){float off=(p.x+p.y+p.z)*uDv.y;sc=q.w==0.0?q.x+wf(uDf,q.z)*q.y:q.x+wf(uDf,q.z+off+uTime*q.w)*q.y;}
-    else{sc=(q.x+wf(uDf,q.z+uTime*q.w)*q.y)*((uDv.w-uDv.z)*(uDv.x<2.5?aUV.x:aUV.y)+uDv.z);}
+    else{float off=q.w==0.0?0.0:(p.x+p.y+p.z)*uDv.y;
+      sc=(q.x+wf(uDf,q.z+off+uTime*q.w)*q.y)*((uDv.w-uDv.z)*(uDv.x<2.5?aUV.x:aUV.y)+uDv.z);}
     p.xyz+=aNrm*sc;}
   vec3 w=vec3(dot(aR0,p),dot(aR1,p),dot(aR2,p));
   if(uAuto2==1){vec4 m=vec4(aA2.xyz,1.0);
@@ -1844,8 +1847,9 @@ void main(){
 // own blendFunc, depthWrite and depthFunc (FX, fxDraw). The vertex program moves the
 // vertices first (RB_DeformTessGeometry, tr_shade_calc.c: deformVertexes wave along the
 // normal by base + amplitude x wave(phase + (x + y + z) x spread + time x frequency); bulge
-// by sin of (s x width + time x speed) x height; move along a vector; flap scaled by
-// min..max along s or t; normal wobbles the normals, which only an environment map shows,
+// by sin of (s x width + time x speed) x height; move along a vector; flap the same wave
+// (its phase shifted by the position too, as the game's sea shows) scaled by min..max along
+// s or t; normal wobbles the normals, which only an environment map shows,
 // with a smooth noise standing in for R_NoiseGet4f), then makes each bundle's texture
 // coordinates (ComputeTexCoords: the surface's own, the lightmap's, environment mapped
 // (RB_CalcEnvironmentTexCoords) or a tcGen vector) and runs its tcMods in order: uMk 1 an
@@ -1863,7 +1867,7 @@ uniform mat4 uVP; uniform vec3 uEye; uniform float uT;
 uniform ivec3 uDk; uniform ivec3 uDf; uniform vec4 uDw[3]; uniform vec4 uDx[3];
 uniform int uG[2]; uniform vec3 uGs[2]; uniform vec3 uGt[2];
 uniform int uMk[12]; uniform vec3 uMa[12]; uniform vec3 uMb[12];
-uniform int uRg; uniform vec2 uRgP; uniform int uAgK; uniform vec2 uAgP; uniform vec4 uCol;
+uniform int uRg; uniform vec4 uRgP; uniform int uAgK; uniform vec4 uAgP; uniform vec4 uCol;
 uniform highp sampler2D uVR; uniform int uVROn;
 out vec2 vST0; out vec2 vST1; out vec3 vPos; out vec4 vC; out vec4 vVC; out vec3 vLM;
 float wf(int f,float x){x=fract(x);
@@ -1888,7 +1892,8 @@ void main(){
     if(k==1){float off=w.w==0.0?0.0:(p.x+p.y+p.z)*x.x;p+=n*(w.x+wf(uDf[i],w.z+off+uT*w.w)*w.y);}
     else if(k==2)p+=n*(sin((aUV.x*x.x+uT*x.z)*6.28318530718)*x.y);
     else if(k==3)p+=x.xyz*(w.x+wf(uDf[i],w.z+uT*w.w)*w.y);
-    else if(k==4||k==5){float sc=(w.x+wf(uDf[i],w.z+uT*w.w)*w.y)*((x.y-x.x)*(k==4?aUV.x:aUV.y)+x.x);p+=n*sc;}
+    else if(k==4||k==5){float off=w.w==0.0?0.0:(p.x+p.y+p.z)*x.z;
+      float sc=(w.x+wf(uDf[i],w.z+off+uT*w.w)*w.y)*((x.y-x.x)*(k==4?aUV.x:aUV.y)+x.x);p+=n*sc;}
     else if(k==6){vec3 q=p*0.98;float tt=uT*w.w;
       n=normalize(n+w.y*vec3(nz(q,tt),nz(q+vec3(100.0,0.0,0.0),tt),nz(q+vec3(200.0,0.0,0.0),tt)));}}
   vVC=aCol;
@@ -1896,10 +1901,12 @@ void main(){
   vec4 c=uCol;
   if(uRg==1)c.rgb=vVC.rgb; else if(uRg==2)c.rgb=1.0-vVC.rgb;
   else if(uRg==3||uRg==4){float d=dot(n,normalize(uEye-p));d*=d;if(uRg==4)d=1.0-d;c.rgb=vec3(clamp((uRgP.y-uRgP.x)*d+uRgP.x,0.0,1.0));}
+  else if(uRg==5||uRg==6){float f=uRg==5?aUV.x:aUV.y;c.rgb=vec3(clamp((uRgP.y-uRgP.x)*f+uRgP.x,uRgP.z,uRgP.w));}
   if(uAgK==1)c.a=vVC.a; else if(uAgK==2)c.a=1.0-vVC.a;
   else if(uAgK==3||uAgK==4){float d=dot(n,normalize(uEye-p));d*=d;if(uAgK==4)d=1.0-d;c.rgb=vec3(clamp((uAgP.y-uAgP.x)*d+uAgP.x,0.0,1.0));}
   else if(uAgK==5||uAgK==6){float l=(distance(p,uEye)-uAgP.x)/uAgP.y;c.a=uAgK==5?1.0-clamp(l,0.0,1.0):clamp(l,0.0,1.0);}
   else if(uAgK==7){float d=clamp(abs(uEye.z-p.z),uAgP.x,uAgP.y);c.a=1.0-(d-uAgP.x)/max(uAgP.y-uAgP.x,1e-6);}
+  else if(uAgK==8||uAgK==9){float f=uAgK==8?aUV.x:aUV.y;c.a=clamp((uAgP.y-uAgP.x)*f+uAgP.x,uAgP.z,uAgP.w);}
   vC=c;vST0=bundle(0,p,n);vST1=bundle(1,p,n);vLM=aLM;vPos=p;
   gl_Position=uVP*vec4(p,1.0);}`;
 // uP0 / uP1: what each bundle shows (0 its picture, 1 the lightmap: its page, or white for
@@ -2599,7 +2606,7 @@ function fxPic(s,b,T){
   let k=0;if(L.length>1){k=Math.max(0,Math.floor((T+(P.ph||0))*(P.f||0)));k=P.o?Math.min(k,L.length-1):k%L.length;}
   return L[k];
 }
-const FX_RGK={v:1,'1v':2,dot:3,'1dot':4}, FX_AGK={v:1,'1v':2,dot:3,'1dot':4,df:5,'1df':6,hf:7};
+const FX_RGK={v:1,'1v':2,dot:3,'1dot':4,sc:5,tc:6}, FX_AGK={v:1,'1v':2,dot:3,'1dot':4,df:5,'1df':6,hf:7,sc:8,tc:9};
 // how fog meets a stage (FS_FX uFogK): a first stage drawn solid takes the fog's colour;
 // a multiplying one fades to white, an alpha-blended one fades out, an added one darkens
 function fxFogKind(s){const f=s.f;
@@ -2614,7 +2621,7 @@ function fxDraw(op,vp){
     gl.ONE_MINUS_DST_COLOR,gl.SRC_ALPHA,gl.ONE_MINUS_SRC_ALPHA,gl.DST_ALPHA,gl.ONE_MINUS_DST_ALPHA,gl.SRC_ALPHA_SATURATE];
   if(opInView(op))FX.seen=true;
   gl.useProgram(P);gl.uniformMatrix4fv(P.u.uVP,false,vp);gl.uniform3fv(P.u.uEye,cam.pos);gl.uniform1f(P.u.uT,T);
-  gl.uniform1f(P.u.uClip,clipOn?clipDist:0);const ff=fogFar();gl.uniform3fv(P.u.uFogCol,fogCol());gl.uniform3f(P.u.uFog,ff*0.25,ff,fogOn()?1:0);
+  gl.uniform1f(P.u.uClip,clipOn?clipDist:0);const ff=fogFar();gl.uniform3fv(P.u.uFogCol,fogCol());gl.uniform3f(P.u.uFog,ff*FOG_BIAS,ff,fogOn()?1:0);
   bindLit(P);gl.uniform1i(P.u.uT0,0);gl.uniform1i(P.u.uT1,2);
   const dk=[0,0,0],df=[0,0,0],dw=new Float32Array(12),dx=new Float32Array(12);
   F.d.forEach((d,i)=>{dk[i]=d[0];df[i]=FXWF[d[1]]|0;dw.set([d[2],d[3],d[4],d[5]],i*4);dx.set([d[6],d[7],d[8],0],i*4);});
@@ -2636,8 +2643,8 @@ function fxDraw(op,vp){
     gl.uniform1iv(P.u['uMk[0]'],mk);gl.uniform3fv(P.u['uMa[0]'],ma);gl.uniform3fv(P.u['uMb[0]'],mb);
     const c=cloudStage({tm:[],rg:FX_RGK[s.rg[0]]?['c',1,1,1]:s.rg,ag:FX_AGK[s.ag[0]]?['c',1]:s.ag},T).C;
     gl.uniform4fv(P.u.uCol,c);
-    gl.uniform1i(P.u.uRg,FX_RGK[s.rg[0]]|0);gl.uniform2f(P.u.uRgP,+s.rg[1]||0,+s.rg[2]||0);
-    gl.uniform1i(P.u.uAgK,FX_AGK[s.ag[0]]|0);gl.uniform2f(P.u.uAgP,+s.ag[1]||0,+s.ag[2]||0);
+    gl.uniform1i(P.u.uRg,FX_RGK[s.rg[0]]|0);gl.uniform4f(P.u.uRgP,+s.rg[1]||0,+s.rg[2]||0,+s.rg[3]||0,s.rg[4]!=null?+s.rg[4]:1);
+    gl.uniform1i(P.u.uAgK,FX_AGK[s.ag[0]]|0);gl.uniform4f(P.u.uAgP,+s.ag[1]||0,+s.ag[2]||0,+s.ag[3]||0,s.ag[4]!=null?+s.ag[4]:1);
     if(s.f[0]===1&&s.f[1]===0)gl.disable(gl.BLEND);else{gl.enable(gl.BLEND);gl.blendFunc(GB[s.f[0]]||gl.ONE,GB[s.f[1]]||gl.ZERO);}
     if(s.df===2)gl.disable(gl.DEPTH_TEST);else{gl.enable(gl.DEPTH_TEST);gl.depthFunc(s.df===1?gl.EQUAL:gl.LEQUAL);}
     gl.depthMask(!!s.dw);
@@ -2878,6 +2885,17 @@ function screenRay(x,y){
 //  Drawing
 // ============================================================================
 const FOG={far:0,col:[0.5,0.5,0.5]};
+// where the fog starts: farplane x 0.18 when nothing sets farplane_bias (RE_RenderScene's
+// GL_FOG_START), linear to the farplane
+const FOG_BIAS=0.18;
+// The world's farplane and its colour (worldspawn keys), else what the level script sets as
+// the level starts ("$world farplane 3500" after prespawn in m3l1a: LevelScript.prewld);
+// a key of the map's own wins.
+function fogFromWorld(k){
+  const pw=(D.scr&&D.scr.prewld)||{},g=x=>(k[x]!=null&&k[x]!=='')?k[x]:(pw[x]?pw[x][0]:null);
+  FOG.far=parseFloat(g('farplane'))||0;FOG.col=parseVec(g('farplane_color'),3)||[0.5,0.5,0.5];
+  FOG.scr=!(k.farplane!=null&&k.farplane!=='')&&!!pw.farplane;
+}
 // The fog the game draws: the map's farplane, or r_farplane's in its place with its own
 // colour (R_SetupFrustum); none with r_farplane_nofog (RB_SetupFog). The game always draws
 // a farplane's fog, so r_farplane turns it on here whatever the Fog switch says.
@@ -2897,7 +2915,7 @@ window.addEventListener('resize',resize);
 function setCommon(p,vp,mode){
   gl.useProgram(p);gl.uniformMatrix4fv(p.u.uVP,false,vp);gl.uniform1i(p.u.uMode,mode);
   gl.uniform1f(p.u.uShade,view.shade?1:0);gl.uniform3fv(p.u.uEye,cam.pos);gl.uniform1f(p.u.uClip,clipOn?clipDist:0);
-  const ff=fogFar();gl.uniform3fv(p.u.uFogCol,fogCol());gl.uniform3f(p.u.uFog,ff*0.25,ff,(fogOn()&&mode===0)?1:0);
+  const ff=fogFar();gl.uniform3fv(p.u.uFogCol,fogCol());gl.uniform3f(p.u.uFog,ff*FOG_BIAS,ff,(fogOn()&&mode===0)?1:0);
   gl.uniform4f(p.u.uTint,1,1,1,1);gl.uniform1i(p.u.uAF,0);gl.uniform1i(p.u.uUseTex,1);gl.uniform1i(p.u.uTex,0);
   if(p.u.uPush)gl.uniform1f(p.u.uPush,0);
   if(p.u.uTm){gl.uniform2f(p.u.uTm,1,1);gl.uniform1i(p.u.uAg,0);}
@@ -6399,6 +6417,10 @@ function scriptEnts(){
   for(const m of S.mods||[]){const e=MAP.ents[m[0]];if(!e||m[0]>=MAP.nMap)continue;
     e.kv=e.kv.filter(kv=>!/^[$#]?target$/i.test(kv[0]));e.kv.push([m[1],m[2]]);e.kvl[m[1]]=m[2];
     (e.scrMods=e.scrMods||[]).push(m);}
+  // the map's entities the script hides at the start of the level ("$x hide" in a thread
+  // main runs, before it waits): hidden here too, as Hide does (Shift+H or the entity's
+  // list square shows them). m3l1a's $ocean_wavy lies over $ocean_calm until the landing.
+  for(const h of S.prehide||[]){const e=MAP.ents[h[0]];if(!e||h[0]>=MAP.nMap)continue;e.scrHid=h;hidEnt.add(h[0]);}
 }
 // placed script entities the game gives an entity number to (not simple ones such as
 // waypoints), as entityKinds counts the map's
@@ -6406,7 +6428,9 @@ function scrReal(){const ek=D.ek||{},simple=new Set([...(ek.simple||[]),...(ek.d
   for(let ei=MAP.nMap;ei<MAP.ents.length;ei++)if(!simple.has(MAP.ents[ei].cls))n++;return n;}
 function scrWhere(f,l){const F=(D.scr.files||[])[f];return (F?F[0]:'?')+' line '+l;}
 function scrSummary(){const S=D.scr,n=S.ents.length,u=S.nun|0;
-  return n+' entit'+(n===1?'y':'ies')+' placed, '+scrReal()+' real placed, '+u+' not, '+S.cvars.length+' setcvar';}
+  const nh=(S.prehide||[]).length;
+  return n+' entit'+(n===1?'y':'ies')+' placed, '+scrReal()+' real placed, '+u+' not, '+S.cvars.length+' setcvar'+
+    (nh?', '+nh+' hidden at start':'');}
 function scrEntHtml(e){
   const r=e.scr;let lines=['// '+scrWhere(r.f,r.l),r.s];
   for(const x of r.x||[])lines.push('// line '+x[1]+(x[0]!==r.f?' of '+((D.scr.files[x[0]]||['?'])[0]):''),x[2]);
@@ -6447,7 +6471,7 @@ function scrCard(){
   h+='<h4>setcvar ('+S.cvars.length+')<span class="sp"></span>'+(S.cvars.length?copyBtn(S.cvars.map(c=>'setcvar "'+c[0]+'" "'+(c[1]==null?'':c[1])+'"').join('\n'),'Copy'):'')+'</h4>';
   h+=S.cvars.length?kvTable(S.cvars.map(c=>[esc(c[0]),(c[1]==null?'<span class="warn">worked out while the game runs</span>':'"'+esc(c[1])+'"')+' <span class="co">'+esc(scrWhere(c[2],c[3]))+'</span>'])):'<div class="note">none</div>';
   if(S.world.length){h+='<h4>$world lines ('+S.world.length+')</h4>'+kvTable(S.world.map(w=>[esc(scrWhere(w[1],w[2])),'<code>'+esc(w[0])+'</code>']));
-    h+='<div class="note">The worldspawn settings the script changes as it runs (farplane, farplane_color...). The view keeps the map\'s own; r_farplane in the game cvars (`) tries a distance out.</div>';}
+    h+='<div class="note">The worldspawn settings the script changes as it runs (farplane, farplane_color...). The view takes the map\'s own, else the farplane and colour the script sets as the level starts'+(FOG.scr?' ('+FOG.far+' here)':'')+'; r_farplane in the game cvars (`) tries a distance out.</div>';}
   card('Level script',h);
 }
 function gameEnts(){
@@ -9630,6 +9654,9 @@ function infoEntity(ei){
     if(cnt.size){h+='<h4>Textures</h4>'+kvTable([...cnt.entries()].map(([t,c])=>[c+'x','<a data-tex="'+t+'">'+esc(TEX[t].n.replace(/^textures\//,''))+'</a>']));}}
   if(lastHit&&lastHit.ent===ei&&lastHit.face>=0)h+=faceHtml(lastHit.face,true);
   if(def&&def.d)h+='<h4>About '+esc(def.n)+'</h4><div class="desc">'+esc(def.d)+'</div>'+(def.s?'<div class="note">from '+esc(def.s)+'</div>':'');
+  if(e.scrHid){const L='// '+scrWhere(e.scrHid[1],e.scrHid[2])+'\n'+((e.kvl.targetname?'$'+e.kvl.targetname:'')+' '+(e.scrHid[3]||'hide'));
+    h+='<h4>Hidden at the start by the level script</h4><pre>'+esc(L)+'</pre>'+
+      '<div class="note">The game hides it when the level loads (it may show it later). Hidden here too; Shift+H, or its square in the Find list, shows it.</div>';}
   if(e.scr)h+=scrEntHtml(e);
   else if(e.scrMods){const L=e.scrMods.map(m=>'// '+scrWhere(m[3],m[4])+'\n'+m[5]).join('\n');
     h+='<h4>Changed by the level script<span class="sp"></span>'+copyBtn(L,'Copy')+'</h4><pre>'+esc(L)+'</pre>'+
@@ -9737,7 +9764,7 @@ function worldApplied(){
   const rv=$('cardWorldRevert');if(rv)rv.disabled=!worldEdited();
   const a=document.querySelector('#stats [data-world]');if(a)a.title=worldKeysTip();
   const k={};for(const[x,v]of worldKv()){const l=x.toLowerCase();if(!(l in k))k[l]=v;}
-  FOG.far=parseFloat(k.farplane)||0;FOG.col=parseVec(k.farplane_color,3)||[0.5,0.5,0.5];
+  fogFromWorld(k);
   try{modRender();}catch(_e){}
   requestDraw();
 }
@@ -13249,7 +13276,7 @@ async function main(){
     expInit();
     wxInit();
     const wk=MAP.ents[0]?MAP.ents[0].kvl:{};
-    FOG.far=parseFloat(wk.farplane)||0;FOG.col=parseVec(wk.farplane_color,3)||[0.5,0.5,0.5];
+    fogFromWorld(wk);
     setLoad('Uploading to the graphics card…',0.8);await tick();
     loadOpts();
     initGL();

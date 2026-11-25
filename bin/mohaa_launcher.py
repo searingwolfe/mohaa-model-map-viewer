@@ -3198,11 +3198,29 @@ class App(tk.Tk):
         to the models output folder (i.e. sibling of self._outdir)."""
         return os.path.join(os.path.dirname(os.path.abspath(self._outdir)), "standalone")
 
+    def _standalone_out(self, path):
+        """A file opened from disk is built into a folder of the standalone folder named for
+        the folder it is in (that folder's name and a tag from its whole path), so two files
+        of the same name in different folders get a page each:
+        standalone/fx_1a2b3c4d/jeep_tik_view.html. A loose .tik / .skd copied into the
+        workspace for the pak pipeline goes by the folder it was opened from (_loose_src)."""
+        p=os.path.abspath(path)
+        p=getattr(self,"_loose_src",{}).get(os.path.normcase(p),p)
+        folder=os.path.dirname(os.path.abspath(p))
+        tag=hashlib.sha1(os.path.normcase(folder).encode("utf-8","replace")).hexdigest()[:8]
+        name=re.sub(r"[^\w.-]+","_",os.path.basename(folder.rstrip("\\/")) or "root")[:40]
+        return os.path.join(self._standalone_dir(),f"{name}_{tag}")
+
+    def _note_loose(self, copy_path, loose_path):
+        """A loose file's copy in the workspace -> the file opened (for _standalone_out)."""
+        if not hasattr(self,"_loose_src"): self._loose_src={}
+        self._loose_src[os.path.normcase(os.path.abspath(copy_path))]=os.path.abspath(loose_path)
+
     def _html_out_path(self, model_path, subdir=None):
         if subdir is None: subdir=self._last_subdir
         if self._outdir_on.get():
             if subdir==STANDALONE_SUBDIR:
-                return os.path.join(self._standalone_dir(), self._viewer_html_name(model_path))
+                return os.path.join(self._standalone_out(model_path), self._viewer_html_name(model_path))
             return os.path.join(self._outdir, subdir or "", self._viewer_html_name(model_path))
         return os.path.join(os.path.dirname(os.path.abspath(model_path)), self._viewer_html_name(model_path))
 
@@ -4821,6 +4839,7 @@ class App(tk.Tk):
             try:
                 if loose_path:                                  # loose .skd from disk: use it as-is
                     skd_target=os.path.join(self._tmp, os.path.basename(loose_path))
+                    self._note_loose(skd_target, loose_path)
                     try: shutil.copyfile(loose_path, skd_target)
                     except Exception as e:
                         MC.swallowed()
@@ -4942,6 +4961,7 @@ class App(tk.Tk):
                 #    as-is so the user's edits drive the build; pak entry: extract it)
                 if loose_path:
                     tik_target=os.path.join(self._tmp, os.path.basename(loose_path))
+                    self._note_loose(tik_target, loose_path)
                     try: shutil.copyfile(loose_path, tik_target)
                     except Exception as e:
                         MC.swallowed()
@@ -5788,7 +5808,7 @@ class App(tk.Tk):
             if emittex: cmd.append("--emittertex="+emittex)
             if self._outdir_on.get():
                 if subdir==STANDALONE_SUBDIR:
-                    cmd.append("--outdir="+self._standalone_dir())
+                    cmd.append("--outdir="+self._standalone_out(path))
                 else:
                     # mirror the pak's models/ subfolders inside the output folder
                     cmd.append("--outdir="+(os.path.join(self._outdir,subdir) if subdir else self._outdir))
