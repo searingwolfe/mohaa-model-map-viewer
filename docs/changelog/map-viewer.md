@@ -377,7 +377,7 @@ run at once.
   and the Selection panel's **Same kind** and **Same path** buttons do what Alt+click and
   Ctrl+Alt+click do (Same path shows when the selected entity has a path: its target leads
   somewhere or something targets it). **Same spawnflags** selects every shown entity of the
-  selected one's class with exactly its spawnflags (every CRATE node, say; greyed out when
+  selected one's class with exactly its spawnflags (every CRATE node, say; hidden when
   it has none), and **Same error** every path node with any of the errors the selected
   nodes have (no paths, one-way, duplicate, no angle, in the wall, 48 paths full, and
   Modify's own; greyed out when they have none; `selNodeErrors`, `pnErrKinds`). **Same targetname** (`$`, Shift+4) selects every

@@ -452,10 +452,8 @@ click away: its targetname, origin, `setsize`, targets and ready-to-paste script
   texture. The Selection panel's **Same spawnflags** selects every entity of that class
   with the same spawnflags (every CRATE node, say), and **Same error** every path node
   with the same AI path problem (no paths, one-way, no angle, 48 paths full ...). Same
-  spawnflags shows only for classes that have spawnflags of their own (the classes the game
-  reads them for, from OpenMoHAA's code, and those whose definition names some; not static
-  props, actors or path-less helpers like info_player_start), and Same error only with path
-  nodes selected.
+  spawnflags shows only when the selected entity has some set (a `light` with LINEAR, a
+  CRATE node), and Same error only with path nodes selected.
 * **Find** any class, targetname, key or texture (`Ctrl+F`), with `"exact"`, `$targetname`,
   `key: value`, `entity 25`, `( x y z )` and `-term` searches, or browse every class and
   texture the map uses; Shift+click a green (selected) row to deselect just that row.

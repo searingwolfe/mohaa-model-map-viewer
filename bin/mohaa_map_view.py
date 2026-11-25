@@ -4868,7 +4868,7 @@ def build(src, args):
                             "b": [list(d["box"][0]), list(d["box"][1])] if d.get("box") else None,
                             "br": bool(d.get("brush")), "f": list(d.get("flags") or ()),
                             "d": (d.get("desc") or "")[:6000], "s": d.get("source", ""),
-                            "t": d.get("tik", ""), "sf": 1 if entdefs.sf_capable(cl) else 0}
+                            "t": d.get("tik", "")}
     # ---- the game's sky: sky boxes and cloud layers (.bsp and .map) -------------------------
     skies, clouds = sky_boxes(texs, blobs, vfs)
     if clouds:

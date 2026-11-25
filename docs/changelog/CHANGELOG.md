@@ -3886,3 +3886,10 @@ look of the walk and the doors should be confirmed by eye in the launcher.
   one of its entities, so each Esc let go of only that one and the next took its place. Esc
   now clears the whole selection when Modify's entry is one of several map entities selected,
   as it already did for several path nodes picked by hand (`escape`).
+
+## Same spawnflags only when there are some (November 2026)
+
+- The Selection panel's Same spawnflags button showed, greyed out, for any entity whose
+  class could have spawnflags (a `light`: LINEAR, NO_ENTITIES, ENTITY_TRACE) even when it had
+  none set. It now shows only when the selected entity has some. The page's `sfCapable` and
+  the class definitions' `sf` field it read are gone; `mohaa_entdefs.sf_capable` stays.

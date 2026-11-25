@@ -259,7 +259,7 @@ class EditToggleKeyboard(unittest.TestCase):
 
 
 class SpawnflagClasses(unittest.TestCase):
-    """Which classes Same spawnflags shows for (mohaa_entdefs.sf_capable, from OpenMoHAA's
+    """Which classes have spawnflags of their own (mohaa_entdefs.sf_capable, from OpenMoHAA's
     code): the game's own classes, header flags, and a .tik's game class from its init."""
     def test_classes(self):
         import mohaa_entdefs as ME
