@@ -1379,6 +1379,12 @@ function edPatchShape(shape,mn,sz,tex){
   else if(shape==='wallx'){for(let j=0;j<3;j++)for(let i=0;i<3;i++)put(mn[0]+sz[0]*j/2,mn[1],mn[2]+sz[2]*(2-i)/2);}
   else if(shape==='wally'){for(let j=0;j<3;j++)for(let i=0;i<3;i++)put(mn[0],mn[1]+sz[1]*(2-j)/2,mn[2]+sz[2]*(2-i)/2);}
   else if(shape==='cyl'){P.w=9;for(const[ca,sa] of arc(9,0,360))for(let i=0;i<3;i++)put(c[0]+ca*sz[0]/2,c[1]+sa*sz[1]/2,mn[2]+sz[2]*i/2);}
+  else if(shape==='sphere'||shape==='dome'){
+    // a ring round (as the cylinder's) times a curve from pole to pole (a sphere) or from the
+    // rim to the top (a dome), each point the two arcs' product
+    const mer=shape==='sphere'?arc(5,-90,90):arc(3,0,90),zc=shape==='sphere'?mn[2]+sz[2]/2:mn[2],hz=shape==='sphere'?sz[2]/2:sz[2];
+    P.w=9;P.h=mer.length;
+    for(const[ca,sa] of arc(9,0,360))for(const[mc,ms] of mer)put(c[0]+ca*mc*sz[0]/2,c[1]+sa*mc*sz[1]/2,zc+ms*hz);}
   else if(shape==='archx'){P.w=5;for(const[ca,sa] of arc(5,180,0))for(let i=0;i<3;i++)put(c[0]+ca*sz[0]/2,mn[1]+sz[1]*i/2,mn[2]+sa*sz[2]);}
   else if(shape==='archy'){P.w=5;for(const[ca,sa] of arc(5,0,180))for(let i=0;i<3;i++)put(mn[0]+sz[0]*i/2,c[1]+ca*sz[1]/2,mn[2]+sa*sz[2]);}
   else throw new Error('pick a shape');
@@ -1607,6 +1613,13 @@ rebuildLines=function(){
 // terrain. Every drag is shown as outlines while the mouse moves and written to the map's
 // text once, on release (one Undo step). Coordinates snap to the view's grid size (the Grid
 // slider, 8 at first, whether the grid is drawn or not).
+// the shapes Draw brush makes: brushes, then curved patches (sides for the n-sided ones)
+const ED_SHAPES=[['box','box','box'],['prism','n-sided prism','prism'],['pyramid','pyramid / cone (n sides, a point on top)','pyramid'],
+  ['wedge','wedge / ramp','wedge'],['bsphere','sphere (n-sided brush)','sphere'],
+  ['cyl','cylinder / pipe (curved patch)','cylinder'],['cone','cone (curved patch)','cone'],['sphere','sphere (curved patch)','sphere'],
+  ['dome','dome (curved patch)','dome'],['elbow','pipe bend (curved patch)','pipe bend']];
+const ED_SIDED={prism:1,pyramid:1,bsphere:1};
+function edShapeName(){const x=ED_SHAPES.find(q=>q[0]===ED.shape)||ED_SHAPES[0];return ED_SIDED[ED.shape]?ED.sides+'-sided '+x[2]:x[2];}
 ED.tool='select';ED.drop=false;ED.shape='box';ED.sides=8;ED.terr='holes';ED.trad=192;ED.clip=null;ED.prev=null;ED.exact=false;
 let EDDRAG=null,EDHOV=null,_edHovT=0,edClipCtrl=false;
 // Move and Resize go in single units unless Grid is on; drawing keeps the grid size
@@ -1636,8 +1649,8 @@ function edToolHtml(){
   for(const[k,l,ic,tip]of EDTOOLS){const d=off&&!ED_ENT_TOOLS.has(k);
     h+='<button class="sm'+(ED.tool===k?' on':'')+'" data-edtool="'+k+'"'+(d?' disabled':'')+' title="'+esc(tip+(d?ED_ENT_OFF:''))+'" style="flex:1 1 30%">'+ic+' '+l+'</button>';}
   h+='</div>';
-  if(ED.tool==='draw')h+=edRow('shape '+edSel('edShape',[['box','box'],['prism','n-sided prism'],['cyl','cylinder / pipe (curved patch)'],['cone','cone (curved patch)'],['elbow','pipe bend (curved patch)']],ED.shape)+
-    (ED.shape==='prism'?' sides '+edSel('edSides',[3,4,5,6,7,8,9,10,12,16].map(n=>[String(n),String(n)]),String(ED.sides)):'')+
+  if(ED.tool==='draw')h+=edRow('shape '+edSel('edShape',ED_SHAPES.map(x=>[x[0],x[1]]),ED.shape)+
+    (ED_SIDED[ED.shape]?' sides '+edSel('edSides',[3,4,5,6,7,8,9,10,12,16].map(n=>[String(n),String(n)]),String(ED.sides)):'')+
     '<label title="Put new brushes and patches in the selected brush entity instead of the world"><input type="checkbox" id="edIntoEnt"'+(ED.into?' checked':'')+'>in entity</label>'+
     '<button class="sm" id="bEdDPlane" title="'+esc('Which plane a new brush\'s outline is drawn on (click for the next):\nDraw any axis: the surface under the mouse, a slope too (the brush stands square on it)\nDraw XY: flat, as a floor\nDraw XZ: upright, facing y, through the point clicked\nDraw YZ: upright, facing x, through the point clicked\nThen the mouse sets its depth.')+'">▭ '+({any:'Draw any axis',xy:'Draw XY',xz:'Draw XZ',yz:'Draw YZ'}[ED.dplane||'any'])+'</button>');
   if(ED.tool==='terrain'){h+=edRow(edSel('edTerrMode',[['holes','cut / fill triangles'],['raise','raise / lower'],['flatten','flatten'],['smooth','smooth'],['paint','paint texture'],['new','draw a new block']],ED.terr)+
@@ -1685,7 +1698,7 @@ function edHelp(){
   if(ED._entOnly)return'An entity, path node or static prop is selected: Modify (below) moves it (Move, Trim origin), turns it (Yaw, angles) and edits its keys. The tools here work on brushes, patches and terrain: select one (or click an empty spot) to use them.';
   if(t==='select')return'Pick a tool above to build in the view. Grid '+g+'.';
   if(t==='draw')return EDDRAG&&EDDRAG.phase==='height'?'Move the mouse to set the height, then click to make it. Esc cancels.':
-    'Drag on '+({any:'a floor, wall, ceiling or slope',xy:'any surface (the outline lies flat, XY)',xz:'any surface (the outline stands upright facing y, XZ)',yz:'any surface (the outline stands upright facing x, YZ)'}[ED.dplane||'any'])+' to draw the '+(ED.shape==='box'?'box':ED.shape==='prism'?ED.sides+'-sided prism':ED.shape==='cyl'?'cylinder':'pipe')+'\'s outline (grid '+g+'), then set its height. It gets the texture below.';
+    'Drag on '+({any:'a floor, wall, ceiling or slope',xy:'any surface (the outline lies flat, XY)',xz:'any surface (the outline stands upright facing y, XZ)',yz:'any surface (the outline stands upright facing x, YZ)'}[ED.dplane||'any'])+' to draw the '+edShapeName()+'\'s outline (grid '+g+'), then set its height'+(ED.shape==='wedge'?' (it rises toward where the drag ends, along its longer side)':'')+'. It gets the texture below.';
   if(t==='resize')return'Drag a brush\'s face along its own direction, or a corner or edge (white crosses) to reshape it; with a patch selected, drag its control points. Shift: up and down. Grid '+g+'.';
   if(t==='texture')return ED.hold?'Click: lay '+ED.hold.tx+' on that face (Shift+click: the whole brush; patches and terrain too). Ctrl+click: select without laying. Esc or Let go: stop laying it.':
     'Click: select that face (Shift+click: the whole brush), then fit, turn, flip, shift or scale its texture below. To lay a texture, take one with the eyedropper or Alt+click (or Browse / tool textures).';
@@ -2300,45 +2313,119 @@ function edDrawBox(){
 // the shape being drawn: brush faces or a patch, turned into the slope's frame on a slope
 function edDrawShape(){
   const d=EDDRAG,b=edDrawBox();
-  if(!d.slope)return{f:edShapeFaces(b.mn,b.mx,d.ax),b:b};
-  const f=edShapeFaces(b.mn,b.mx,2),S=d.slope;
+  if(!d.slope)return{f:edShapeFaces(b.mn,b.mx,d.ax,edDrawOpt()),b:b};
+  const f=edShapeFaces(b.mn,b.mx,2,edDrawOpt()),S=d.slope;
   if(f.faces)for(const F of f.faces)for(let i=0;i<9;i+=3){const q=edSlopeW(S,F.p.slice(i,i+3));F.p[i]=q[0];F.p[i+1]=q[1];F.p[i+2]=q[2];}
   else for(let o=0;o<f.patch.pts.length;o+=5){const q=edSlopeW(S,f.patch.pts.slice(o,o+3));f.patch.pts[o]=q[0];f.patch.pts[o+1]=q[1];f.patch.pts[o+2]=q[2];}
   return{f:f,b:b};}
 function edDrawPrev(){
   const d=EDDRAG;if(!d)return;const H=[],col=C_HOT();
   if(d.slope){
-    if(d.phase==='rect'){const S=d.slope,p=(a,b)=>edSlopeW(S,[a,b,0]),A=p(d.a[0],d.a[1]),B=p(d.b[0],d.a[1]),C2=p(d.b[0],d.b[1]),D2=p(d.a[0],d.b[1]);
-      segPush(H,A,B,col);segPush(H,B,C2,col);segPush(H,C2,D2,col);segPush(H,D2,A,col);flash(Math.abs(d.b[0]-d.a[0])+' x '+Math.abs(d.b[1]-d.a[1])+' on the slope');}
-    else{const R=edDrawShape(),b=R.b;try{if(R.f.faces)facesEdges(H,R.f.faces,col);else edNetEdges(H,R.f.patch,col);}catch(_e){}
+    if(d.phase==='rect'){const S=d.slope,p=(a,b)=>edSlopeW(S,[a,b,0]);
+      for(const[a,b]of edOutline2D(d.a[0],d.b[0],d.a[1],d.b[1]))segPush(H,p(a[0],a[1]),p(b[0],b[1]),col);
+      flash(Math.abs(d.b[0]-d.a[0])+' x '+Math.abs(d.b[1]-d.a[1])+' on the slope');}
+    else{let R=null;try{R=edDrawShape();}catch(_e){}const b=R?R.b:edDrawBox();try{if(R.f.faces)facesEdges(H,R.f.faces,col);else edNetEdges(H,R.f.patch,col);}catch(_e){}
       flash((b.mx[0]-b.mn[0])+' x '+(b.mx[1]-b.mn[1])+' x '+(b.mx[2]-b.mn[2])+' on the slope  (click to make it)');}
     edShow(H,null);return;}
   if(d.phase==='rect'){const u=(d.ax+1)%3,w=(d.ax+2)%3,p=(cu,cw)=>{const q=d.a.slice();q[u]=cu;q[w]=cw;return q;};
-    const A=p(d.a[u],d.a[w]),B=p(d.b[u],d.a[w]),C=p(d.b[u],d.b[w]),D2=p(d.a[u],d.b[w]);segPush(H,A,B,col);segPush(H,B,C,col);segPush(H,C,D2,col);segPush(H,D2,A,col);
+    for(const[a,b]of edOutline2D(d.a[u],d.b[u],d.a[w],d.b[w]))segPush(H,p(a[0],a[1]),p(b[0],b[1]),col);
     flash(Math.abs(d.b[u]-d.a[u])+' x '+Math.abs(d.b[w]-d.a[w]));}
   else{const b=edDrawBox();
-    try{const f=edShapeFaces(b.mn,b.mx,d.ax);if(f.faces)facesEdges(H,f.faces,col);else edNetEdges(H,f.patch,col);}catch(_e){}
+    try{const f=edShapeFaces(b.mn,b.mx,d.ax,edDrawOpt());if(f.faces)facesEdges(H,f.faces,col);else edNetEdges(H,f.patch,col);}catch(_e){}
     flash((b.mx[0]-b.mn[0])+' x '+(b.mx[1]-b.mn[1])+' x '+(b.mx[2]-b.mn[2])+'  (click to make it)');}
   edShow(H,null);}
+// which way the shape being drawn points: up 1 when its depth goes up its axis (the outline
+// is its base: a pyramid's point, a dome's top are at the far end), hi the side a wedge rises
+// toward (the end of the drag, along the outline's longer side)
+function edDrawOpt(){
+  const d=EDDRAG;if(!d)return{up:1};
+  const up=(d.depth||0)<0?-1:1;
+  let du,dw;if(d.slope){du=d.b[0]-d.a[0];dw=d.b[1]-d.a[1];}else{const u=(d.ax+1)%3,w=(d.ax+2)%3;du=d.b[u]-d.a[u];dw=d.b[w]-d.a[w];}
+  return{up:up,hi:Math.abs(du)>=Math.abs(dw)?{k:0,s:du<0?-1:1}:{k:1,s:dw<0?-1:1}};}
+// the outline the drag draws, in the plane (u, w): the shape seen from above its base
+function edOutline2D(a0,a1,b0,b1){
+  const u0=Math.min(a0,a1),u1=Math.max(a0,a1),w0=Math.min(b0,b1),w1=Math.max(b0,b1),out=[],cu=(u0+u1)/2,cw=(w0+w1)/2;
+  const loop=V=>{for(let k=0;k<V.length;k++)out.push([V[k],V[(k+1)%V.length]]);};
+  const ell=n=>{const V=[];for(let k=0;k<n;k++){const a=2*Math.PI*k/n;V.push([cu+(u1-u0)/2*Math.cos(a),cw+(w1-w0)/2*Math.sin(a)]);}return V;};
+  const sh=ED.shape;
+  if(sh==='prism'||sh==='pyramid'||sh==='bsphere'){const V=edPolyUV(u0,u1,w0,w1,ED.sides);loop(V);
+    if(sh==='pyramid')for(const v of V)out.push([v,[cu,cw]]);}
+  else if(sh==='cyl'||sh==='cone'||sh==='sphere'||sh==='dome'){const V=ell(32);loop(V);
+    if(sh==='cone')for(let k=0;k<32;k+=4)out.push([V[k],[cu,cw]]);}
+  else if(sh==='elbow'){const R=Math.min(u1-u0,w1-w0);let q=[u0+R,w0];
+    for(let k=1;k<=8;k++){const a=k/8*Math.PI/2,v=[u0+R*Math.cos(a),w0+R*Math.sin(a)];out.push([q,v]);q=v;}
+    out.push([[u0,w0],[u0+R,w0]]);out.push([[u0,w0],[u0,w0+R]]);}
+  else loop([[u0,w0],[u1,w0],[u1,w1],[u0,w1]]);
+  return out;}
+// the n corners round the ellipse in the box (on whole units), as a prism's sides stand
+function edPolyUV(u0,u1,w0,w1,n){
+  const cu=(u0+u1)/2,cw=(w0+w1)/2,ru=(u1-u0)/2,rw=(w1-w0)/2,off=n===4?Math.PI/4:Math.PI/2+Math.PI/n,V=[];
+  for(let k=0;k<n;k++){const a=off+2*Math.PI*k/n;V.push([Math.round(cu+ru*Math.cos(a)),Math.round(cw+rw*Math.sin(a))]);}
+  return V;}
+// a brush face through three points, turned so it faces away from a point inside the brush
+function edFace3(A,B,C,inside,tex){
+  const n=vcross(vsub(A,B),vsub(C,B));if(Math.hypot(n[0],n[1],n[2])<1e-6)return null;
+  const P=vdot(n,vsub(B,inside))<0?[C,B,A]:[A,B,C];
+  return{p:[].concat(P[0],P[1],P[2]),tex:tex,sh:[0,0],rot:0,sc:[0.5,0.5],cont:0,flags:0,val:0,extra:'',tm:null};}
 // the shape in the box: brush faces, or a patch for the curved ones
-function edShapeFaces(mn,mx,ax){
+function edShapeFaces(mn,mx,ax,opt){
+  opt=opt||{up:1};
   const tex=edTexOk(($('edTex')&&$('edTex').value||'').trim()||'common/caulk');
   if(ED.shape==='box')return{faces:edBoxFaces(mn,mx,tex)};
   if(ED.shape==='prism')return{faces:edPrismFaces(mn,mx,ax,ED.sides,tex)};
+  if(ED.shape==='pyramid')return{faces:edPyramidFaces(mn,mx,ax,ED.sides,opt.up,tex)};
+  if(ED.shape==='wedge')return{faces:edWedgeFaces(mn,mx,ax,opt,tex)};
+  if(ED.shape==='bsphere')return{faces:edSphereFaces(mn,mx,ax,ED.sides,tex)};
   // the curved shapes are built standing on z, then turned so they stand on the face they were
   // drawn on (a cyclic swap of the axes keeps the patch facing outward)
   const u=(ax+1)%3,w=(ax+2)%3,lmn=[mn[u],mn[w],mn[ax]],sz=[mx[u]-mn[u],mx[w]-mn[w],mx[ax]-mn[ax]];
-  const P=ED.shape==='cone'?edPatchCone(lmn,sz,tex):ED.shape==='elbow'?edPatchElbow(lmn,sz,tex):edPatchShape('cyl',lmn,sz,tex);
+  const sh=ED.shape,P=sh==='cone'?edPatchCone(lmn,sz,tex):sh==='elbow'?edPatchElbow(lmn,sz,tex):edPatchShape(sh==='sphere'||sh==='dome'?sh:'cyl',lmn,sz,tex);
+  // drawn hanging (its depth down its axis): a cone's point, a dome's top the other way, the
+  // rows' order turned round so it still faces out
+  if(opt.up<0&&(sh==='cone'||sh==='dome')){const z0=lmn[2],z1=lmn[2]+sz[2],rows=[];
+    for(let j=0;j<P.w;j++){const r=P.pts.slice(j*P.h*5,(j+1)*P.h*5);for(let o=0;o<r.length;o+=5)r[o+2]=z0+z1-r[o+2];rows.push(r);}
+    P.pts=[].concat(...rows.reverse());edPatchTex(P,'natural',0.5);}
   if(ax!==2)for(let o=0;o<P.pts.length;o+=5){const x=P.pts[o],y=P.pts[o+1],z=P.pts[o+2];P.pts[o+u]=x;P.pts[o+w]=y;P.pts[o+ax]=z;}
   return{patch:P};}
+// a pyramid (a cone with n sides): its base the outline drawn, its point over the middle at
+// the far end of its depth
+function edPyramidFaces(mn,mx,ax,n,up,tex){
+  const u=(ax+1)%3,w=(ax+2)%3,h0=up>0?mn[ax]:mx[ax],h1=up>0?mx[ax]:mn[ax];
+  const V=edPolyUV(mn[u],mx[u],mn[w],mx[w],n),pt=(uv,h)=>{const q=[0,0,0];q[ax]=h;q[u]=uv[0];q[w]=uv[1];return q;};
+  const c=[(mn[u]+mx[u])/2,(mn[w]+mx[w])/2],apex=pt(c,h1),inside=pt(c,(h0*3+h1)/4);
+  const box=edBoxFaces(mn,mx,tex),out=[up>0?box[ax*2]:box[ax*2+1]];
+  for(let k=0;k<n;k++){const A=V[k],B=V[(k+1)%n];if(A[0]===B[0]&&A[1]===B[1])continue;
+    const F=edFace3(pt(A,h0),pt(B,h0),apex,inside,tex);if(F)out.push(F);}
+  return out;}
+// a wedge (a ramp): a box whose top slopes from the base at one end up to the full height at
+// the other (opt.hi: along the outline's u or w, rising toward its - or + end)
+function edWedgeFaces(mn,mx,ax,opt,tex){
+  const u=(ax+1)%3,w=(ax+2)%3,up=opt.up,h0=up>0?mn[ax]:mx[ax],h1=up>0?mx[ax]:mn[ax];
+  const L=opt.hi&&opt.hi.k===1?w:u,K=L===u?w:u,s=opt.hi?opt.hi.s:1,lo=s>0?mn[L]:mx[L],hiE=s>0?mx[L]:mn[L];
+  const box=edBoxFaces(mn,mx,tex),out=[up>0?box[ax*2]:box[ax*2+1],s>0?box[L*2+1]:box[L*2],box[K*2],box[K*2+1]];
+  const pt=(l,k,h)=>{const q=[0,0,0];q[L]=l;q[K]=k;q[ax]=h;return q;};
+  const inside=pt((lo+hiE*3)/4,(mn[K]+mx[K])/2,(h0*3+h1)/4);
+  const F=edFace3(pt(lo,mn[K],h0),pt(lo,mx[K],h0),pt(hiE,mn[K],h1),inside,tex);if(F)out.push(F);
+  return out;}
+// a sphere of brush faces: n round, n/2 bands from pole to pole (each band's faces flat, the
+// poles' ends triangles)
+function edSphereFaces(mn,mx,ax,n,tex){
+  const u=(ax+1)%3,w=(ax+2)%3,c=[0,1,2].map(k=>(mn[k]+mx[k])/2),r=[0,1,2].map(k=>(mx[k]-mn[k])/2),m=Math.max(2,Math.round(n/2));
+  const off=n===4?Math.PI/4:Math.PI/2+Math.PI/n,R3=v=>Math.round(v*1000)/1000;
+  const P=(i,j)=>{const ph=-Math.PI/2+Math.PI*i/m,th=off+2*Math.PI*j/n,q=[0,0,0];
+    q[u]=R3(c[u]+r[u]*Math.cos(ph)*Math.cos(th));q[w]=R3(c[w]+r[w]*Math.cos(ph)*Math.sin(th));q[ax]=R3(c[ax]+r[ax]*Math.sin(ph));return q;};
+  const out=[];
+  for(let i=0;i<m;i++)for(let j=0;j<n;j++){
+    const A=P(i,j),B=P(i,j+1),C=P(i+1,j+1),D=P(i+1,j);
+    const F=i===0?edFace3(A,C,D,c,tex):edFace3(A,B,C,c,tex);if(F)out.push(F);}
+  return out;}
 function edNetEdges(A,P,c){const at=(j,i)=>{const o=(j*P.h+i)*5;return[P.pts[o],P.pts[o+1],P.pts[o+2]];};
   for(let j=0;j<P.w;j++)for(let i=0;i<P.h;i++){if(j+1<P.w)segPush(A,at(j,i),at(j+1,i),c);if(i+1<P.h)segPush(A,at(j,i),at(j,i+1),c);}}
 // an n-sided prism standing on axis ax, its sides round the ellipse in the box (corners on
 // whole units), its ends the box's two faces on that axis
 function edPrismFaces(mn,mx,ax,n,tex){
-  const u=(ax+1)%3,w=(ax+2)%3,cu=(mn[u]+mx[u])/2,cw=(mn[w]+mx[w])/2,ru=(mx[u]-mn[u])/2,rw=(mx[w]-mn[w])/2;
-  const off=n===4?Math.PI/4:Math.PI/2+Math.PI/n;
-  const V=[];for(let k=0;k<n;k++){const a=off+2*Math.PI*k/n;V.push([Math.round(cu+ru*Math.cos(a)),Math.round(cw+rw*Math.sin(a))]);}
+  const u=(ax+1)%3,w=(ax+2)%3,cu=(mn[u]+mx[u])/2,cw=(mn[w]+mx[w])/2;
+  const V=edPolyUV(mn[u],mx[u],mn[w],mx[w],n);
   const box=edBoxFaces(mn,mx,tex),out=[box[ax*2],box[ax*2+1]];
   const pt=(uv,h)=>{const q=[0,0,0];q[ax]=h;q[u]=uv[0];q[w]=uv[1];return q;};
   for(let k=0;k<n;k++){const A=V[k],B=V[(k+1)%n];if(A[0]===B[0]&&A[1]===B[1])continue;
@@ -2351,8 +2438,8 @@ function edDrawMake(){
   const d=EDDRAG,R=edDrawShape(),b=R.b,f=R.f;EDDRAG=null;edShow();
   const sz=[0,1,2].map(k=>b.mx[k]-b.mn[k]),at=d.slope?edSlopeW(d.slope,b.mn):b.mn;
   const ent=ED.sel&&ED.sel.ei>0&&!isWorldlike(ED.sel.ei)&&ED.into?ED.sel.ei:0;
-  if(f.faces)edAddBrush(ent,f.faces,'New '+(ED.shape==='box'?'brush':ED.sides+'-sided brush')+' '+sz.map(fmt).join(' x ')+(d.slope?' on the slope':'')+' at '+at.map(fmt).join(' '));
-  else{edPatchCheck(f.patch);edAddBlock(ent,edPatchText(f.patch),'patch','New '+({cyl:'cylinder',cone:'cone',elbow:'pipe bend'}[ED.shape]||'patch')+' '+sz.map(fmt).join(' x '));}}
+  if(f.faces)edAddBrush(ent,f.faces,'New '+(ED.shape==='box'?'brush':edShapeName())+' '+sz.map(fmt).join(' x ')+(d.slope?' on the slope':'')+' at '+at.map(fmt).join(' '));
+  else{edPatchCheck(f.patch);edAddBlock(ent,edPatchText(f.patch),'patch','New '+edShapeName()+' '+sz.map(fmt).join(' x '));}}
 
 // ---- Resize: pull one face of a brush ---------------------------------------------------------
 function edResizeDown(x,y){
@@ -2416,6 +2503,10 @@ function edMoveDown0(x,y,e){
 function edClipDown(x,y){
   const h=edHit(x,y);
   const pr=edPrim(),q=edPrimOfHit(h);
+  // a patch (a pipe, a bend, any curved surface) or a terrain block isn't a brush: nothing to cut
+  if(q&&q.kind!==0&&(!pr||edClipCtrl||!(ED.clip&&ED.clip.pts.length))){edSelectHit(h);ED.clip=null;edPanel();
+    flashWarn(q.kind===1?'A patch (a pipe, a pipe bend, any curved surface) can\'t be clipped: Clip cuts brushes. Resize\'s control points or Trim shorten a pipe.'
+      :'A terrain block can\'t be clipped: Clip cuts brushes. Terrain shapes it.');return true;}
   // no brush yet (or Ctrl+click): the click picks the brush to cut; after that every click
   // is a point of the cut, wherever it lands
   if(!pr||(edClipCtrl&&q)){if(!q)return false;edSelectHit(h);ED.clip={pts:[],flip:false};edClipPrev();edPanel();return true;}
@@ -2854,7 +2945,7 @@ const edRow=s=>'<div class="row" style="gap:4px;flex-wrap:wrap;align-items:cente
 const edSel=(id,opts,v)=>'<select id="'+id+'" style="padding:2px 4px;font-size:11px">'+opts.map(o=>'<option value="'+o[0]+'"'+(o[0]===v?' selected':'')+'>'+o[1]+'</option>').join('')+'</select>';
 const edBtn=(id,label,tip)=>'<button class="sm" id="'+id+'"'+(tip?' title="'+tip+'"':'')+'>'+label+'</button>';
 function edNewHtml(){
-  return edLine('Patch',edSel('edPShape',[['flat','flat (floor)'],['wallx','wall along x'],['wally','wall along y'],['cyl','cylinder'],['archx','arch along x'],['archy','arch along y']],ED.pshape||'flat')+
+  return edLine('Patch',edSel('edPShape',[['flat','flat (floor)'],['wallx','wall along x'],['wally','wall along y'],['cyl','cylinder'],['sphere','sphere'],['dome','dome'],['archx','arch along x'],['archy','arch along y']],ED.pshape||'flat')+
       edXYZ('edPNs',ED.pns||[128,128,128],36)+edBtn('bEdPNew','Add','A patch of this shape and size (x y z) on the surface straight ahead, on the grid, with the texture above'),'A curved patch: its shape and its size along x, y and z')+
     edLine('Terrain',edCap('x')+edField('edTNx',ED.tn?ED.tn[0]:1,28)+edCap('y')+edField('edTNy',ED.tn?ED.tn[1]:1,28)+edCap('patches of 512')+
       edBtn('bEdTNew','Add','A flat terrain block this many 512-unit patches each way, on the 64-unit grid where you look, with the texture above'),'A terrain block: how many 512-unit patches along x and y');

@@ -214,6 +214,13 @@ what the game draws.
   you pick them.
 * **Particle emitters, FX scripts and explosions**, rebuilt from the effect
   commands and fired on their real frames: the part other tools skip.
+* **Baked in** (in the Animation section): what an animation carries besides the
+  body's own motion, each with what it does: the eyes looking about, blinks, lip sync,
+  brows and mouth (the face's blend shapes), the head turning and nodding, the body
+  turning and moving (`actor_m3l1_100.skc` has all of them). Set how much of each it
+  keeps (0% takes it out, 200% doubles it) and watch the change as it plays, then
+  **Save .skc...** writes the animation with those amounts as a new file (every other
+  channel as it was). Needs the launcher's embedded pane to save.
 * Show or hide individual surfaces, starting from what the `.tik` hides at spawn;
   an animation's own surface commands apply as it plays.
 * Hang other models off any bone or tag with **attach-to-bone**, each with its
@@ -314,6 +321,12 @@ click away: its targetname, origin, `setsize`, targets and ready-to-paste script
 * **Lights off** (`0`) turns every light off, or just the selected ones, and **Sun
   light** (`-`) takes the sun and sky out of the baked light, so you can see what each
   light gives the map.
+* **Light preview** for a `.map` (no baked light yet): turn **Full Brightness** (`B`) off and
+  the map goes to its ambient light; then **Turn on** a selected light (or Lights off for
+  all of them) and **Sun light** to see what the compiler would bake: each light's colour,
+  intensity, reach, spot cone and falloff, with shadows from the world's brushes, worked
+  out on the graphics card in a moment (up to 32 lights at a time, the nearest). Change a
+  light in Modify and the preview follows, so you can try a light without compiling.
 * **Weather** (`Y`): the map's rain and snow, made the way the game makes it in its Rain
   (`func_rain`) brushes, beam limit and all (a map without any falls from its sky instead,
   never indoors), with every setting in the game cvars (speed,
@@ -583,8 +596,10 @@ way here.
   Undo step (Modify's Undo, Alt+Z):
   * **▭ Draw brush**: drag on a floor, wall or ceiling to draw the outline on it, let go,
     move the mouse to set the height, click to make it (Esc or right-click cancels).
-    **Shape**: a box, a 3- to 16-sided prism, or curved patches: a cylinder or pipe, a
-    cone, or a pipe bend (a quarter elbow). It gets the texture in the Texture box
+    **Shape**: brushes (a box, a 3- to 16-sided prism, a pyramid or cone with 3 to 16
+    sides, a wedge / ramp rising toward where the drag ends, a sphere of 3 to 16 sides) or
+    curved patches (a cylinder or pipe, a cone, a sphere, a dome, a pipe bend). The outline
+    you drag is the shape's own (an octagon for an 8-sided prism, a circle for a cylinder). It gets the texture in the Texture box
     (**Browse...** picks one from the map or your paks; the list beside it has the tool
     textures: caulk, hint, vis, skip, clip, playerclip, nodraw, trigger, origin and more).
     **▭ Draw any axis** (beside *in entity*; click for **Draw XY**, **Draw XZ**, **Draw YZ**):

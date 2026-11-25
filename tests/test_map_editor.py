@@ -258,6 +258,45 @@ class EditToggleKeyboard(unittest.TestCase):
         self.assertEqual(got, ["focus"])
 
 
+class DrawShapes(unittest.TestCase):
+    """Draw brush's shapes (mohaa_map_editor.js): every prism, pyramid, wedge and brush sphere
+    is a closed brush, each face keeping a polygon, inside the box drawn, on any axis and drawn
+    up or down."""
+    def test_brushes_close(self):
+        import shutil, subprocess, re
+        node = shutil.which("node")
+        if not node: self.skipTest("node not found")
+        src = open(os.path.join(BIN, "mohaa_map_editor.js"), encoding="utf-8").read()
+        def fn(name):
+            i = src.index("function " + name + "("); j = src.index("{", i); d = 0
+            for k in range(j, len(src)):
+                d += {"{": 1, "}": -1}.get(src[k], 0)
+                if d == 0: return src[i:k + 1]
+        js = ("const vsub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]],vdot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2],"
+              "vcross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];\n"
+              + "\n".join(fn(n) for n in ("edBoxFaces", "edPolyUV", "edFace3", "edPrismFaces", "edPyramidFaces",
+                                          "edWedgeFaces", "edSphereFaces")) +
+              "\nconst out={},mn=[0,0,0],mx=[128,96,64];"
+              "for(const ax of [0,1,2])for(const up of [1,-1])for(const n of [3,4,8,16]){"
+              "out['prism'+n+ax]=edPrismFaces(mn,mx,ax,n,'t');out['pyr'+n+ax+up]=edPyramidFaces(mn,mx,ax,n,up,'t');"
+              "out['sph'+n+ax]=edSphereFaces(mn,mx,ax,n,'t');"
+              "for(const k of [0,1])for(const s of [1,-1])out['wedge'+ax+up+k+s]=edWedgeFaces(mn,mx,ax,{up:up,hi:{k:k,s:s}},'t');}"
+              "process.stdout.write(JSON.stringify(out));")
+        with tempfile.TemporaryDirectory() as d:
+            f = os.path.join(d, "s.js")
+            with open(f, "w", encoding="utf-8") as fh: fh.write(js)
+            out = json.loads(subprocess.run([node, f], capture_output=True, text=True, check=True).stdout)
+        import mohaa_bsp as MB
+        for name, faces in out.items():
+            planes = [MB.plane_from_points(x["p"][0:3], x["p"][3:6], x["p"][6:9]) for x in faces]
+            wind = MB.brush_windings(planes)
+            self.assertTrue(all(w and len(w) >= 3 for w in wind), name)
+            pts = [q for w in wind for q in w]
+            for k, hi in enumerate((128, 96, 64)):
+                self.assertGreaterEqual(min(q[k] for q in pts), -0.6, name)
+                self.assertLessEqual(max(q[k] for q in pts), hi + 0.6, name)
+
+
 class SpawnflagClasses(unittest.TestCase):
     """Which classes have spawnflags of their own (mohaa_entdefs.sf_capable, from OpenMoHAA's
     code): the game's own classes, header flags, and a .tik's game class from its init."""

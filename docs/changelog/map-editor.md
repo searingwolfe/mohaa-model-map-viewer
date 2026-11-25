@@ -96,7 +96,7 @@ on release as one text change (one Undo step).
 | Tool | What it does | Code |
 |---|---|---|
 | Select | picks brushes, patches, terrain blocks, entities | the page's own picking |
-| ▭ Draw brush | outline on the surface under the mouse, then height, then click. Box, 3- to 16-sided prism, cylinder, cone, pipe bend (curved ones built on z and turned to the face drawn on) | `edDrawDown`, `edShapeFaces`, `edPrismFaces`, `edPatchShape`, `edPatchCone`, `edPatchElbow`, `edDrawMake` |
+| ▭ Draw brush | outline on the surface under the mouse (the shape's own, `edOutline2D`), then height, then click. Brushes: box, 3- to 16-sided prism, pyramid / cone, wedge, sphere; patches: cylinder, cone, sphere, dome, pipe bend (curved ones built on z and turned to the face drawn on; a cone or dome drawn downward hangs) | `edDrawDown`, `edShapeFaces`, `edPrismFaces`, `edPyramidFaces`, `edWedgeFaces`, `edSphereFaces`, `edPatchShape`, `edPatchCone`, `edPatchElbow`, `edDrawMake` |
 | ⇕ Resize | a face along its normal; a corner or edge anywhere (convex hull of the corners, textures from the nearest-facing old face); a patch control point | `edResizeDown`, `edGrabAt`, `edGrabDown`, `pointDrag`, `hull3`, `facesFromCorners`, `edCornerMarks` |
 | ✥ Move | a brush, patch or terrain block; Shift up and down; Alt a copy | `edMoveDown` |
 | ✂ Clip | two points and the eye make the plane (a third tilts it); Enter, Shift+Enter split, Tab flips | `edClipDown`, `edClipFace`, `edClipDo` |

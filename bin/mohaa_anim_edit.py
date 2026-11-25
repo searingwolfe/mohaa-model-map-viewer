@@ -86,6 +86,11 @@ class AnimApp(ML.App):
                     except Exception as e:
                         MC.swallowed()
                         self._anim_reply(False, f"save failed: {e}")
+                elif kind == "bake":
+                    try: self._anim_bake(data)
+                    except Exception as e:
+                        MC.swallowed()
+                        self._bake_reply(False, f"save failed: {e}")
                 elif kind == "addgame":
                     try: self._anim_addgame(data)
                     except Exception as e:
@@ -146,6 +151,42 @@ class AnimApp(ML.App):
         ok, msg, name = self._anim_verify(path, anim, data)
         if ok: self._anim_saved.add(os.path.abspath(path))
         self._anim_reply(ok, msg, name, os.path.abspath(path) if ok else "")
+
+    def _bake_reply(self, ok, msg):
+        self._log_line(("Saved: " if ok else "Baked in: ") + msg, "ok" if ok else "err")
+        self._embed_js("window.MOHAA_BAKE_SAVED&&MOHAA_BAKE_SAVED(%s,%s)" % (json.dumps(ok), json.dumps(msg)))
+
+    def _anim_bake(self, text):
+        """The page's Baked in panel: the clip's own .skc (from the paks, or the file it was
+        opened from) with its baked-in groups scaled (mohaa_skc_write.apply_baked), saved
+        where the user says and read back."""
+        if len(text) > 65536: raise ValueError("the request is too large")
+        p = json.loads(text)
+        src = str(p.get("src") or "").replace("\\", "/")
+        if not src.lower().endswith(".skc"): raise ValueError("this animation has no .skc to rewrite")
+        amounts = {g: float(v) for g, v in (p.get("amounts") or {}).items() if g in SKW.BAKE_GROUPS}
+        data = None
+        if os.path.isabs(src) and os.path.isfile(src):
+            with open(src, "rb") as f: data = f.read()
+        elif ".." not in src.split("/") and self._vfs is not None:
+            data = self._vfs.read(src)
+        if not data: raise ValueError(f"{src} could not be read from the paks")
+        anim = SKW.read_skc_bytes(data, src)
+        SKW.apply_baked(anim, amounts)
+        out = SKW.write_skc(anim)
+        stem = os.path.splitext(os.path.basename(src))[0]
+        initdir = self._anim_save_dir()
+        try: os.makedirs(initdir, exist_ok=True)
+        except OSError: MC.swallowed(); initdir = self._outdir
+        path = filedialog.asksaveasfilename(parent=self, title="Save the animation as a .skc",
+                                            initialdir=initdir, initialfile=stem + ".skc",
+                                            defaultextension=".skc", filetypes=[("MOHAA animation", "*.skc")])
+        if not path:
+            self._bake_reply(False, "save cancelled"); return
+        SKW.save_skc(path, anim, backup=True)
+        ok, msg, _name = self._anim_verify(path, anim, out)
+        kept = ", ".join(f"{g} {round(v * 100)}%" for g, v in amounts.items() if v != 1.0) or "nothing changed"
+        self._bake_reply(ok, (msg + " (" + kept + ")") if ok else msg)
 
     def _anim_verify(self, path, anim, data):
         """Read the file back two ways (the writer's reader and mohaa_view.parse_skc) and
@@ -338,6 +379,9 @@ class AnimApp(ML.App):
         """The editor page's own messages (WebView2 thread: only queue work here)."""
         if m.startswith("mohaa-anim-save\n"):
             self._anim_q.put(("save", m.split("\n", 1)[1]))
+            return True
+        if m.startswith("mohaa-anim-bake\n"):
+            self._anim_q.put(("bake", m.split("\n", 1)[1]))
             return True
         if m.startswith("mohaa-anim-addgame\n"):
             self._anim_q.put(("addgame", m.split("\n", 1)[1]))

@@ -131,6 +131,50 @@ class TestPaddedBoneNames(unittest.TestCase):
             self.assertIn("tire_tilt_back_right pos", V.parse_skc(f)["frames"][0])
 
 
+class TestBakedIn(unittest.TestCase):
+    """The Baked in panel's groups (eye look, blinks, lip sync, brows and mouth, head turn,
+    body turn, movement): found by channel name, scaled, taken out."""
+    def _anim(self):
+        import math
+        names = ["Bip01 rot", "Bip01 Head rot", "Bip01 pos", "EYES_left", "EYE_blink", "VISEME_Ox", "BROW_frown"]
+        frames = []
+        for f in range(5):
+            y = math.radians(10 * f); h = math.radians(15 * f)
+            frames.append([[0.0, 0.0, math.sin(y / 2), math.cos(y / 2)], [0.0, math.sin(h / 2), 0.0, math.cos(h / 2)],
+                           [0.0, 0.0, 90.0, 0.0], [20.0 * f, 0, 0, 0], [50.0, 0, 0, 0], [10.0, 0, 0, 0], [0.0, 0, 0, 0]])
+        a = W.new_anim(names, frames)
+        for i, fr in enumerate(a["frames"]):
+            fr["delta"] = [2.0, 0.0, 0.0]; fr["angleDelta"] = 5.0
+        return W.recompute_totals(a)
+
+    def test_groups(self):
+        self.assertEqual([W.bake_group(n) for n in ("EYES_up_", "EYES_smile", "EYE_blink", "VISME_Cage_", "JAW_open-open",
+                                                    "Bip01 Neck rot", "Bip01 rot", "Bip01 Spine rot", "eyes bone rot")],
+                         ["eyes", "face", "blink", "lips", "face", "head", "body", None, None])
+
+    def test_features_and_removal(self):
+        import copy
+        a = self._anim()
+        f = W.baked_features(a)
+        self.assertEqual(set(f), {"eyes", "blink", "lips", "head", "body", "move"})   # BROW_frown is 0 throughout
+        self.assertAlmostEqual(f["head"]["deg"], 60.0, places=1)
+        self.assertAlmostEqual(f["body"]["yaw"], 40.0, places=1)
+        self.assertAlmostEqual(f["body"]["turn"], 25.0, places=3)
+        self.assertAlmostEqual(f["move"]["dist"], 10.0, places=3)
+        b = W.apply_baked(copy.deepcopy(a), {"eyes": 0, "head": 0, "body": 0, "move": 0, "lips": 0.5})
+        self.assertEqual(set(W.baked_features(b)), {"blink", "lips"})
+        self.assertEqual(b["frames"][3]["values"][5][0], 5.0)
+        self.assertEqual(b["totalDelta"], [0.0, 0.0, 0.0])
+        self.assertEqual(b["totalAngleDelta"], 0.0)
+        # the untouched channels keep their values; the file still round-trips
+        self.assertEqual([fr["values"][2] for fr in b["frames"]], [fr["values"][2] for fr in a["frames"]])
+        self.assertEqual(W.read_skc_bytes(W.write_skc(b))["names"], a["names"])
+        # 100% changes nothing; out of range is refused
+        c = W.apply_baked(copy.deepcopy(a), {"head": 1, "eyes": 1})
+        self.assertEqual([fr["values"] for fr in c["frames"]], [fr["values"] for fr in a["frames"]])
+        with self.assertRaises(ValueError): W.apply_baked(copy.deepcopy(a), {"eyes": 9})
+
+
 class TestRoundTrip(unittest.TestCase):
     def check(self, name, data):
         st, detail = W.roundtrip_bytes(data, name)

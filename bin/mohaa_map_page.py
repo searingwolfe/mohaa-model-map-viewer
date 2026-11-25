@@ -479,7 +479,7 @@ window.setEditorMode=function(on){window.__EDITON__=!!on;
    </div>
    <div class="sect">
      <h2>Show</h2>
-     <div class="tg" style="margin-bottom:7px"><button id="bFull" title="Full Brightness (B). Off: the map lit the way the game lights it (lightmaps, vertex light). On: every texture at full brightness, as MOHRadiant shows it.">Full Brightness<span class="k">B</span></button><button id="bSimpleSky" title="Simple Sky (K). On: the sky brushes solid, their picture tiled, as MOHRadiant draws them. Off: the game's sky box and its moving clouds, drawn behind everything, so whatever is behind a sky brush shows through it as in game.">Simple Sky<span class="k">K</span></button><button id="bSimpleMod" title="Simple models (M). On: each tree that has a sprite version is drawn as that sprite alone, the way the game draws trees far away; it turns about its upright axis to face the camera. Off: the whole tree. Models with no sprite version (bushes, props) don't change.">Simple models<span class="k">M</span></button><button id="bRoutes" title="AI routes: the game cvar ai_showroutes (game cvars, `): the connections the AI can walk between path nodes, from the map's .pth file (worked out here when it has none, and for Modify's new nodes), green both ways, a red arrowhead one way. Only the nodes within ai_showroutes_distance of the camera (I)">AI routes<span class="k">I</span></button><button id="bAiErr" title="AI errors: the tags over path nodes saying what is wrong with them: no paths, N one-way, own group of N (joined to each other but not to the map's other nodes), in the wall, no angle (a CORNER_LEFT, CORNER_RIGHT, CRATE or LOW_WALL_ARC node without an angle). On by itself when AI routes is turned on and off when it is turned off; click to hide or show them while AI routes stays on. Tags that aren't errors (DONT_LINK, a duplicate, 48 paths or a cell full) stay">AI errors</button><button id="bSunFlare" title="Sun flare (J). On: the game's lens flare, drawn as the game draws it when the view looks toward the map's sun and nothing solid is between the camera and the sky that way, with the screen's glare that fades when the sun goes out of sight. Off: no flare, as in MOHRadiant.">Sun flare<span class="k">J</span></button></div>
+     <div class="tg" style="margin-bottom:7px"><button id="bFull" title="Full Brightness (B). Off: the map lit the way the game lights it (lightmaps, vertex light); a .map without baked light gets the light preview: its ambient light, plus the lights you Turn on and the sun. On: every texture at full brightness, as MOHRadiant shows it.">Full Brightness<span class="k">B</span></button><button id="bSimpleSky" title="Simple Sky (K). On: the sky brushes solid, their picture tiled, as MOHRadiant draws them. Off: the game's sky box and its moving clouds, drawn behind everything, so whatever is behind a sky brush shows through it as in game.">Simple Sky<span class="k">K</span></button><button id="bSimpleMod" title="Simple models (M). On: each tree that has a sprite version is drawn as that sprite alone, the way the game draws trees far away; it turns about its upright axis to face the camera. Off: the whole tree. Models with no sprite version (bushes, props) don't change.">Simple models<span class="k">M</span></button><button id="bRoutes" title="AI routes: the game cvar ai_showroutes (game cvars, `): the connections the AI can walk between path nodes, from the map's .pth file (worked out here when it has none, and for Modify's new nodes), green both ways, a red arrowhead one way. Only the nodes within ai_showroutes_distance of the camera (I)">AI routes<span class="k">I</span></button><button id="bAiErr" title="AI errors: the tags over path nodes saying what is wrong with them: no paths, N one-way, own group of N (joined to each other but not to the map's other nodes), in the wall, no angle (a CORNER_LEFT, CORNER_RIGHT, CRATE or LOW_WALL_ARC node without an angle). On by itself when AI routes is turned on and off when it is turned off; click to hide or show them while AI routes stays on. Tags that aren't errors (DONT_LINK, a duplicate, 48 paths or a cell full) stay">AI errors</button><button id="bSunFlare" title="Sun flare (J). On: the game's lens flare, drawn as the game draws it when the view looks toward the map's sun and nothing solid is between the camera and the sky that way, with the screen's glare that fades when the sun goes out of sight. Off: no flare, as in MOHRadiant.">Sun flare<span class="k">J</span></button></div>
      <div class="tg" id="filtBtns" style="margin-bottom:7px"></div>
      <button id="bShowAll" title="Show every group (Ctrl+A)">All<span class="k">Ctrl+A</span></button>
      <button id="bShowNone" title="Hide everything with a label or a marker (entities, models, paths, AI nodes, lights, triggers, clips, caulk...): only the map's own surfaces stay, World, Patches, Translucent, Liquids, Details and Terrain (Ctrl+Shift+A)">None</button>
@@ -1178,6 +1178,10 @@ let _flashT=null,_flashLog='',_flashLogT=0;
 // a note in the status line, for a moment; the same line goes in the launcher's Output pane
 // too (in a browser, the console), once: the same note again within 2 s (a held key, a
 // repeated click) isn't written again
+// a note in yellow, for something that can't be done (it stays a little longer)
+function flashWarn(msg){const h=$('hintHover');h.textContent=msg;h.style.color='var(--warn)';
+  clearTimeout(_flashT);_flashT=setTimeout(()=>{h.style.color='';h.textContent='';},4000);
+  hostLog('warn',msg);_flashLog=String(msg);_flashLogT=performance.now();}
 function flash(msg){const h=$('hintHover');h.textContent=msg;h.style.color='var(--accent)';
   clearTimeout(_flashT);_flashT=setTimeout(()=>{h.style.color='';h.textContent='';},1600);
   const s=String(msg==null?'':msg),now=performance.now();
@@ -2005,7 +2009,53 @@ precision highp float;
 in vec2 vUV; in vec3 vPos; in vec4 vCol; flat in float vPick;
 uniform sampler2D uTex; uniform int uMode; uniform int uAF; uniform float uShade; uniform vec4 uTint;
 uniform int uUseTex; uniform vec3 uFlat; uniform vec3 uFogCol; uniform vec3 uFog; uniform vec3 uEye; uniform float uClip;
+// light preview (PV, a .map or a .bsp without its baked light): uPV 1 world, 2 a model
+uniform int uPV; uniform int uPVN; uniform vec4 uPVL[32]; uniform vec4 uPVC[32]; uniform vec4 uPVS[32]; uniform vec4 uPVF[32];
+uniform vec3 uPVA; uniform highp sampler2D uPVSh; uniform float uPVSz;
+uniform vec4 uPVSun; uniform vec3 uPVSunC; uniform highp sampler2D uPVSunT; uniform mat4 uPVSunVP; uniform float uPVSunSz;
 out vec4 o;
+// a light's distance cube: six faces side by side (3 x 2) in its slot of the atlas, each the
+// light's view along F with R to the right and U up (ltLook / LT_FACES)
+float pvSeen(vec3 p,vec3 n,vec3 lo,float slot){
+  float S=uPVSz,tx=2.0*length(p-lo)/S;p+=n*(1.5*tx);
+  vec3 d=p-lo,a=abs(d);int f;vec3 F,R,U;
+  if(a.x>=a.y&&a.x>=a.z){if(d.x>0.0){f=0;F=vec3(1,0,0);R=vec3(0,-1,0);U=vec3(0,0,1);}else{f=1;F=vec3(-1,0,0);R=vec3(0,1,0);U=vec3(0,0,1);}}
+  else if(a.y>=a.z){if(d.y>0.0){f=2;F=vec3(0,1,0);R=vec3(1,0,0);U=vec3(0,0,1);}else{f=3;F=vec3(0,-1,0);R=vec3(-1,0,0);U=vec3(0,0,1);}}
+  else{if(d.z>0.0){f=4;F=vec3(0,0,1);R=vec3(-1,0,0);U=vec3(0,1,0);}else{f=5;F=vec3(0,0,-1);R=vec3(1,0,0);U=vec3(0,1,0);}}
+  float w=max(dot(d,F),1e-6);vec2 uv=clamp(vec2(dot(d,R),dot(d,U))/w*0.5+0.5,vec2(0.0),vec2(1.0));
+  int si=int(slot+0.5);ivec2 base=ivec2((si%4)*3*int(S),(si/4)*2*int(S))+ivec2(f%3,f/3)*int(S);
+  ivec2 px=ivec2(min(uv*S,vec2(S-1.0)));
+  float s=texelFetch(uPVSh,base+px,0).r;
+  return length(d)<=s+1.0+2.0*tx?1.0:0.0;}
+// what the map compiler would bake here (LightContributionToSample, as FS_LTW): each light's
+// photons / distance squared x the angle (a spot's cone, a linear light's falloff), seen
+// through its distance cube; the sun's colour x the angle where nothing is between it and the
+// sky; the worldspawn's ambient light as the floor. In lightmap units (0..255), then
+// brightened as the game brightens baked light (R_ColorShiftLightingBytes)
+vec3 pvLight(vec3 P,vec3 n){
+  vec3 sum=vec3(0.0);
+  for(int i=0;i<32;i++){if(i>=uPVN)break;
+    vec4 L=uPVL[i],C=uPVC[i],S=uPVS[i],F=uPVF[i];
+    int who=int(F.w+0.5);if(uPV==1&&(who&1)==0)continue;if(uPV==2&&(who&2)==0)continue;
+    vec3 p=P+n,d=L.xyz-p;float dl=length(d);if(dl>C.w)continue;
+    if(uPV==1&&dot(L.xyz-P,n)<0.0)continue;
+    float dist=max(dl,16.0),ang=uPV==1?dot(n,d)/max(dl,1e-6):max(dot(n,d)/max(dl,1e-6),0.25),add=0.0;
+    if(S.w>0.0){float dbn=dot(p-L.xyz,S.xyz);
+      if(dbn>=0.0){float rad=S.w*dbn,sr=length(p-(L.xyz+S.xyz*dbn));
+        if(sr<rad)add=L.w/(dist*dist)*ang*(sr<=rad-32.0?1.0:(rad-sr)/32.0);}}
+    else if(F.x>0.5)add=ang*L.w*(1.0/8000.0)-dist*F.y;
+    else add=L.w/(dist*dist)*ang;
+    if(add<=1.0)continue;
+    if(F.z>=0.0)add*=pvSeen(p,uPV==1?n:vec3(0.0),L.xyz,F.z);
+    sum+=C.rgb*add;}
+  if(uPVSun.w>0.5){float ang=max(dot(n,uPVSun.xyz),0.0);
+    if(ang>0.0){vec3 p=P+n*2.0;vec4 c=uPVSunVP*vec4(p,1.0);vec2 uv=c.xy*0.5+0.5;float seen=1.0;
+      if(uv.x>=0.0&&uv.y>=0.0&&uv.x<=1.0&&uv.y<=1.0){ivec2 px=ivec2(min(uv*uPVSunSz,vec2(uPVSunSz-1.0)));
+        seen=dot(p,uPVSun.xyz)>=texelFetch(uPVSunT,px,0).r-2.0?1.0:0.0;}
+      sum+=uPVSunC*ang*seen;}}
+  vec3 v=max(sum,uPVA);float m=max(v.r,max(v.g,v.b));if(m>255.0)v*=255.0/m;
+  v*=2.0;m=max(v.r,max(v.g,v.b));if(m>255.0)v*=255.0/m;
+  return v/255.0;}
 void main(){
   if(uClip>0.0){vec3 d=abs(vPos-uEye);if(max(d.x,max(d.y,d.z))>uClip)discard;}
   vec4 t=(uUseTex==1)?texture(uTex,vUV):vec4(uFlat,1.0);
@@ -2016,6 +2066,7 @@ void main(){
   vec3 n=normalize(cross(dFdx(vPos),dFdy(vPos)));
   float sh=mix(1.0,0.9*n.x*n.x+0.8*n.y*n.y+1.0*n.z*n.z,uShade);
   vec3 c=t.rgb*sh*uTint.rgb;
+  if(uPV>0){if(dot(n,uEye-vPos)<0.0)n=-n;c=t.rgb*uTint.rgb*pvLight(vPos,n);}
   if(uFog.z>0.5){float f=clamp((distance(vPos,uEye)-uFog.x)/max(1.0,uFog.y-uFog.x),0.0,1.0);c=mix(c,uFogCol,f);}
   o=vec4(c,t.a*uTint.a);
 }`;
@@ -2918,6 +2969,7 @@ function setCommon(p,vp,mode){
   const ff=fogFar();gl.uniform3fv(p.u.uFogCol,fogCol());gl.uniform3f(p.u.uFog,ff*FOG_BIAS,ff,(fogOn()&&mode===0)?1:0);
   gl.uniform4f(p.u.uTint,1,1,1,1);gl.uniform1i(p.u.uAF,0);gl.uniform1i(p.u.uUseTex,1);gl.uniform1i(p.u.uTex,0);
   if(p.u.uPush)gl.uniform1f(p.u.uPush,0);
+  if(p.u.uPV){gl.uniform1i(p.u.uPV,0);if(mode===0&&(p===PW||p===PM)&&pvActive())pvUniforms(p);}
   if(p.u.uTm){gl.uniform2f(p.u.uTm,1,1);gl.uniform1i(p.u.uAg,0);}
   gl.activeTexture(gl.TEXTURE0);
 }
@@ -2932,6 +2984,9 @@ function bindMat(p,ti,mode,game){
   gl.uniform3fv(p.u.uFlat,te.c||[0.5,0.5,0.5]);
   gl.uniform1i(p.u.uAF,m.af&&(view.tex||mode===1)?m.af:0);
   if(mode===0)gl.uniform4f(p.u.uTint,1,1,1,m.kind===4?m.alpha:1);
+  // the light preview lights solid and alpha-tested surfaces (not glows, glass, the sky or
+  // the editor's volumes, which the game doesn't light either)
+  if(p.u.uPV&&(p===PW||p===PM))gl.uniform1i(p.u.uPV,mode===0&&!game&&pvActive()&&m.kind<=1&&!(te.f&TF_SKY)?(p===PM?2:1):0);
   if(m.two||mode===1)gl.disable(gl.CULL_FACE);else gl.enable(gl.CULL_FACE);
   if(game&&p.u.uTm){const tm=m.tm||[1,1],q=m.agp||[1,0,0,1];
     gl.uniform2f(p.u.uTm,tm[0],tm[1]);gl.uniform1i(p.u.uAg,m.agk|0);gl.uniform4f(p.u.uAgP,q[0],q[1],q[2],q[3]);}
@@ -4591,12 +4646,14 @@ function ltMayRun(){
 }
 // Display: Lights off. With any light still on, every light goes off; else all come back on.
 function toggleLightsOff(){
+  if(!LIT&&pvCheck()){pvToggleAll();return;}
   if(!ltCheck()){flash(LT.why);return;}
   if(!ltMayRun())return;
   const all=LT.off.every(x=>x);LT.off.fill(all?0:1);LT.what='lights';ltApply();
 }
 // Display: Sun light. Off takes the sun's and the sky's light out of the baked light.
 function toggleSunLight(){
+  if(!LIT&&pvCheck()){pvToggleSun();return;}
   if(!ltCheck()){flash(LT.why);return;}
   if(!LT.sunHas){flash(LT.sunWhy);return;}
   if(!ltMayRun())return;
@@ -4604,6 +4661,7 @@ function toggleSunLight(){
 }
 // Selection: Turn off / Turn on the selected lights
 function setSelLights(on){
+  if(!LIT&&pvCheck()){pvSetSel(on);return;}
   if(!ltCheck()){flash(LT.why);return;}
   let k=0;const want=[];for(const ei of selectedEnts()){const i=LT.byEnt.get(ei);if(i==null)continue;
     // every light entity at that index (a light written twice shares it)
@@ -4613,9 +4671,193 @@ function setSelLights(on){
   for(const j of want){LT.off[j]=on?0:1;k++;}
   LT.what='lights';ltApply();
 }
+
+// ---- light preview: a .map (or a .bsp whose baked light is gone) lit live ----------------
+// A .map has no baked light, so it is drawn at full brightness. Full Brightness off (B) lights
+// it here instead, as the map compiler would: the worldspawn's ambient light everywhere, and
+// on top only the lights turned on (none at first; Selection: Turn on, Display: Lights off for
+// all) and the sun (Display: Sun light). Each light is worked out as FS_LTW does for a .bsp
+// (q3map's LightContributionToSample: its photons / distance squared x the angle, a spot's
+// cone, a linear light's falloff, nothing under 1), seen through a distance cube of the
+// world's solid faces it reaches (world and func_group brushes and terrain, caulk and sky
+// included; not patches or brush entities, as q3map traces). The sun lights what nothing
+// stands between it and the sky over. A light's cube is drawn the first time it is on, in
+// a few frames, and again when it moves, its reach changes or the map's brushes change, so
+// a light's colour, intensity, spot or falloff can be tried straight from Modify. Up to 32
+// lights are drawn at a time, the nearest the camera. No bounced light, sky light
+// (sundiffuse) or the compiler's own brightening near a lamp: Compile... for the game's.
+const PV={on:false,why:'',lit:new Set(),newOff:new Set(),sunOn:false,list:null,t:0,sc:null,
+  S:256,slotOf:new Map(),slotKey:new Array(32).fill(null),shade:[],waiting:0,
+  ext:null,P:null,tex:null,fb:null,tmp:null,tmpTex:null,occ:[],vao:null,pos:null,ib:null,bmn:null,bmx:null,
+  sun:{tex:null,fb:null,VP:null,key:'',sz:2048}};
+function pvCheck(){
+  if(LIT){PV.why='This .bsp has its own baked light: Lights off and Turn off / Turn on take lights out of it';return false;}
+  if(!gl)return false;
+  if(PV.ext==null)PV.ext=!!gl.getExtension('EXT_color_buffer_float');
+  if(!PV.ext){PV.why='This graphics driver can\'t draw into floating-point textures (EXT_color_buffer_float), which the light preview needs.';return false;}
+  return true;}
+function pvActive(){return !LIT&&PV.on&&PV.ext===true;}
+function pvIsOn(id){return id[0]==='e'?PV.lit.has(id):!PV.newOff.has(id);}
+// the lights as they stand: the map's (with Modify's unsaved keys) and Modify's new ones
+function pvLightList(){
+  const out=[], del=new Set(MOD.ents.filter(m=>modIsMap(m)&&m.del).map(m=>m.ei));
+  const vec=v=>{const m=String(v==null?'':v).trim().split(/\s+/).map(parseFloat);return(m.length>=3&&m.slice(0,3).every(isFinite))?m.slice(0,3):null;};
+  const num=(v,d)=>{const x=parseFloat(v);return isFinite(x)?x:d;};
+  const origin=t=>{const l=ENTS&&ENTS.tn?ENTS.tn.get(t):null;if(l&&l.length)return vec(entKvlNow(l[0]).origin);
+    for(const m of MOD.ents)if(!modIsMap(m)&&!m.del&&modKv(m,'targetname')===t)return vec(modKv(m,'origin'));return null;};
+  const add=(id,k,ei)=>{
+    const o=vec(k.origin);if(!o)return;
+    const sf=num(k.spawnflags,0)|0;
+    let I=num(k.light,0);if(!I)I=num(k._light,0);if(!I)I=300;
+    let c=vec(k._color||k.color)||[1,1,1];const mx=Math.max(c[0],c[1],c[2]);c=mx>0?c.map(x=>x/mx):[0,0,0];
+    let dir=null,dist=0;
+    if(k.target){const to=origin(k.target);
+      if(to){const d=[to[0]-o[0],to[1]-o[1],to[2]-o[2]],l=Math.hypot(d[0],d[1],d[2]);dist=l;dir=l>0?d.map(x=>x/l):[0,0,-1];}}
+    if(!dir&&k.angles!=null){dir=ltForward(vec(k.angles)||[0,0,0]);dist=64;}
+    let rbd=0;
+    if(dir)rbd=k.spot_angle!=null?Math.tan(num(k.spot_angle,45)*Math.PI/180):((num(k.radius,0)||64)+16)/(dist||64);
+    const ph=I*7500,lin=!!(sf&1)&&!dir,fall=num(k.falloff,1)||1;
+    const R=lin?Math.max(16,ph/8000/fall):Math.max(16,Math.sqrt(Math.max(0,ph)));
+    out.push({id:id,ei:ei,o:o,ph:ph,c:c,R:R,lin:lin,fall:fall,dir:dir,rbd:rbd,who:(sf&8?0:1)|(sf&2?0:2)});};
+  MAP.ents.forEach((e,ei)=>{if(ei>=(MAP.nMap||MAP.ents.length)||del.has(ei))return;const k=entKvlNow(ei);
+    if(String(k.classname||e.cls).toLowerCase().startsWith('light'))add('e'+ei,k,ei);});
+  for(const m of MOD.ents)if(!modIsMap(m)&&!m.del&&String(modKv(m,'classname')||'').toLowerCase().startsWith('light'))add('m'+m.id,modKvl(m),null);
+  return out;}
+function pvSunInfo(){
+  const k=MAP.ents[0]?entKvlNow(0):{},vec=v=>{const m=String(v==null?'':v).trim().split(/\s+/).map(parseFloat);return(m.length>=3&&m.slice(0,3).every(isFinite))?m.slice(0,3):null;};
+  const sd=vec(k.sundirection);let col=vec(k.suncolor)||vec(k.sunlight);
+  if(!sd||!col||!(col[0]+col[1]+col[2]>0))return null;
+  if(Math.max(col[0],col[1],col[2])<=1)col=col.map(x=>x*255);
+  return{dir:ltForward(sd),col:col};}
+function pvAmbient(){
+  const v=String((MAP.ents[0]?entKvlNow(0):{}).ambientlight||'').trim().split(/\s+/).map(parseFloat).filter(isFinite);
+  return v.length>=3?v.slice(0,3):v.length?[v[0],v[0],v[0]]:[0,0,0];}
+// the world's solid faces, by brush, for the cubes (with the sky faces) and the sun (without)
+function pvOccBuild(){
+  const occ=[],mn=[Infinity,Infinity,Infinity],mx=[-Infinity,-Infinity,-Infinity];
+  SC.prims.forEach(p=>{
+    if(!p||!(p.kind===0||p.kind===2)||!p.mins)return;const e=MAP.ents[p.ent];if(!e||!(p.ent===0||WORLDLIKE[e.cls]))return;
+    const t=[],ts=[];
+    for(let f=p.f0;f<p.f1;f++){const ti=SC.faceTex[f],m=MAT[ti];if(!m||m.kind!==0)continue;const sky=!!((TEX[ti]||{}).f&TF_SKY);
+      const a=SC.faceI0[f],c=SC.faceIN[f];for(let q=a;q<a+c;q++){t.push(SC.tri[q]);if(!sky)ts.push(SC.tri[q]);}}
+    if(!t.length)return;
+    occ.push({mn:p.mins,mx:p.maxs,t:new Uint32Array(t),ts:new Uint32Array(ts)});
+    for(let k=0;k<3;k++){mn[k]=Math.min(mn[k],p.mins[k]);mx[k]=Math.max(mx[k],p.maxs[k]);}});
+  PV.occ=occ;PV.bmn=mn;PV.bmx=mx;
+  if(PV.pos)gl.deleteBuffer(PV.pos);
+  PV.pos=makeBuf(gl.ARRAY_BUFFER,SC.pos);
+  if(!PV.vao){PV.vao=gl.createVertexArray();PV.ib=gl.createBuffer();}
+  gl.bindVertexArray(PV.vao);attr(0,PV.pos,3);gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,PV.ib);gl.bindVertexArray(null);}
+function pvIdx(o,R,sun){
+  let n=0;const parts=[];
+  for(const b of PV.occ){if(!sun&&(o[0]+R<b.mn[0]||o[0]-R>b.mx[0]||o[1]+R<b.mn[1]||o[1]-R>b.mx[1]||o[2]+R<b.mn[2]||o[2]-R>b.mx[2]))continue;
+    const t=sun?b.ts:b.t;if(t.length){parts.push(t);n+=t.length;}}
+  const out=new Uint32Array(n);let k=0;for(const t of parts){out.set(t,k);k+=t.length;}return out;}
+function pvTargets(){
+  if(PV.tex)return;
+  const S=PV.S,mk=(w,h,depth)=>{const t=ltTex(w,h,gl.R32F,gl.RED,gl.FLOAT,gl.NEAREST),fb=gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER,fb);gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,t,0);
+    if(depth){const rb=gl.createRenderbuffer();gl.bindRenderbuffer(gl.RENDERBUFFER,rb);gl.renderbufferStorage(gl.RENDERBUFFER,gl.DEPTH_COMPONENT24,w,h);
+      gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,rb);}
+    return[t,fb];};
+  [PV.tex,PV.fb]=mk(4*3*S,8*2*S,false);       // 32 slots: 4 across, 8 down
+  [PV.tmpTex,PV.tmp]=mk(3*S,2*S,true);
+  [PV.sun.tex,PV.sun.fb]=mk(PV.sun.sz,PV.sun.sz,true);
+  PV.P=compile(VS_LTD,FS_LTD);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null);}
+function pvDrawOcc(idx,view,nv){
+  if(!idx.length)return;
+  gl.bindVertexArray(PV.vao);gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,PV.ib);gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,idx,gl.STREAM_DRAW);
+  for(let f=0;f<nv;f++){view(f);gl.drawElements(gl.TRIANGLES,idx.length,gl.UNSIGNED_INT,0);}
+  gl.bindVertexArray(null);}
+// one light's distance cube, drawn whole and copied into its slot of the atlas
+function pvCube(l,slot){
+  const S=PV.S,idx=pvIdx(l.o,l.R,false),Pm=ltPersp(1,l.R+32);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,PV.tmp);gl.viewport(0,0,3*S,2*S);
+  gl.clearBufferfv(gl.COLOR,0,new Float32Array([1e9,0,0,0]));gl.clearDepth(1);gl.clear(gl.DEPTH_BUFFER_BIT);
+  gl.useProgram(PV.P);gl.uniform4f(PV.P.u.uL,l.o[0],l.o[1],l.o[2],0);
+  gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LESS);gl.depthMask(true);gl.disable(gl.CULL_FACE);gl.disable(gl.BLEND);
+  pvDrawOcc(idx,f=>{gl.viewport((f%3)*S,Math.floor(f/3)*S,S,S);
+    gl.uniformMatrix4fv(PV.P.u.uVP,false,new Float32Array(mul4(Pm,ltLook(l.o,LT_FACES[f][0],LT_FACES[f][1]))));},6);
+  const ox=(slot%4)*3*S,oy=Math.floor(slot/4)*2*S;
+  gl.bindFramebuffer(gl.READ_FRAMEBUFFER,PV.tmp);gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER,PV.fb);
+  gl.blitFramebuffer(0,0,3*S,2*S,ox,oy,ox+3*S,oy+2*S,gl.COLOR_BUFFER_BIT,gl.NEAREST);
+  gl.bindFramebuffer(gl.READ_FRAMEBUFFER,null);gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER,null);}
+// the solid faces seen from far toward the sun, keeping how far toward it the nearest is
+function pvSunMap(dir){
+  const ctr=[0,1,2].map(k=>(PV.bmn[k]+PV.bmx[k])/2),rad=Math.hypot(...[0,1,2].map(k=>PV.bmx[k]-PV.bmn[k]))/2+64;
+  const e=[0,1,2].map(k=>ctr[k]+dir[k]*rad),f=dir.map(x=>-x),up=Math.abs(f[2])>0.9?[1,0,0]:[0,0,1];
+  PV.sun.VP=new Float32Array(mul4(ltOrtho(rad,0,rad*2),ltLook(e,f,up)));
+  gl.bindFramebuffer(gl.FRAMEBUFFER,PV.sun.fb);gl.viewport(0,0,PV.sun.sz,PV.sun.sz);
+  gl.clearBufferfv(gl.COLOR,0,new Float32Array([-1e9,0,0,0]));gl.clearDepth(1);gl.clear(gl.DEPTH_BUFFER_BIT);
+  gl.useProgram(PV.P);gl.uniform4f(PV.P.u.uL,dir[0],dir[1],dir[2],1);gl.uniformMatrix4fv(PV.P.u.uVP,false,PV.sun.VP);
+  gl.enable(gl.DEPTH_TEST);gl.depthFunc(gl.LESS);gl.depthMask(true);gl.disable(gl.CULL_FACE);gl.disable(gl.BLEND);
+  pvDrawOcc(pvIdx(ctr,0,true),()=>{},1);
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null);}
+// each frame: the lights on (the nearest 32), their cubes drawn where missing (two a frame)
+function pvFrame(){
+  if(!pvActive())return;
+  pvTargets();
+  if(PV.sc!==SC){pvOccBuild();PV.sc=SC;PV.slotOf.clear();PV.slotKey.fill(null);PV.sun.key='';}
+  const now=performance.now();if(!PV.list||now-PV.t>250){PV.list=pvLightList();PV.t=now;}
+  const e=cam.pos,near=l=>Math.max(0,Math.hypot(l.o[0]-e[0],l.o[1]-e[1],l.o[2]-e[2])-l.R);
+  const on=PV.list.filter(l=>pvIsOn(l.id)).sort((a,b)=>near(a)-near(b)),pick=on.slice(0,32),ids=new Set(pick.map(l=>l.id));
+  const keyOf=l=>l.id+'@'+l.o.map(v=>v.toFixed(2)).join(',')+'|'+Math.round(l.R);
+  let made=0,waiting=0;const shade=[];
+  for(const l of pick){
+    let s=PV.slotOf.get(l.id);const key=keyOf(l);
+    if(s==null||PV.slotKey[s]!==key){
+      if(made>=2){waiting++;continue;}
+      if(s==null){s=PV.slotKey.findIndex(k=>k==null);
+        if(s<0)s=PV.slotKey.findIndex(k=>!ids.has(k.slice(0,k.indexOf('@'))));
+        if(s<0){waiting++;continue;}
+        const old=PV.slotKey[s];if(old)PV.slotOf.delete(old.slice(0,old.indexOf('@')));}
+      pvCube(l,s);PV.slotOf.set(l.id,s);PV.slotKey[s]=key;made++;}
+    shade.push([l,s]);}
+  const sun=PV.sunOn?pvSunInfo():null;
+  if(sun){const key=sun.dir.join(',');if(PV.sun.key!==key){if(made<2){pvSunMap(sun.dir);PV.sun.key=key;made++;}else waiting++;}}
+  PV.shade=shade;PV.sunNow=sun&&PV.sun.key?sun:null;PV.over=on.length-pick.length;
+  if(waiting){PV.waiting=waiting;requestDraw();ltProgress('Light preview: working out '+waiting+' more light'+(waiting>1?'s':'')+'...');}
+  else if(PV.waiting){PV.waiting=0;flash(shade.length+' light'+(shade.length===1?'':'s')+' drawn'+(PV.over>0?' ('+PV.over+' more on, further away)':''));}
+  gl.bindFramebuffer(gl.FRAMEBUFFER,null);gl.viewport(0,0,glcv.width,glcv.height);}
+// the lights for FS_MAIN (uPV is set per material in bindMat)
+const PV_A=[new Float32Array(128),new Float32Array(128),new Float32Array(128),new Float32Array(128)];
+function pvUniforms(p){
+  const[L,C,Sp,F]=PV_A,n=PV.shade.length;
+  PV.shade.forEach(([l,s],i)=>{const o=i*4;
+    L[o]=l.o[0];L[o+1]=l.o[1];L[o+2]=l.o[2];L[o+3]=l.ph;
+    C[o]=l.c[0];C[o+1]=l.c[1];C[o+2]=l.c[2];C[o+3]=l.R;
+    Sp[o]=l.dir?l.dir[0]:0;Sp[o+1]=l.dir?l.dir[1]:0;Sp[o+2]=l.dir?l.dir[2]:0;Sp[o+3]=l.dir?l.rbd:0;
+    F[o]=l.lin?1:0;F[o+1]=l.fall;F[o+2]=s;F[o+3]=l.who;});
+  gl.uniform1i(p.u.uPVN,n);
+  gl.uniform4fv(p.u['uPVL[0]'],L);gl.uniform4fv(p.u['uPVC[0]'],C);gl.uniform4fv(p.u['uPVS[0]'],Sp);gl.uniform4fv(p.u['uPVF[0]'],F);
+  gl.uniform3fv(p.u.uPVA,pvAmbient());gl.uniform1f(p.u.uPVSz,PV.S);
+  gl.activeTexture(gl.TEXTURE7);gl.bindTexture(gl.TEXTURE_2D,PV.tex);gl.uniform1i(p.u.uPVSh,7);
+  const sun=PV.sunNow;
+  gl.uniform4f(p.u.uPVSun,sun?sun.dir[0]:0,sun?sun.dir[1]:0,sun?sun.dir[2]:1,sun?1:0);
+  gl.uniform3fv(p.u.uPVSunC,sun?sun.col:[0,0,0]);
+  if(PV.sun.VP)gl.uniformMatrix4fv(p.u.uPVSunVP,false,PV.sun.VP);gl.uniform1f(p.u.uPVSunSz,PV.sun.sz);
+  gl.activeTexture(gl.TEXTURE8);gl.bindTexture(gl.TEXTURE_2D,PV.sun.tex);gl.uniform1i(p.u.uPVSunT,8);
+  gl.activeTexture(gl.TEXTURE0);}
+function pvAfter(msg){PV.t=0;syncButtons();updateSelPanel();requestDraw();if(msg)flash(msg);
+  if(!PV.on)setTimeout(()=>flash('Full Brightness is on: turn it off (B) to see the light preview'),1700);}
+function pvToggleAll(){
+  const l=pvLightList();if(!l.length){flash('This map has no light entities');return;}
+  const anyOn=l.some(x=>pvIsOn(x.id));
+  for(const x of l){if(x.id[0]==='e'){if(anyOn)PV.lit.delete(x.id);else PV.lit.add(x.id);}else{if(anyOn)PV.newOff.add(x.id);else PV.newOff.delete(x.id);}}
+  pvAfter(anyOn?'Every light off: the ambient light'+(PV.sunOn?' and the sun':'')+' only':'Every light on ('+l.length+(l.length>32?'; the 32 nearest the camera are drawn':'')+')');}
+function pvToggleSun(){
+  if(!pvSunInfo()){flash('This map has no sun: its worldspawn needs a sundirection and a suncolor');return;}
+  PV.sunOn=!PV.sunOn;pvAfter(PV.sunOn?'Sun light on: the sun lights what nothing stands between it and the sky over':'Sun light off');}
+function pvSetSel(on){
+  const ids=[...selectedEnts()].filter(ei=>String(entKvlNow(ei).classname||MAP.ents[ei].cls).toLowerCase().startsWith('light')).map(ei=>'e'+ei);
+  if(!ids.length){flash('Select a light first');return;}
+  for(const id of ids){if(on)PV.lit.add(id);else PV.lit.delete(id);}
+  pvAfter(ids.length+' light'+(ids.length>1?'s':'')+' '+(on?'on':'off')+(on&&PV.on?' (its light is worked out in a moment)':''));}
 function draw(){
   if(!gl||!SC)return;
   FRAMES++;skyQueryPoll();
+  try{pvFrame();}catch(err){console.error(err);PV.on=false;flash('The light preview stopped: '+err.message);}
   gl.bindFramebuffer(gl.FRAMEBUFFER,null);
   gl.viewport(0,0,glcv.width,glcv.height);
   // with the map's fog on, everything past the fog's far end is fog colour, as in game
@@ -8795,7 +9037,12 @@ function buildPanel(){
   for(const d of DISPLAY){const b=document.createElement('button');b.id='d_'+d.k;b.innerHTML=esc(d.l)+'<span class="k">'+d.key+'</span>';
     b.title=d.t+' ('+d.key+')';b.onclick=()=>toggleDisplay(d.k);db.appendChild(b);}
   // Lights off and Sun light need a .bsp's baked light (ltCheck says why not), Sun light a sun
-  if(!ltCheck()){for(const k of ['lights','sun']){$('d_'+k).disabled=true;$('d_'+k).title=LT.why;}}
+  // (without baked light, a .map's: the light preview's, pvToggleAll / pvToggleSun)
+  if(!LIT&&pvCheck()){
+    $('d_lights').title='Light preview (Full Brightness off, B): every light on, again every light off. Single lights from Selection (Turn on / Turn off) (0)';
+    if(!pvSunInfo()){$('d_sun').disabled=true;$('d_sun').title='This map has no sun: its worldspawn needs a sundirection and a suncolor';}
+    else $('d_sun').title='Light preview (Full Brightness off, B): the sun on or off, lighting what nothing stands between it and the sky over (-)';}
+  else if(!ltCheck()){for(const k of ['lights','sun']){$('d_'+k).disabled=true;$('d_'+k).title=LT.why;}}
   else if(!LT.sunHas){$('d_sun').disabled=true;$('d_sun').title=LT.sunWhy;}
   if(!dclHas()){$('d_decals').disabled=true;$('d_decals').title=dclWhy();}
   else $('d_decals').title+='\n'+D.dcl.n+' decal'+(D.dcl.n===1?'':'s')+' ('+D.dcl.nf+' fragments) from '+D.dcl.src;
@@ -8865,7 +9112,7 @@ function hideAllGroups(){let m=0;for(const f of FILTERS)m|=f.m;hiddenMask=m&~NON
 const GAME_LOOK=C_CAULK|C_CLIP|C_TRIGGER|C_HINT|C_ORIGIN|C_PORTAL|C_NODRAW|C_POINT|C_LIGHT|C_AINODE|C_PATH|C_VIS|C_RAIN|C_FOLIAGE|C_SCRTRIG,
   EDIT_LOOK=C_HINT|C_PORTAL|C_RAIN;
 function gameLook(){hiddenMask=GAME_LOOK;simpleSky=false;fullBright=false;setSunFlare(true);filtersChanged();requestDraw();}
-function editorLook(){hiddenMask=EDIT_LOOK;simpleSky=true;fullBright=true;setSunFlare(false);filtersChanged();requestDraw();}
+function editorLook(){hiddenMask=EDIT_LOOK;simpleSky=true;fullBright=true;PV.on=false;setSunFlare(false);filtersChanged();requestDraw();}
 // a look's sun flare setting counts only on a map that has a flare
 function flareAs(on){return !sunHas()||sunFlare===on;}
 function syncButtons(){
@@ -8873,12 +9120,17 @@ function syncButtons(){
   {const b=$('d_grid');if(b)b.classList.toggle('on',GRID.on);}
   {const b=$('d_weather');if(b){b.classList.toggle('on',!!CVARS.cg_rain);
     b.classList.toggle('part',!!CVARS.cg_rain&&(!(+CVARS.cg_rain_density>0)||(!WX.rainEnts.length&&!CVARS.cg_rain_wholemap&&!wxSkyBrushes().length)));}}
+  if(!LIT&&PV.ext){const b=$('d_sun'),l=$('d_lights'),list=PV.list||[],n=list.filter(x=>pvIsOn(x.id)).length;
+    if(b)b.classList.toggle('on',PV.sunOn);
+    if(l){l.classList.toggle('on',n===0);l.classList.toggle('part',n>0&&n<list.length);}}
+  else{
   {const b=$('d_sun');if(b)b.classList.toggle('on',LT.ok?(LT.sunHas&&!LT.sunOff):false);}
   // Lights off: on while every light is off, dashed while only some are
   {const b=$('d_lights');if(b){const n=LT.off?LT.off.reduce((a,x)=>a+x,0):0,all=LT.off&&n===LT.off.length&&n>0;
     b.classList.toggle('on',!!all);b.classList.toggle('part',n>0&&!all);
     if(LT.ok)b.title=DISPLAY.find(d=>d.k==='lights').t+' (0)'+(n>0&&!all?'\nNow: '+n+' of '+LT.off.length+' lights off':'')+
       (LT.crash?'\nThe last time lights were turned off on this map, the graphics driver reset ('+LT.crash.step+'): the first press only warns.':'');}}
+  }
   // A button is on while what it covers is shown. Entities covers several kinds that have
   // buttons of their own (AI nodes, Lights, Models, Paths, Point ents): with only some of
   // them hidden it stays on, dashed, and its tooltip says which are hidden.
@@ -8886,7 +9138,7 @@ function syncButtons(){
     f.el.classList.toggle('on',!hid||part);f.el.classList.toggle('part',part);
     f.el.title=f.t+(f.key?' ('+f.key+')':'')+' - click to show / hide'+
       (part?'\nSome hidden: '+ENT_PARTS.filter(x=>hid&x[0]).map(x=>x[1]).join(', ')+' (a click hides the rest, a second shows all)':'');}
-  $('bFull').classList.toggle('on',fullBright||!LIT);
+  $('bFull').classList.toggle('on',LIT?fullBright:!PV.on);
   $('bSimpleSky').classList.toggle('on',simpleSky);
   $('bSimpleMod').classList.toggle('on',simpleModels);
   $('bSunFlare').classList.toggle('on',sunFlare&&sunHas());
@@ -8894,7 +9146,7 @@ function syncButtons(){
   $('bAiErr').classList.toggle('on',AIERR);
   // a look is on while everything it sets is still as it set it
   $('bGameView').classList.toggle('on',hiddenMask===GAME_LOOK&&!simpleSky&&!fullBright&&flareAs(true));
-  $('bEditView').classList.toggle('on',hiddenMask===EDIT_LOOK&&simpleSky&&fullBright&&flareAs(false));
+  $('bEditView').classList.toggle('on',hiddenMask===EDIT_LOOK&&simpleSky&&fullBright&&!PV.on&&flareAs(false));
   $('bFree').classList.toggle('on',camMode==='free');$('bRad').classList.toggle('on',camMode==='rad');
   $('camHelpFree').style.display=camMode==='free'?'':'none';$('camHelpRad').style.display=camMode==='rad'?'':'none';
 }
@@ -8918,7 +9170,13 @@ function toggleSimpleModels(){
   flash(simpleModels?(n?'Simple models: trees drawn as their sprite version, as the game draws them far away'
     :'Simple models on: no model in this map has a sprite version'):'Simple models off: the whole trees');}
 function toggleFullBright(){
-  if(!LIT){flash(D.kind==='bsp'?'This .bsp has no lightmaps':'A .map has no compiled lighting - open the .bsp');return;}
+  if(!LIT){
+    if(!pvCheck()){flash(PV.why);return;}
+    PV.on=!PV.on;syncButtons();updateSelPanel();requestDraw();
+    if(!PV.on){flash('Full Brightness on (as MOHRadiant)');return;}
+    const n=PV.list?PV.list.filter(l=>pvIsOn(l.id)).length:[...PV.lit].length;
+    flash('Light preview: the ambient light'+(PV.sunOn?' and the sun':'')+(n?' and '+n+' light'+(n>1?'s':''):'; select a light and Turn on (or Display: Lights off for all)'));
+    return;}
   fullBright=!fullBright;syncButtons();saveOpts();requestDraw();
   flash(fullBright?'Full Brightness on (as MOHRadiant)':'The game\'s own lighting');}
 function toggleSunFlare(){
@@ -8980,7 +9238,11 @@ function updateSelPanel(){
   // Turn off / Turn on: when lights are selected (greyed out where there is no baked light)
   {const lights=ents.filter(ei=>String(MAP.ents[ei].cls).startsWith('light'));
     $('bLightOff').style.display=$('bLightOn').style.display=lights.length?'':'none';
-    if(lights.length){const ok=ltCheck(), offN=ok?lights.filter(ei=>ltLightOff(ei)).length:0;
+    if(lights.length&&!LIT&&pvCheck()){const offN=lights.filter(ei=>!PV.lit.has('e'+ei)).length;
+      $('bLightOff').disabled=offN===lights.length;$('bLightOn').disabled=offN===0;
+      $('bLightOn').title='Light preview: turn the selected light'+(lights.length>1?'s':'')+' on (seen with Full Brightness off, B; its light is worked out the first time)';
+      $('bLightOff').title='Light preview: turn the selected light'+(lights.length>1?'s':'')+' off';}
+    else if(lights.length){const ok=ltCheck(), offN=ok?lights.filter(ei=>ltLightOff(ei)).length:0;
       $('bLightOff').disabled=!ok||offN===lights.length;$('bLightOn').disabled=!ok||offN===0;
       if(!ok)$('bLightOff').title=$('bLightOn').title=LT.why;
       else{$('bLightOff').title='Turn the selected light'+(lights.length>1?'s':'')+' off, as if '+(lights.length>1?'they':'it')+' had never been there: the light '+(lights.length>1?'they':'it')+' gave the map (its lightmaps, vertex light, props and models) goes, the rest stays. Display\'s Lights off turns every light off'+(offN?'\nNow: '+offN+' of '+lights.length+' off':'');

@@ -3568,6 +3568,13 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
  .amItem.nod .cnt,.amItem.nod .arw{color:var(--err)}
  .attBox{border-left:2px solid var(--btn);margin:3px 0 5px 0}
  #surfRow{margin-top:10px}
+ #bakeRow{margin-top:10px}
+ #bakeList{border-left:2px solid var(--btn);margin:3px 0 5px 0;padding-left:6px}
+ #bakeList .bk{display:flex;align-items:center;gap:5px;margin:3px 0}
+ #bakeList .bk .nm{flex:1;min-width:0}
+ #bakeList .bk .sm{color:var(--dim);font-size:11px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ #bakeList .bk input{width:52px}
+ #bakeList .bk.chg .nm b{color:var(--accent)}
  #attRow{margin-top:4px}
  .amHead{display:flex;align-items:center;gap:6px;padding:3px 6px 5px 6px;color:var(--dim);
    font-size:11px;border-bottom:1px solid var(--line);margin-bottom:4px}
@@ -3777,6 +3784,10 @@ window.setEditorMode=function(on){window.__EDITON__=!!on;
      </div>
      <div class="row"><input type="range" id="scrub" min="0" max="0" value="0" style="flex:1;min-width:0" title="Scrub through frames ( [ and ] step one frame )"><span class="co" id="frlab">frame 0</span></div>
      <div class="row co">speed <input type="range" id="speed" min="2" max="60" value="20" style="max-width:120px" title="Playback speed in frames per second"> <span id="fps">20</span> fps</div>
+     <div class="row co" id="bakeRow" style="display:none">
+       <button id="bakeBtn" style="max-width:150px" title="What this animation carries besides the body's own motion: the eyes looking about, blinks, lip sync, brows and mouth (the face's blend shapes), the head turning and nodding, the body turning and moving. View them by playing, scale any of them (0% takes it out) and save the result as a new .skc."><span class="albl">&mdash; baked in &mdash;</span><span class="acar">&#9668;</span></button>
+       <span id="bakeCount" class="dim"></span></div>
+     <div id="bakeList" style="display:none"></div>
      <div class="row co" id="surfRow" style="display:none">
        <button id="surfBtn" style="max-width:150px" title="Hide or show surfaces - the same thing `surface &lt;name&gt; +nodraw` does in script. Surfaces the .tik itself turns off at spawn start out struck through. The list STAYS OPEN while you toggle; click the button again, press Esc, or click off the list to close it."><span class="albl">&mdash; surfaces &mdash;</span><span class="acar">&#9668;</span></button>
        <span id="surfCount" class="dim">0 / 0 surfaces</span></div>
@@ -7747,6 +7758,117 @@ function surfPanelInit(){
 // bindings declared just above, which are in their TDZ until those lines run.
 try{surfPanelInit();}catch(e){}
 
+// ===== Baked in: what a clip carries besides the body's own pose ==========================
+// The face's blend shapes (eye look, blinks, lip sync, brows and mouth), the head turning
+// and nodding, Bip01's yaw with the frames' angleDelta, and the frames' delta: found by
+// channel name as mohaa_skc_write.baked_features does, and scaled the way its apply_baked
+// does (the head that share of the way from its frame-1 pose; Bip01's yaw that share of its
+// turn from frame 1, its lean kept). The preview re-poses the frames through the editor's
+// solver; Save .skc... asks the launcher to rewrite the clip's own file with the same
+// amounts (mohaa-anim-bake), every other channel byte for byte.
+const BAKE={amt:{},orig:new Map(),open:false};
+const BAKE_ORDER=['eyes','blink','lips','face','head','body','move'];
+const BAKE_LBL={eyes:'Eye look',blink:'Blinks',lips:'Lip sync',face:'Brows & mouth',head:'Head turn / nod',body:'Body turn',move:'Movement'};
+function bakeGroup(n){n=String(n).toLowerCase();
+  if(/^eyes_(left|right|up|down)/.test(n))return 'eyes';if(n.startsWith('eye_blink'))return 'blink';
+  if(n.startsWith('viseme_')||n.startsWith('visme_'))return 'lips';
+  if(/^(brow_|mouth_|jaw_|lips_|eyes_)/.test(n))return 'face';
+  if(n==='bip01 head rot'||n==='bip01 neck rot')return 'head';if(n==='bip01 rot')return 'body';return null;}
+const bqN=q=>{const l=Math.hypot(q[0],q[1],q[2],q[3])||1;return[q[0]/l,q[1]/l,q[2]/l,q[3]/l];};
+const bqMul=(a,b)=>[a[3]*b[0]+a[0]*b[3]+a[1]*b[2]-a[2]*b[1],a[3]*b[1]-a[0]*b[2]+a[1]*b[3]+a[2]*b[0],
+  a[3]*b[2]+a[0]*b[1]-a[1]*b[0]+a[2]*b[3],a[3]*b[3]-a[0]*b[0]-a[1]*b[1]-a[2]*b[2]];
+function bqPow(q,s){q=bqN(q);if(q[3]<0)q=q.map(c=>-c);const a=Math.acos(Math.max(-1,Math.min(1,q[3])));
+  if(a<1e-9)return[0,0,0,1];const k=Math.sin(a*s)/Math.sin(a);return[q[0]*k,q[1]*k,q[2]*k,Math.cos(a*s)];}
+const bqYaw=q=>Math.atan2(2*(q[3]*q[2]+q[0]*q[1]),1-2*(q[1]*q[1]+q[2]*q[2]));
+const bqAng=(a,b)=>{a=bqN(a);b=bqN(b);return 2*Math.acos(Math.min(1,Math.abs(a[0]*b[0]+a[1]*b[1]+a[2]*b[2]+a[3]*b[3])))*180/Math.PI;};
+function bakeSrc(idx){const e=(window.ACAT&&ACAT.anims)?ACAT.anims.find(x=>x.ai===idx):null;return e&&e.s?e.s:null;}
+// the groups a clip carries (from its own channels, before any change), with a summary each
+function bakeFeatures(idx){
+  const o=bakeOrig(idx);if(!o||!o.raw||!o.raw.length)return{};
+  const out={},fr=o.raw,names=Object.keys(fr[0]);
+  const top=(g,n,m)=>{(out[g]=out[g]||{chans:{}}).chans[n]=Math.round(m);};
+  for(const n of names){const g=bakeGroup(n);if(!g)continue;
+    if(g==='head'){const q0=fr[0][n];let d=0;for(const f of fr)if(f[n])d=Math.max(d,bqAng(q0,f[n]));
+      if(d>2)out.head={deg:Math.max(d,out.head?out.head.deg:0)};}
+    else if(g==='body'){const y0=bqYaw(bqN(fr[0][n]));let lo=0,hi=0;
+      for(const f of fr){if(!f[n])continue;let d=((bqYaw(bqN(f[n]))-y0)*180/Math.PI+540)%360-180;lo=Math.min(lo,d);hi=Math.max(hi,d);}
+      if(hi-lo>2)(out.body=out.body||{}).yaw=hi-lo;}
+    else{let m=0;for(const f of fr)if(f[n])m=Math.max(m,Math.abs(f[n][0]));if(m>0.5)top(g,n,m);}}
+  const turn=(o.fang||[]).reduce((s,x)=>s+(+x||0),0);
+  if(Math.abs(turn)>0.5&&Math.abs(turn)<1e6)(out.body=out.body||{}).turn=turn;
+  const td=[0,1,2].map(k=>(o.fdelta||[]).reduce((s,d)=>s+(d?+d[k]||0:0),0)),dist=Math.hypot(td[0],td[1],td[2]);
+  if(dist>0.1)out.move={dist:dist};
+  return out;}
+function bakeOrig(idx){
+  let o=BAKE.orig.get(idx);if(o)return o;const a=DATA.anims[idx];if(!a)return null;
+  const cp=f=>{const c={};for(const k in f)c[k]=f[k].slice();return c;};
+  o={raw:a.raw?a.raw.map(cp):null,mw:a.mw?a.mw.map(w=>w.slice()):null,frames:a.frames,
+     fdelta:a.fdelta?a.fdelta.map(d=>d.slice()):null,fang:a.fang?a.fang.slice():null};
+  BAKE.orig.set(idx,o);return o;}
+function bakeSummary(g,f){
+  if(g==='head')return 'turns up to '+Math.round(f.deg)+'° from frame 1';
+  if(g==='body')return [f.yaw?'yaw '+Math.round(f.yaw)+'°':'',f.turn?'turn '+Math.round(f.turn)+'°':''].filter(Boolean).join(', ');
+  if(g==='move')return Math.round(f.dist*10)/10+' units in all';
+  const c=f.chans,k=Object.keys(c);
+  return k.slice(0,4).map(n=>n.replace(/^(EYES|EYE|VISEME|VISME|BROW|MOUTH|JAW|LIPS)_/i,'').replace(/_+$/,'')+' '+c[n]).join(', ')+(k.length>4?' … ('+k.length+')':'');}
+// the clip again with the amounts: blend weights scaled, the head and Bip01 re-posed
+function bakeApply(idx){
+  const a=DATA.anims[idx],o=bakeOrig(idx),am=BAKE.amt[idx]||{};if(!a||!o)return;
+  if(o.mw){const grp=(DATA.morphNames||[]).map(bakeGroup);
+    a.mw=o.mw.map(w=>w.map((v,i)=>{const s=am[grp[i]];return s==null?v:v*s;}));}
+  const pose=['head','body'].some(g=>am[g]!=null&&am[g]!==1);
+  if(pose&&o.raw&&window.__ANIMED__){
+    const raw=o.raw.map(f=>{const c={};for(const k in f)c[k]=f[k].slice();return c;}),names=Object.keys(raw[0]);
+    for(const n of names){const g=bakeGroup(n),s=am[g];if(s==null||s===1)continue;
+      if(g==='head'){const q0=bqN(raw[0][n]),inv=[-q0[0],-q0[1],-q0[2],q0[3]];
+        for(const f of raw){if(!f[n])continue;let q=bqN(f[n]);if(q[0]*q0[0]+q[1]*q0[1]+q[2]*q0[2]+q[3]*q0[3]<0)q=q.map(c=>-c);
+          f[n]=bqMul(q0,bqPow(bqMul(inv,q),s));}}
+      else if(g==='body'){const y0=bqYaw(bqN(raw[0][n]));
+        for(const f of raw){if(!f[n])continue;const q=bqN(f[n]);let d=bqYaw(q)-y0;d=((d+Math.PI)%(2*Math.PI)+2*Math.PI)%(2*Math.PI)-Math.PI;
+          const h=-(1-s)*d/2;f[n]=bqMul([0,0,Math.sin(h),Math.cos(h)],q);}}}
+    try{a.frames=window.__ANIMED__.solveDoc({frames:raw,mv:a.mv||null});a.raw=raw;}
+    catch(e){console.error('Baked in (re-pose):',e);a.frames=o.frames;a.raw=o.raw;}}
+  else{a.frames=o.frames;if(o.raw)a.raw=o.raw;}
+  if(o.fdelta)a.fdelta=o.fdelta.map(d=>d.map(c=>c*(am.move!=null?am.move:1)));
+  if(o.fang)a.fang=o.fang.map(x=>x*(am.body!=null?am.body:1));
+  applyFrame();}
+function bakeChanged(idx){const am=BAKE.amt[idx]||{};return Object.keys(am).some(g=>am[g]!=null&&am[g]!==1);}
+function bakeRender(){
+  const row=document.getElementById('bakeRow'),list=document.getElementById('bakeList');if(!row||!list)return;
+  const idx=curAnim,a=idx>=0?DATA.anims[idx]:null;
+  const F=a&&!a.edit?bakeFeatures(idx):{},gs=BAKE_ORDER.filter(g=>F[g]);
+  if(!gs.length){row.style.display='none';list.style.display='none';return;}
+  row.style.display='';
+  document.getElementById('bakeCount').textContent=gs.length+' baked in'+(bakeChanged(idx)?' · changed':'');
+  const btn=document.getElementById('bakeBtn');btn.onclick=ev=>{ev.stopPropagation();BAKE.open=!BAKE.open;bakeRender();};
+  btn.classList.toggle('on',BAKE.open);
+  list.style.display=BAKE.open?'':'none';if(!BAKE.open)return;
+  const am=BAKE.amt[idx]||(BAKE.amt[idx]={}),src=bakeSrc(idx);
+  let h='';
+  for(const g of gs){const v=am[g]!=null?am[g]:1,chg=v!==1;
+    h+='<div class="bk'+(chg?' chg':'')+'"><span class="nm"><b>'+BAKE_LBL[g]+'</b><span class="sm" title="'+escAttr(bakeSummary(g,F[g]))+'">'+escHtml(bakeSummary(g,F[g]))+'</span></span>'+
+      '<input type="number" min="0" max="200" step="10" value="'+Math.round(v*100)+'" data-bk="'+g+'" title="How much of it the clip keeps, in %: 100 as baked, 0 takes it out, 200 doubles it">%'+
+      '<button data-bkoff="'+g+'" title="Take '+BAKE_LBL[g].toLowerCase()+' out (0%)">✕</button>'+
+      '<button data-bkre="'+g+'" title="Back to the clip as baked (100%)"'+(chg?'':' disabled')+'>↺</button></div>';}
+  h+='<div class="row co" style="margin-top:4px"><button id="bakeSave"'+(bakeChanged(idx)&&src?'':' disabled')+' title="'+escAttr(src?'Write the clip with these amounts as a new .skc (a Save dialog; the clip\'s own file '+src+' is read from the paks and changed only where these amounts say)':'This animation has no file in the catalogue to rewrite')+'">Save .skc…</button>'+
+     '<span class="dim" id="bakeMsg" style="flex:1;min-width:0"></span></div>';
+  list.innerHTML=h;
+  const set=(g,v)=>{if(v===1)delete am[g];else am[g]=v;bakeApply(idx);bakeRender();};
+  list.querySelectorAll('input[data-bk]').forEach(el=>{el.onchange=()=>{let v=parseFloat(el.value);if(!isFinite(v))v=100;v=Math.max(0,Math.min(200,v));set(el.dataset.bk,v/100);};
+    el.onkeydown=ev=>ev.stopPropagation();});
+  list.querySelectorAll('button[data-bkoff]').forEach(el=>{el.onclick=()=>set(el.dataset.bkoff,0);});
+  list.querySelectorAll('button[data-bkre]').forEach(el=>{el.onclick=()=>set(el.dataset.bkre,1);});
+  const sv=document.getElementById('bakeSave');if(sv)sv.onclick=()=>{
+    const msg=document.getElementById('bakeMsg');
+    if(!(window.chrome&&chrome.webview)){msg.textContent='saving needs the Model Viewer window (this page was opened in a browser)';return;}
+    msg.style.color='';msg.textContent='saving …';
+    try{chrome.webview.postMessage('mohaa-anim-bake\n'+JSON.stringify({src:src,name:a.name,amounts:am}));}
+    catch(e){msg.textContent='could not reach the launcher: '+e;}};}
+window.MOHAA_BAKE_SAVED=function(ok,msg){const m=document.getElementById('bakeMsg');if(m){m.textContent=msg;m.style.color=ok?'':'var(--err)';}};
+function escHtml(t){return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function escAttr(t){return escHtml(t).replace(/"/g,'&quot;');}
+try{bakeRender();}catch(e){}
+
 // ===== attach-to-bone picker =============================================
 // Bones and tags: the engine attaches to any named node, and scripts use both ("Bip01 L
 // Finger11" for the cigarette, tag_weapon_right for a rifle). A human rig has 85 nodes, so
@@ -8295,7 +8417,8 @@ function selectAnim(idx,catIdx){
   const nf=idx<0?1:DATA.anims[idx].frames.length;
   scrub.max=nf-1;scrub.value=0;playing=false;updatePlayBtn();
   animStreams=[];applyFrame();animBtnLabel();
-  if(amEl)amRender();}
+  if(amEl)amRender();
+  try{bakeRender();}catch(e){}}
 
 // Animations load one at a time and are cached on disk. The page first tries the sidecar
 // beside this HTML (a <script> tag, which file:// pages may load, unlike fetch/XHR). On a

@@ -224,6 +224,128 @@ def recompute_totals(anim):
     return anim
 
 
+# ---- baked-in features: what an animation carries besides the body's pose -----------------
+# A clip can carry more than the body's motion: the face's blend shapes (eye look, blinks,
+# lip sync, brows and mouth), the head turning and nodding, the body turning (Bip01's yaw,
+# the frames' angleDelta) and moving (the frames' delta). These are found by channel name
+# (bonetable.cpp GetBoneChannelType: a name without " pos" / " rot" is a morph value) and
+# can be scaled, 0 taking one out. The Model Viewer's Baked in panel previews the same
+# changes (BAKE_JS in mohaa_view.py) and saves through apply_baked.
+BAKE_GROUPS = ("eyes", "blink", "lips", "face", "head", "body", "move")
+_EYES_RE = re.compile(r"^eyes_(left|right|up|down)", re.I)
+
+
+def bake_group(name):
+    """The baked-in group a channel belongs to, or None (the body's own motion)."""
+    n = name.lower()
+    if _EYES_RE.match(n): return "eyes"
+    if n.startswith("eye_blink"): return "blink"
+    if n.startswith(("viseme_", "visme_")): return "lips"
+    if n.startswith(("brow_", "mouth_", "jaw_", "lips_", "eyes_")): return "face"
+    if n in ("bip01 head rot", "bip01 neck rot"): return "head"
+    if n == "bip01 rot": return "body"
+    return None
+
+
+def _qmul(a, b):
+    ax, ay, az, aw = a; bx, by, bz, bw = b
+    return [aw * bx + ax * bw + ay * bz - az * by, aw * by - ax * bz + ay * bw + az * bx,
+            aw * bz + ax * by - ay * bx + az * bw, aw * bw - ax * bx - ay * by - az * bz]
+
+
+def _qnorm(q):
+    l = math.sqrt(sum(c * c for c in q)) or 1.0
+    return [c / l for c in q]
+
+
+def _qpow(q, s):
+    """q (a unit quaternion) turned s times as far: the same axis, s x the angle."""
+    q = _qnorm(q)
+    if q[3] < 0: q = [-c for c in q]
+    a = math.acos(max(-1.0, min(1.0, q[3])))
+    if a < 1e-9: return [0.0, 0.0, 0.0, 1.0]
+    k = math.sin(a * s) / math.sin(a)
+    return [q[0] * k, q[1] * k, q[2] * k, math.cos(a * s)]
+
+
+def _qyaw(q):
+    x, y, z, w = q
+    return math.atan2(2 * (w * z + x * y), 1 - 2 * (y * y + z * z))
+
+
+def _qangle(a, b):
+    d = abs(sum(x * y for x, y in zip(_qnorm(a), _qnorm(b))))
+    return 2 * math.degrees(math.acos(min(1.0, d)))
+
+
+def baked_features(anim):
+    """What the clip carries, by group: {"eyes": {"chans": {name: largest weight}}, "head":
+    {"deg": largest turn from frame 1}, "body": {"yaw": yaw range, "turn": sum of
+    angleDelta (degrees)}, "move": {"dist": length of the total delta}, ...}. Only groups
+    actually used are listed."""
+    out = {}
+    fr = anim["frames"]
+    if not fr: return out
+    for ci, n in enumerate(anim["names"]):
+        g = bake_group(n)
+        if g in ("eyes", "blink", "lips", "face"):
+            m = max(abs(f["values"][ci][0]) for f in fr)
+            if m > 0.5: out.setdefault(g, {"chans": {}})["chans"][n] = round(m, 1)
+        elif g == "head":
+            q0 = fr[0]["values"][ci]
+            d = max(_qangle(q0, f["values"][ci]) for f in fr)
+            if d > 2.0: out["head"] = {"deg": round(max(d, out.get("head", {}).get("deg", 0)), 1)}
+        elif g == "body":
+            y = [math.degrees(_qyaw(f["values"][ci])) for f in fr]
+            y0 = y[0]; dy = [((v - y0 + 180) % 360) - 180 for v in y]
+            r = max(dy) - min(dy)
+            if r > 2.0: out.setdefault("body", {})["yaw"] = round(r, 1)
+    turn = sum(float(f.get("angleDelta", 0.0)) for f in fr)
+    if abs(turn) > 0.5 and abs(turn) < 1e6: out.setdefault("body", {})["turn"] = round(turn, 1)
+    td = [sum(float(f.get("delta", (0, 0, 0))[k]) for f in fr) for k in range(3)]
+    dist = math.sqrt(sum(c * c for c in td))
+    if dist > 0.1: out["move"] = {"dist": round(dist, 1)}
+    return out
+
+
+def apply_baked(anim, amounts):
+    """Scale each baked-in group by its amount (1 keeps it, 0 takes it out, 2 doubles it):
+    a morph value times the amount; the head and neck turned that much of the way from their
+    frame-1 pose; Bip01's yaw kept that much of its turn from frame 1 (its lean stays) and
+    each frame's angleDelta scaled; each frame's delta scaled. The totals are worked out
+    again. Bounds and radius are kept (the body's place hardly changes)."""
+    am = {g: float(amounts[g]) for g in BAKE_GROUPS if g in amounts and amounts[g] is not None}
+    for g, v in am.items():
+        if not (0.0 <= v <= 4.0) or v != v: raise ValueError(f"{g}: amount {v} is out of range (0 to 4)")
+    fr = anim["frames"]
+    if not fr: return anim
+    for ci, n in enumerate(anim["names"]):
+        g = bake_group(n)
+        s = am.get(g)
+        if s is None or s == 1.0: continue
+        if g in ("eyes", "blink", "lips", "face"):
+            for f in fr: f["values"][ci][0] = f["values"][ci][0] * s
+        elif g == "head":
+            q0 = _qnorm(fr[0]["values"][ci]); inv = [-q0[0], -q0[1], -q0[2], q0[3]]
+            for f in fr:
+                q = _qnorm(f["values"][ci])
+                if sum(a * b for a, b in zip(q, q0)) < 0: q = [-c for c in q]
+                f["values"][ci] = _qmul(q0, _qpow(_qmul(inv, q), s))
+        elif g == "body":
+            y0 = _qyaw(_qnorm(fr[0]["values"][ci]))
+            for f in fr:
+                q = _qnorm(f["values"][ci])
+                dy = ((_qyaw(q) - y0 + math.pi) % (2 * math.pi)) - math.pi
+                a = -(1.0 - s) * dy
+                f["values"][ci] = _qmul([0.0, 0.0, math.sin(a / 2), math.cos(a / 2)], q)
+    if "body" in am:
+        for f in fr: f["angleDelta"] = float(f.get("angleDelta", 0.0)) * am["body"]
+    if "move" in am:
+        for f in fr: f["delta"] = [float(c) * am["move"] for c in f.get("delta", (0, 0, 0))]
+    recompute_totals(anim)
+    return anim
+
+
 def new_anim(names, frame_values, frameTime=0.05, flags=0):
     """Build a fresh animation dict. frame_values: per frame, one [4 floats] per channel
     (' rot' = quaternion x,y,z,w; ' pos' = x,y,z,0). Bounds/radius/deltas start at zero

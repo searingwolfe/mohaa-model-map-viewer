@@ -3893,3 +3893,43 @@ look of the walk and the doors should be confirmed by eye in the launcher.
   class could have spawnflags (a `light`: LINEAR, NO_ENTITIES, ENTITY_TRACE) even when it had
   none set. It now shows only when the selected entity has some. The page's `sfCapable` and
   the class definitions' `sf` field it read are gone; `mohaa_entdefs.sf_capable` stays.
+
+## Draw brush: more shapes, drawn as themselves; a light preview for .map files (November 2026)
+
+- Draw brush's outline is the shape's own while you drag (an octagon for an 8-sided prism, a
+  pyramid's base and its edges to the middle, a circle for a cylinder, cone, sphere or dome,
+  a quarter circle for a pipe bend), not a box (`edOutline2D`, `edPolyUV`).
+- New shapes: brush pyramids / cones (3 to 16 sides, the point at the far end of the depth),
+  wedges / ramps (rising toward where the drag ends, along the outline's longer side) and
+  brush spheres (3 to 16 sides, half as many bands); curved-patch spheres and domes (also
+  in the Patch panel). A cone or dome drawn downward hangs (`edPyramidFaces`,
+  `edWedgeFaces`, `edSphereFaces`, `edPatchShape` sphere / dome). Clip still works on
+  brushes only: a patch (a pipe, a bend) is a curved surface, not a brush, as in MOHRadiant.
+- Light preview: on a `.map` (or a `.bsp` whose baked light the editor dropped), Full
+  Brightness off lights the map as the compiler would instead of greying the button out: the
+  worldspawn's ambient light, plus the lights turned on (Selection: Turn on / Turn off;
+  Display: Lights off for all; none at first) and the sun (Display: Sun light). Each light
+  uses FS_LTW's formula (photons / distance squared x angle, spot cones, linear falloff),
+  shadowed through a distance cube of the world's solid faces drawn the first time it is
+  on and again when it moves or the brushes change; the sun through a map toward it. Up to
+  32 lights at a time, the nearest the camera; Modify's unsaved keys and new lights count
+  (`PV`, `pvFrame`, `pvLight` in FS_MAIN). No bounced or sky light: Compile... for the game's.
+- Clip on a patch (a pipe, a pipe bend, any curved surface) or a terrain block selects it and
+  says in yellow that it can't be clipped, instead of doing nothing (`edClipDown`,
+  `flashWarn`, which also sends the note to the Output pane as a warning).
+
+## Model Viewer: Baked in (November 2026)
+
+- The Animation section's **Baked in** list shows what a clip carries besides the body's
+  own motion, by channel name: eye look (EYES_left / right / up / down), blinks (EYE_blink),
+  lip sync (VISEME_*), brows and mouth (BROW_, MOUTH_, JAW_, LIPS_, the other EYES_), the
+  head turning and nodding (Bip01 Head and Neck rot, from frame 1), the body turning
+  (Bip01's yaw from frame 1 and the frames' angleDelta) and moving (the frames' delta),
+  each with a summary. Each takes an amount, 0 to 200%: blend weights scaled, the head
+  turned that share of the way from its frame-1 pose, Bip01 keeping that share of its yaw
+  (its lean kept), angleDelta and delta scaled. The preview re-poses the frames through the
+  editor's solver; **Save .skc...** (`mohaa-anim-bake`) reads the clip's own .skc from the
+  paks, changes those channels (`mohaa_skc_write.baked_features` / `apply_baked`), writes
+  it where the Save dialog says, keeps the old file as .bak and reads it back. Bounds and
+  radius are kept. An edit started from the clip (Edit animations) starts from the changed
+  pose.
