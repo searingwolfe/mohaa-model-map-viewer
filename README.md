@@ -15,14 +15,14 @@ self-contained HTML pages that open in the launcher's embedded 3D pane or in any
 
 # Table of Contents
 
-### [How To Install / Uninstall](https://github.com/searingwolfe/mohaa-model-viewer?tab=readme-ov-file#how-to-install--uninstall-1)<br>
-## [MOHAA .tik Model Viewer](https://github.com/searingwolfe/mohaa-model-viewer?tab=readme-ov-file#mohaa-tik-model-viewer)<br><br>[MOHAA .bsp Map Viewer](https://github.com/searingwolfe/mohaa-model-viewer?tab=readme-ov-file#mohaa-bsp-map-viewer)<br><br>[Edit animations (in the Model Viewer)](https://github.com/searingwolfe/mohaa-model-viewer?tab=readme-ov-file#edit-animations-in-the-model-viewer)<br><br>[Edit map (in the Map Viewer)](https://github.com/searingwolfe/mohaa-model-viewer?tab=readme-ov-file#edit-map-in-the-map-viewer)<br><br>
-### [Updating](https://github.com/searingwolfe/mohaa-model-viewer?tab=readme-ov-file#updating-1)<br>
-### [Where Your Files Go](https://github.com/searingwolfe/mohaa-model-viewer?tab=readme-ov-file#where-your-files-go-1)<br>
-### [Privacy & Security](https://github.com/searingwolfe/mohaa-model-viewer?tab=readme-ov-file#privacy--security-1)<br>
-### [Licence & Legal](https://github.com/searingwolfe/mohaa-model-viewer?tab=readme-ov-file#licence--legal-1)<br>
-### [For Developers](https://github.com/searingwolfe/mohaa-model-viewer?tab=readme-ov-file#for-developers-1)<br>
-### [Contact & Credits](https://github.com/searingwolfe/mohaa-model-viewer?tab=readme-ov-file#contact--credits-1)
+### [How To Install / Uninstall](https://github.com/searingwolfe/mohaa-model-map-viewer?tab=readme-ov-file#how-to-install--uninstall-1)<br>
+## [MOHAA .tik Model Viewer](https://github.com/searingwolfe/mohaa-model-map-viewer?tab=readme-ov-file#mohaa-tik-model-viewer)<br><br>[MOHAA .bsp Map Viewer](https://github.com/searingwolfe/mohaa-model-map-viewer?tab=readme-ov-file#mohaa-bsp-map-viewer)<br><br>[Edit animations (in the Model Viewer)](https://github.com/searingwolfe/mohaa-model-map-viewer?tab=readme-ov-file#edit-animations-in-the-model-viewer)<br><br>[Edit map (in the Map Viewer)](https://github.com/searingwolfe/mohaa-model-map-viewer?tab=readme-ov-file#edit-map-in-the-map-viewer)<br><br>
+### [Updating](https://github.com/searingwolfe/mohaa-model-map-viewer?tab=readme-ov-file#updating-1)<br>
+### [Where Your Files Go](https://github.com/searingwolfe/mohaa-model-map-viewer?tab=readme-ov-file#where-your-files-go-1)<br>
+### [Privacy & Security](https://github.com/searingwolfe/mohaa-model-map-viewer?tab=readme-ov-file#privacy--security-1)<br>
+### [Licence & Legal](https://github.com/searingwolfe/mohaa-model-map-viewer?tab=readme-ov-file#licence--legal-1)<br>
+### [For Developers](https://github.com/searingwolfe/mohaa-model-map-viewer?tab=readme-ov-file#for-developers-1)<br>
+### [Contact & Credits](https://github.com/searingwolfe/mohaa-model-map-viewer?tab=readme-ov-file#contact--credits-1)
 
 # How To Install / Uninstall
 
@@ -51,7 +51,7 @@ program keeps working when other software updates Python's packages.
 ## Windows
 
 * Click the green `<> Code` button and choose `Download ZIP`. <br>
-Extract the `mohaa-model-viewer-main` folder anywhere on your PC.
+Extract the `mohaa-model-map-viewer-main` folder anywhere on your PC.
 
 * Start any of the programs with **`MOH Model-Map Viewer (Windows x86-x64).bat`**. A menu asks which one:
   press **1** for the **Map Viewer** (`.bsp` / `.map` / `.bak`) or **2** for the **Model
@@ -982,7 +982,7 @@ python tests/anim_solver_parity.py --models <folder holding models/>   # the pag
 
 # Contact & Credits
 
-Bugs, questions and suggestions: [open an issue](https://github.com/searingwolfe/mohaa-model-viewer/issues).
+Bugs, questions and suggestions: [open an issue](https://github.com/searingwolfe/mohaa-model-map-viewer/issues).
 Security problems: report privately as described in [`SECURITY.md`](docs/SECURITY.md).
 
 Made by **Searingwolfe**.

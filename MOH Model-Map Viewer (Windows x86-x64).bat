@@ -53,7 +53,7 @@ setlocal EnableDelayedExpansion
 for %%F in (mohaa_common.py mohaa_envcheck.py) do (
     if not exist "!BIN!\%%F" (
         echo [ERROR] %%F was not found in the bin folder next to this file.
-        echo         Download the program again from https://github.com/searingwolfe/mohaa-model-viewer
+        echo         Download the program again from https://github.com/searingwolfe/mohaa-model-map-viewer
         set "EXIT_CODE=1"
         goto end
     )
@@ -165,7 +165,7 @@ echo.
 for %%F in (!R_FILES!) do (
     if not exist "!BIN!\%%F" (
         echo [ERROR] %%F was not found in the bin folder next to this file.
-        echo         Download the program again from https://github.com/searingwolfe/mohaa-model-viewer
+        echo         Download the program again from https://github.com/searingwolfe/mohaa-model-map-viewer
         set "EXIT_CODE=1"
         goto end
     )

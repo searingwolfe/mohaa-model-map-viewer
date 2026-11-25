@@ -385,7 +385,7 @@ class Updater(TempDirCase):
         with zipfile.ZipFile(z, "w") as zf:
             for rp, b in files.items():
                 if ".." not in rp:
-                    zf.writestr("mohaa-model-viewer-" + self.COMMIT + "/" + rp, b)
+                    zf.writestr("mohaa-model-map-viewer-" + self.COMMIT + "/" + rp, b)
         return z
 
     def env(self, root, get, fail_on=None):

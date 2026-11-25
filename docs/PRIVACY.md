@@ -162,5 +162,5 @@ Last updated: 18 November 2026
 
 9. CONTACT
    Questions about this notice: open an issue on the project's GitHub
-   repository (github.com/searingwolfe/mohaa-model-viewer).
+   repository (github.com/searingwolfe/mohaa-model-map-viewer).
 ```

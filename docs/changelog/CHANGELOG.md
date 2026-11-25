@@ -3836,3 +3836,12 @@ look of the walk and the doors should be confirmed by eye in the launcher.
   out in the header's order, so a map loads from a .pk3. `VERSION` (`mohaa_launcher.py`,
   `mohaa_envcheck.py`) and `docs/version.txt` say 1.0.012; the updater finds it by the tag
   `v1.0.012`.
+
+## The repository is now searingwolfe/mohaa-model-map-viewer (November 2026)
+
+- Renamed from mohaa-model-viewer (the name moh-modelviewer was already another project's,
+  and the program is a model and map viewer). The updater's `GITHUB_REPO`, the launchers'
+  "download it again" lines (and `tools/make_launchers.py`, which writes them), the README's
+  links and its extracted-folder name, and the privacy notice (`docs/PRIVACY.md` and
+  `PRIVACY_TEXT`) use the new name. GitHub redirects the old address, so copies that still
+  look there keep finding updates.

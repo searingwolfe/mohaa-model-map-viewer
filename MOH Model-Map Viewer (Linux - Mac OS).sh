@@ -70,7 +70,7 @@ fi
 for f in mohaa_common.py mohaa_envcheck.py; do
     if [ ! -f "$BIN/$f" ]; then
         echo "[ERROR] $f was not found in $BIN." >&2
-        echo "        Download the program again from https://github.com/searingwolfe/mohaa-model-viewer" >&2
+        echo "        Download the program again from https://github.com/searingwolfe/mohaa-model-map-viewer" >&2
         EXIT_CODE=1; finish
     fi
 done
@@ -126,7 +126,7 @@ echo
 for f in $FILES; do
     if [ ! -f "$BIN/$f" ]; then
         echo "[ERROR] $f was not found in $BIN." >&2
-        echo "        Download the program again from https://github.com/searingwolfe/mohaa-model-viewer" >&2
+        echo "        Download the program again from https://github.com/searingwolfe/mohaa-model-map-viewer" >&2
         EXIT_CODE=1; finish
     fi
 done

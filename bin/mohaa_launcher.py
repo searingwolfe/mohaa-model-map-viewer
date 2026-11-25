@@ -281,7 +281,7 @@ Last updated: 18 November 2026
 
 9. CONTACT
    Questions about this notice: open an issue on the project's GitHub
-   repository (github.com/searingwolfe/mohaa-model-viewer).
+   repository (github.com/searingwolfe/mohaa-model-map-viewer).
 """
 
 HERE=os.path.dirname(os.path.abspath(__file__))
@@ -537,7 +537,7 @@ VERSION_LABEL="version "+VERSION
 # tree API lists), so a file that is new on GitHub or changed there is found even when
 # docs/version.txt didn't change. If GitHub can't be reached, nothing on disk changes.
 GITHUB_OWNER="searingwolfe"
-GITHUB_REPO="mohaa-model-viewer"
+GITHUB_REPO="mohaa-model-map-viewer"
 GITHUB_BRANCH="main"
 UPDATE_UA="MOHAA-Model-Viewer/"+VERSION
 # The branch's newest commit, that commit's full file list (path, blob SHA-1, size), its
