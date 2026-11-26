@@ -304,7 +304,7 @@ PAK_ENTRY_MAX=getattr(getattr(MTX,"Vfs",None),"MAX_ENTRY",192*1024*1024)
 # Source mtimes are the usual rebuild trigger, but a zip round-trip can scramble them,
 # so the baked rev is the backstop. Also gates the animation/attachment sidecar caches
 # (see _stamp_anim_cache).
-VIEWER_REV_REQUIRED=82
+VIEWER_REV_REQUIRED=83
 # Sentinel subdir for single-file builds (Browse / drag-drop / Recent / path bar). It
 # routes the output HTML to a "standalone" folder beside "models" instead of the
 # pak-mirroring tree; the null byte means it can't collide with a real folder name.

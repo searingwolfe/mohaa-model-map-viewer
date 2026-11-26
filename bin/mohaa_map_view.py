@@ -66,7 +66,7 @@ import mohaa_map_actor as MA              # SIMULATE's actors: skin weights, cli
 # Page format revision, baked into each page as <!--mohaa-map-viewer-rev:N-->. Raise it
 # (and MAP_VIEWER_REV_REQUIRED in mohaa_map_launcher.py) when the page changes in a way
 # that a cached page must pick up.
-MAP_VIEWER_REV = 110
+MAP_VIEWER_REV = 118
 
 # Bumped when the cached shader / entity index format changes, so old caches are ignored.
 INDEX_VERSION = 11
@@ -969,7 +969,9 @@ MAP_VIEWER_KEYS = {
             _kx("Ctrl+C", "over the 3D view: copy the point under the cursor as ( x y z ) (not the camera's place)",
                 ("Ctrl+C", "copy point", "copy the point under the cursor as ( x y z )")),
             _kx("Backspace", "hide the selection (an entity added in Modify too)", ("Backspace", "hide")),
-            _kx("Delete", "Modify's Delete on its selected rows: remove an added entity, or flag one of the map's DEL (left out of the saved copy)", ("Delete", "remove")),
+            _kx("Delete", "Modify's Delete on its selected rows: remove an added entity, or flag one of the map's DEL (left out of the saved copy)", ("Del", "remove")),
+            _kx("Alt+Delete", "Edit map: delete the selected brushes, patches and terrain blocks only (the Editor's Delete; Modify's rows are left alone)",
+                ("Alt+Del", "delete brushes")),
             _kx("Alt+A", "Modify: Add (then click on the map to place it; again cancels)",
                 ("Alt+A", "Add", "Modify's Add: the next click on the map places one")),
             _kx("Alt+C", "Modify: Copy the selected entities; they follow the mouse together until a click puts them down",
@@ -982,11 +984,20 @@ MAP_VIEWER_KEYS = {
             _kx("Alt+M|T|R|E|S", "Modify, its selected entity: Move · Trim origin · Yaw · Edit parameters · Spawnflags",
                 ("Alt+M", "Move", "the selected entity follows the mouse; a click puts it down"),
                 ("Alt+T", "Trim origin", "move it by the trim step with W A S D, Space and C"),
-                ("Alt+R", "Yaw", "turn it to the next of 0, 90, 180, 270 (angle, or angles 0 yaw 0)"),
+                ("Alt+R", "Yaw", "turn its arrow to the next of 0, 90, 180, 270 (angle, or angles 0 yaw 0); "
+                 "a copy following the mouse (Alt+C): its arrows 90 degrees more"),
+                ("Alt+Shift+R", "Yaw back", "a copy following the mouse: its arrows 90 degrees back"),
                 ("Alt+E", "Edit parameters", "its keys as the entity lump holds them"),
                 ("Alt+S", "Spawnflags", "tick its spawnflags from its class's list (again closes it)")),
+            _kx("Alt+Q", "Turn: the selection (brushes with Edit map, or several entities), or a copy following "
+                "the mouse, turned 90 degrees about its middle; arrows stay (Alt+Shift+Q the other way)",
+                ("Alt+Q", "Turn", "turn the selection or the copy 90 degrees"),
+                ("Alt+Shift+Q", "Turn back", "turn it 90 degrees the other way")),
             _kx("Shift+H", "show everything hidden", ("Shift+H", "show all")),
-            _kx("Ctrl+Z", "undo the last hide or show-all (again for the one before)", ("Ctrl+Z", "undo")),
+            _kx("Ctrl+Z", "undo the last step: a hide or show-all, or a change Alt+Z undoes, whichever came last "
+                "(it selects again what a brush change had selected)", ("Ctrl+Z", "undo")),
+            _kx("Ctrl+Y", "redo what Ctrl+Z (or Alt+Z) undid last, a hide or a change (Ctrl+Shift+Z too)",
+                ("Ctrl+Y", "redo"), ("Ctrl+Shift+Z", "redo")),
             _kx("Ctrl+F or /", "find: class, targetname, key, texture", ("Ctrl+F", "find"), ("/", "find")),
             _kx_sub("Modify: Trim origin (the camera stays put)", "sel"),
             _kx("W|S|A|D or arrows", "move the new entity forward / back / left / right along the map's axes "

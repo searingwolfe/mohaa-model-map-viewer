@@ -3946,3 +3946,155 @@ look of the walk and the doors should be confirmed by eye in the launcher.
   Baked in list (eye look, blinks, lip sync, face, head and body turn, movement) with
   Save .skc. `VERSION` (`mohaa_launcher.py`, `mohaa_envcheck.py`) and `docs/version.txt` say
   1.0.013; the updater finds it by the tag `v1.0.013`.
+
+## Animation Editor: undo keys, whole-body and part drags, snap to origin, face and movement (November 2026)
+
+- **Ctrl+Z / Ctrl+Y** (and Ctrl+Shift+Z) undo and redo the editor's changes, as the Undo /
+  Redo buttons, while Edit animations is on and nothing is being typed in a field.
+- **Shift+drag** any joint moves the whole body as one piece: Bip01 with the feet, the
+  joint grabbed following the mouse (Drag and Axes tools; in Rotate, Shift still tumbles).
+- **Ctrl+drag** moves one part as one piece, by the joint grabbed: the hand, the head or the
+  arm at the shoulder are carried by bending the bones above them while they keep their own
+  turn; the elbow swings the arm at the shoulder, any finger joint turns the whole finger
+  at its base, the neck turns head and neck, a spine joint bends the torso at the waist, a
+  thigh or knee swings the leg (its foot target) about the hip, the pelvis moves the body
+  with the feet planted. The hover hint says which, with Shift or Ctrl held.
+- **Snap to origin** (O) moves the body (feet with it) so the hips stand on the origin's
+  vertical line, X = Y = 0, keeping their height; **… and onto the ground** (Shift+O) also
+  puts the lowest foot at its height in the opening pose. With "every key" every key moves
+  by the same amount, so off-centre clips such as ladder_slide come back over the origin
+  and a walking clip keeps walking.
+- **Face**: a face shape (morph target) is keyed on its own timeline, 0 to 100, the frames
+  between its keys in straight lines; the body's keys never touch it. Eye look pad (keys
+  EYES_left / right / up / down), **Add blinks** (EYE_blink every few seconds, gaps varied),
+  **Import lip sync (.lip)** (the dialogue tools' text file; its samples are spread over the
+  frames), Delete face key, Clear shape. New shapes are spelt as the model's morph targets,
+  else as the stock heads' (models/human/heads). The preview plays them on a model with
+  face shapes; a body without them (its head is a separate model) says so and still saves
+  them.
+- **Head turn / nod**: Bip01 Head turned on top of its pose between two frames, there and
+  back or turned and held to the end; each frame touched becomes a key.
+- **Movement**: the actor's total move (X ahead, Y left, Z up) and turn over the clip, spread
+  evenly into the frames' delta and angleDelta on Set movement.
+- A clip changed in the **Baked in** list and then edited starts with its face amounts in
+  the face channels too, so the edit's Save .skc keeps them (before, only the head, body
+  and movement amounts carried over).
+- Shortcuts window: the editor's keys and drags are listed. `VIEWER_REV` 83 (pages rebuild).
+
+## Map Editor: deleted isn't hidden, Ctrl+Z for every step, Undo selects again, turn a copy (November 2026)
+
+- A map entity deleted in Modify (DEL), for example with the Delete key while its brushes
+  are selected, isn't a hidden one: Shift+click its square, Show all and Shift+H now say so
+  and what brings it back, instead of seeming to do nothing. **Click the DEL tag** in
+  Modify's list to restore it (one Undo step).
+- **Ctrl+Z** undoes the latest step of any kind: a Hide / Show all, or a change Modify's
+  Undo (Alt+Z) takes back (entities, brushes, copies, deletes), whichever came last. Each
+  step is numbered as it is made (`ACT_SEQ`).
+- **Undo / Redo of a brush change selects again** what was selected when the step was
+  made (the snapshot keeps the view's selection; the same text gives the same brush
+  numbers), so a change undone can be redone by hand without selecting each brush again.
+- **Alt+R while a copy follows the mouse** (Alt+C) turns the copy 90 degrees about its
+  middle, Alt+Shift+R the other way, before it is put down: brushes and patches as Turn
+  turns them, the copied entities' origins with them and their `angle` / `angles` yaw.
+  (Alt+Y stays Modify's Redo.) Terrain blocks don't turn.
+- Show all also shows Modify rows hidden with their square (one Undo step with the rest).
+- Shortcuts window: Modify's Delete row lit the wrong key cap (`Delete` for `Del`).
+  `MAP_VIEWER_REV` 111.
+
+## Show buttons: New brushes and New entities (November 2026)
+
+- Two Show buttons: **New brushes** (brushes, patches and terrain blocks added or changed in
+  the Map Editor and not saved yet, `EDNEW`) and **New entities** (Modify's added and
+  changed entities, `modNewHid`). Shown (as before), new brushes are drawn whatever the
+  other buttons hide; hidden, they aren't drawn or clickable (a changed one leaves a gap),
+  and Modify's new and changed entities aren't drawn unless one is being moved or edited
+  (a changed map entity is hidden, not shown as it was).
+- The **In-game look** and the **Editor look** each keep their own choice for the two
+  (`LOOK_NEW`, saved with the options): click New brushes / New entities while a look is
+  on and that look keeps it; both shown at first. `C_NEWBR` / `C_NEWENT` are filter bits
+  no face or marker carries. `MAP_VIEWER_REV` 112.
+
+## Modify: Turn (Alt+Q) apart from Yaw (November 2026)
+
+- **Turn** (a button before Copy, Alt+Q; Alt+Shift+Q or Shift+click the other way) turns
+  what is selected 90 degrees about its middle, so it lies the other way (a ladder long
+  along Y becomes long along X): with Edit map on, the selected brushes and patches (as
+  Edit map's Turn by yaw 90, a brush entity's origin with them) and the point entities
+  selected with them, moved round the same middle in the same Undo step; else several
+  selected entities, moved round the middle of their origins; a copy following the mouse
+  (Edit map's or Modify's) before it is put down. Arrows (`angle` / `angles`) don't change.
+- **Yaw** (Alt+R) turns only arrows: on a copy following the mouse it now turns the copied
+  entities' `angle` / `angles` 90 degrees and leaves the brushes (the earlier Alt+R on a
+  copy, which turned both, is Turn now). The Yaw button reaches a copy too.
+- Shortcuts window: Alt+Q / Alt+Shift+Q. `MAP_VIEWER_REV` 113.
+
+## Yaw keeps a func_ladder's "angle" (November 2026)
+
+- Modify's Yaw (Alt+R) and Angles wrote `"angles" "0 yaw 0"` on anything that isn't an
+  `info_` class, taking `"angle"` out. A func_ladder faces (its arrow, the way a climber
+  looks) by `"angle"`, so its arrow went away after a Yaw. Now an `info_` class, a
+  func_ladder, and any entity that has `"angle"` and no `"angles"` keep `"angle"`
+  (`modUsesAngle`); the ladder's arrow and info card read `"angles"`' yaw too when that is
+  all it has (so one already changed shows again). `MAP_VIEWER_REV` 114.
+
+## Undo / Redo say what the other one still has; Ctrl+Y redoes (November 2026)
+
+- With nothing in Modify's history, Alt+Z / Alt+Y say so and how many Hide / Show steps
+  Ctrl+Z / Ctrl+Y still have; Ctrl+Z with nothing at all says so; the Undo hide button with
+  no hide left says how many changes Alt+Z still has. The notes go to the Output pane
+  (green), as the status line's do.
+- **Ctrl+Y** (Ctrl+Shift+Z) redoes what was undone last, a Hide / Show (a new `HIDE_REDO`,
+  cleared by the next hide) or a change (as Alt+Y), in the order they were undone
+  (`REDO_KINDS`). Shortcuts window: Ctrl+Y. `MAP_VIEWER_REV` 115.
+
+## The Editor's own Copy, Undo, Redo and Delete; Alt+Delete (November 2026)
+
+- Edit map's panel has its own **Copy · Undo · Redo · Delete** row under Angles (above
+  Exact values), for brushes, patches, terrain blocks and brush entities. Modify's Copy
+  now copies only its entities (a brush entity selected there says to use the Editor's
+  Copy, which takes its brushes too) and no longer stands in for the brush copy; the
+  Delete beside a brush entity's Edit parameters moved into the row. Undo / Redo are the
+  one history both share (each change in the order made). Alt+C still copies whichever is
+  selected.
+- **Alt+Delete** deletes the selected brushes, patches and terrain blocks only, never
+  Modify's rows. Shortcuts window: Alt+Delete. `MAP_VIEWER_REV` 116.
+
+## Simulate: a brush is as solid as all its sides together (November 2026)
+
+- The page's collision (Simulate's ladder climber and walker, the AI paths' traces, the
+  thrown exploder chunks) took a brush's contents from its first face, so a brush with
+  `common/nodraw` (nonsolid) sides first and a solid face on top, such as m3l1b's trench
+  floors (brush 4501 under the bunker ladder, 4486 at its top), was let through: Spawn
+  Bottom put the man on the caulk 112 units under the floor, Spawn Top a little under the
+  top floor, and Simulate Down then climbed a ladder the game won't let him get on. The
+  game's collision takes a brush's contents from its record, which EA's compiler and ours
+  (`writebsp.c`) make all its sides' contents together; `brushCont` now does the same
+  (from the .bsp: the brush's own record where kept, else its faces'; in a .map: each
+  side's shader, as the compiler reads them, only "detail" from the face's flags).
+  Patches likewise (`patchCont`).
+- Spawn Bottom / Spawn Top start 4 units over the ladder's bottom / top (higher while his
+  box would start inside something), then drop him to the floor. `MAP_VIEWER_REV` 117.
+
+## Simulate: getting on a ladder is about where he looks (November 2026)
+
+- Checked against OpenMoHAA: AT_LADDER (Player::CondLadder) traces his view line from 12
+  units behind his eyes to 128 ahead with MASK_LADDER, and it must meet the func_ladder
+  itself, one of its brushes, nearer than the world (SV_ClipMoveToEntities keeps an entity
+  only when it is nearer, so a ladder face flush with the floor loses to the floor). Its
+  brushes may be `common/trigger` or `common/ladder`: both are solid to that mask (the
+  entity itself is CONTENTS_LADDER, LadderSetup); its `common/origin` brush is taken out by
+  the compiler. Then CanUseLadder: within 52 of its origin, facing it, and the spot 26 past
+  it (top) or 29 out (bottom) clear.
+- **His eyes as the game has them** (`ladEye`, CG_OffsetFirstPersonView, sent as the eye
+  offset m_vViewPos uses): not straight over his feet at 82, but turned about a lower pivot
+  by 0.4 of his pitch, so looking 70 down they are 15 units ahead and 78 up, kept 6 units off
+  walls. The ladder's own epsilon and the world-wins tie are used too.
+- **Where he can get on**: the ladder's lines in SIMULATE say at which pitches and how far
+  from its origin a player can get on at the bottom (looking up) and the top (looking down),
+  every spot in its 52-unit reach and every pitch from 36 to 88 (`ladViewScan`). When a
+  climb fails because the ladder isn't in his view, the yellow advice gives the pitch that
+  works from most spots (and the range), or, when none does, how much to raise the ladder's
+  top (searched in 2-unit steps), or to add a flat trigger brush on the floor behind its top
+  (as mohdm2's and mohdm7's ladders have), or to move it out from the wall. Checked on
+  mohdm2 (three ladders, top flush with the floor), mohdm7 (one 3 units over its floor,
+  one with a flat brush at its top) and m3l1b. `MAP_VIEWER_REV` 118.

@@ -1883,10 +1883,12 @@ sect.innerHTML=
   '<div class="row"><button id="edPaste" style="flex:1" disabled title="Paste the copied pose into this frame (it becomes a key)">Paste pose</button>'+
    '<button id="edPasteBone" style="flex:1" disabled title="Paste only the selected bone\'s channels from the copied pose">Paste bone</button></div>'+
   '<div class="row"><button id="edMirror" style="flex:1" title="Swap left and right: the pose becomes its mirror image (this frame, or every key)">Mirror pose (left \u2194 right)</button></div>'+
+  '<div class="row"><button id="edSnap" style="flex:1" title="Move the whole body (feet with it) so the hips (Bip01) stand on the origin\'s vertical line, X = Y = 0, keeping their height (O). With &quot;every key&quot;, every key moves by the same amount, so a clip that walks keeps walking">Snap to origin (O)</button>'+
+   '<button id="edSnapG" style="flex:1" title="As Snap to origin, and also up or down so the feet stand at the height they have in the pose the model opened in (Shift+O)">\u2026 and onto the ground</button></div>'+
   '<div class="row co">frames <input type="number" id="edFrames" min="1" max="2000" style="width:62px"> fps <input type="number" id="edFps" min="1" max="1000" step="any" style="width:62px">'+
    '<button id="edSetFrames" title="Set the frame count and speed. Added frames hold the last key; removing frames drops their keys. The fps is the .skc frame time, and the viewer\'s speed slider follows it">Set</button></div>'+
  '<div class="co" style="font-weight:600;font-size:10px;letter-spacing:.06em;text-transform:uppercase;margin:10px 0 3px;color:var(--dim)">Pose the selected frame</div>'+
- '<div class="row"><button id="edToolDrag" class="on" style="flex:1" title="Drag any joint on the model and it follows the mouse, sliding across the screen (whatever way the camera faces).&#10;&#10;Hips, pelvis or lower spine: the whole body moves (with the feet planted, the knees bend: crouch, lean, jump).&#10;A foot (or knee / thigh): the foot moves and the leg bends to reach it.&#10;A hand, the head or any other joint: it is pulled to the mouse by bending the bones above it (arm, neck and spine).&#10;Weapon tags: they move.&#10;&#10;A drag that starts away from the joints still turns the camera.">&#9995; Drag</button>'+
+ '<div class="row"><button id="edToolDrag" class="on" style="flex:1" title="Drag any joint on the model and it follows the mouse, sliding across the screen (whatever way the camera faces).&#10;&#10;Hips, pelvis or lower spine: the whole body moves (with the feet planted, the knees bend: crouch, lean, jump).&#10;A foot (or knee / thigh): the foot moves and the leg bends to reach it.&#10;A hand, the head or any other joint: it is pulled to the mouse by bending the bones above it (arm, neck and spine).&#10;Weapon tags: they move.&#10;&#10;Shift+drag any joint: the whole body moves as one piece (the feet with it).&#10;Ctrl+drag a part: it moves as one piece, keeping its shape: a hand, the head, an arm (at the shoulder), a whole finger, the torso (bending at the waist) or a leg (swung at the hip).&#10;&#10;A drag that starts away from the joints still turns the camera.">&#9995; Drag</button>'+
   '<button id="edToolRot" style="flex:1" title="Turn the selected bone with the mouse.&#10;Click a joint to select it, then drag inside the circle round it: it turns about the line you are looking along.&#10;Hold Shift to tumble it instead: left / right turns it about the screen\'s up line, up / down about its side line.&#10;Select Bip01 (the hips) to turn the whole body (with the feet set to move with the body: flips, hand-stands, lying down).">&#10227; Rotate</button>'+
   '<button id="edToolAxes" style="flex:1" title="Exact turns and moves along one axis: three rings (the bone\'s own X / Y / Z) or three arrows (the model\'s X / Y / Z) on the selected bone. Drag a ring or an arrow.">&#8853; Axes</button></div>'+
  '<div class="row co" id="edToolHelp" style="line-height:1.35"></div>'+
@@ -1897,8 +1899,30 @@ sect.innerHTML=
   '<button id="edFeetFollow" style="flex:1" title="Moving or turning the body (Bip01) carries the feet with it, as if the body were one piece: jumping, falling, lying down, hand-stands">move with the body</button></div>'+
  '<div class="row co">changes go to <button id="edScopeFrame" class="on" style="flex:1" title="Change only the frame shown (it becomes a key)">this frame</button>'+
   '<button id="edScopeAll" style="flex:1" title="Make the same change in every key frame, each from its own pose (turn the whole animation, lower it, lean it...)">every key</button></div>'+
- '<div class="row"><button id="edUndo" style="flex:1" disabled>Undo</button><button id="edRedo" style="flex:1" disabled>Redo</button></div>'+
+ '<div class="row"><button id="edUndo" style="flex:1" disabled>Undo (Ctrl+Z)</button><button id="edRedo" style="flex:1" disabled>Redo (Ctrl+Y)</button></div>'+
  '<div class="row co" id="edEdit"></div>'+
+'<div class="co" style="font-weight:600;font-size:10px;letter-spacing:.06em;text-transform:uppercase;margin:10px 0 3px;color:var(--dim)">Face</div>'+
+ '<div class="row co dim" id="edFaceNote" style="line-height:1.35"></div>'+
+ '<div class="row co"><select id="edFaceSel" style="flex:1;min-width:0" title="A face shape (morph target). The game plays these on the head; the channel is saved in the .skc under this name"></select>'+
+  '<input type="number" id="edFaceVal" min="0" max="100" step="5" style="width:52px" title="How far the shape is on in this frame: 0 (off) to 100 (full)">'+
+  '<button id="edFaceSet" title="Key this shape at this value in the frame shown. A shape has its own keys: the frames between them go in a straight line, and the body\'s keys are not touched">Key</button></div>'+
+ '<div class="row"><button id="edFaceDel" style="flex:1" title="Take away this shape\'s key in the frame shown (the frame then goes in a line between the keys either side)">Delete face key</button>'+
+  '<button id="edFaceClr" style="flex:1" title="Turn this shape off in every frame">Clear shape</button></div>'+
+ '<div class="row co" style="align-items:flex-start;gap:8px"><canvas id="edEyePad" style="width:84px;height:84px;flex:none;cursor:crosshair;border:1px solid var(--line);border-radius:5px" title="Eye look: click or drag. The middle looks straight ahead; left is his left, up is up. It keys EYES_left / right / up / down in the frame shown"></canvas>'+
+  '<div style="flex:1;min-width:0;line-height:1.35"><div id="edEyeTxt">eye look</div>'+
+  '<button id="edEyeCtr" style="margin-top:4px" title="Key the eyes looking straight ahead in the frame shown">Look ahead</button></div></div>'+
+ '<div class="row co">blink every <input type="number" id="edBlinkSec" value="4" min="0.5" max="30" step="0.5" style="width:46px;margin:0 3px" title="About how often, in seconds (each gap varies a little, as people blink)">s'+
+  '<button id="edBlink" style="margin-left:4px" title="Fill EYE_blink with blinks through the whole animation (replacing its keys)">Add blinks</button>'+
+  '<button id="edBlinkClr" title="Take every blink out (EYE_blink off in every frame)">None</button></div>'+
+ '<div class="row"><button id="edLip" style="flex:1" title="Read a .lip file (the game\'s lip sync: one value per frame for each face shape, made by the dialogue tools) into the face channels. Its samples are spread over this animation\'s frames">Import lip sync (.lip)\u2026</button>'+
+  '<input type="file" id="edLipFile" accept=".lip" style="display:none"></div>'+
+'<div class="co" style="font-weight:600;font-size:10px;letter-spacing:.06em;text-transform:uppercase;margin:10px 0 3px;color:var(--dim)">Head turn and movement</div>'+
+ '<div class="row co" title="Turns the head (Bip01 Head) on top of its pose: left (+) or right (-) and down (+) or up (-), easing in from the first frame given to the last">turn<input type="number" id="edHtYaw" value="30" step="5" style="width:44px;margin:0 2px">&deg; nod<input type="number" id="edHtNod" value="0" step="5" style="width:44px;margin:0 2px">&deg;</div>'+
+ '<div class="row co">frames<input type="number" id="edHtA" min="0" value="0" style="width:46px;margin:0 3px">to<input type="number" id="edHtB" min="0" value="0" style="width:46px;margin:0 3px"></div>'+
+ '<div class="row co"><select id="edHtShape" style="flex:1;min-width:0;margin-right:4px"><option value="back">there and back (a glance)</option><option value="hold">turn and hold to the end</option></select>'+
+  '<button id="edHt" title="Add the head turn / nod to those frames (each becomes a key)">Add</button></div>'+
+ '<div class="row co" title="How far the game moves the actor over the whole animation (X ahead, Y to his left, Z up) and how far it turns him (degrees, left +): the .skc\'s per-frame delta and angleDelta, spread evenly over the frames. Walk, run and turn clips carry these; a clip that should stay in place has 0">moves X<input type="text" id="edMvX" style="width:46px;margin:0 3px">Y<input type="text" id="edMvY" style="width:46px;margin:0 3px">Z<input type="text" id="edMvZ" style="width:46px;margin:0 3px"></div>'+
+ '<div class="row co">turns<input type="text" id="edMvT" style="width:46px;margin:0 3px" title="Degrees over the whole animation, left +">&deg;<button id="edMvSet" style="margin-left:6px" title="Spread these over the frames (the .skc\'s delta and angleDelta)">Set movement</button></div>'+
  '<div class="co" style="font-weight:600;font-size:10px;letter-spacing:.06em;text-transform:uppercase;margin:10px 0 3px;color:var(--dim)">Bones</div>'+
  '<div class="row"><button id="edListBtn" style="flex:1;min-width:0;display:flex;align-items:center;gap:6px" title="Every bone of the skeleton. Grey ones are posed by the game from the others and can\'t be set; a thigh or calf selects its foot (the game bends the legs to reach the feet)."><span class="albl" style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left">&mdash; bones &mdash;</span><span class="acar" style="color:var(--dim);font-size:10px">&#9668;</span></button>'+
   '<button id="edSkelBtn" class="on" title="Show the skeleton while editing: joints you can pose are filled dots">Skeleton</button></div>'+
@@ -2031,7 +2055,7 @@ function pickAt(mx,my){
 // bends the leg to reach it, skeletorbones IK). All maths is in model space (Z up), the
 // solver's convention: R[r][c], axes as columns, world = parent * local.
 let mode='rot', scope='frame', hover=null, drag=null;
-let tool='drag', feet='plant', hoverJ=-1, mouseNow=null;
+let tool='drag', feet='plant', hoverJ=-1, mouseNow=null, hoverRaw=-1, modNow='';
 const AXC=['#e5534b','#57ab5a','#539bf5'], AXN=['X','Y','Z'];
 const undoS=[], redoS=[];
 const I3=[[1,0,0],[0,1,0],[0,0,1]];
@@ -2162,7 +2186,11 @@ function drawToolHints(){
     if(sp[2]>0){ctx.setLineDash([5,4]);ctx.lineWidth=drag?2:1.5;ctx.strokeStyle=drag?'#f2cc60':TH.sel;
       ctx.beginPath();ctx.arc(sp[0],sp[1],ROT_R,0,7);ctx.stroke();ctx.setLineDash([]);}}
   const j=drag?-1:hoverJ;
-  if(j>=0&&mouseNow&&tool!=='axes'){const txt=tool==='drag'?kindText(j):(j===sel?'drag inside the circle to turn '+BONES[j].name:'click: select '+BONES[j].name);
+  if(j>=0&&mouseNow&&tool!=='rotate'&&modNow&&hoverRaw>=0){const P=modNow==='c'?partOf(hoverRaw):null;
+    const txt=modNow==='s'?'Shift+drag: move the whole body (the feet with it)':P?('Ctrl+drag: '+(P.kind==='keep'?'move ':P.kind==='leg'?'swing ':P.kind==='body'?'move ':'turn ')+P.label+' as one piece'+(P.kind==='body'?' (the feet stay planted)':'')):'Ctrl+drag: '+kindText(j).replace(/^drag: /,'');
+    ctx.font='11px ui-sans-serif,system-ui,sans-serif';const tw=ctx.measureText(txt).width,x=mouseNow[0]+14,y=mouseNow[1]+20;
+    ctx.fillStyle='rgba('+TH.labelbg+',.92)';ctx.fillRect(x-4,y-12,tw+8,17);ctx.fillStyle=TH.sel;ctx.fillText(txt,x,y);}
+  else if(j>=0&&mouseNow&&tool!=='axes'){const txt=tool==='drag'?kindText(j):(j===sel?'drag inside the circle to turn '+BONES[j].name:'click: select '+BONES[j].name);
     ctx.font='11px ui-sans-serif,system-ui,sans-serif';const tw=ctx.measureText(txt).width,x=mouseNow[0]+14,y=mouseNow[1]+20;
     ctx.fillStyle='rgba('+TH.labelbg+',.92)';ctx.fillRect(x-4,y-12,tw+8,17);ctx.fillStyle=TH.sel;ctx.fillText(txt,x,y);}
   ctx.restore();}
@@ -2180,16 +2208,17 @@ function hitHandle(mx,my){
 
 // ---- writing channels ------------------------------------------------------------------
 function cloneFrames(fr){return fr.map(clone);}
+function cloneFk(fk){const o={};for(const n in fk||{})o[n]=new Set(fk[n]);return o;}
 function snapDoc(label){return{frames:cloneFrames(doc.frames),keys:new Set(doc.keys),frameTime:doc.frameTime,
-  fdelta:doc.fdelta.map(d=>d.slice()),fang:doc.fang.slice(),label:label};}
+  fdelta:doc.fdelta.map(d=>d.slice()),fang:doc.fang.slice(),fk:cloneFk(doc.fk),label:label};}
 function pushUndo(label){undoS.push(snapDoc(label));if(undoS.length>60)undoS.shift();redoS.length=0;undoBtns();doc.dirty=true;info();}
 function undoBtns(){$('edUndo').disabled=!undoS.length;$('edRedo').disabled=!redoS.length;
   $('edUndo').title=undoS.length?'Undo: '+undoS[undoS.length-1].label:'Nothing to undo';
   $('edRedo').title=redoS.length?'Redo: '+redoS[redoS.length-1].label:'Nothing to redo';}
 function swapIn(from,to){if(!from.length)return;const st=from.pop();to.push(snapDoc(st.label));
   doc.frames=st.frames;doc.keys=st.keys;doc.frameTime=st.frameTime;DATA.anims[docIdx].frameTime=doc.frameTime;
-  doc.fdelta=st.fdelta;doc.fang=st.fang;doc.dirty=true;
-  resolveAll();refreshFrames();syncSpeed();undoBtns();$('edEdit').textContent=(from===undoS?'undid: ':'redid: ')+st.label;select(sel,-1);}
+  doc.fdelta=st.fdelta;doc.fang=st.fang;doc.fk=st.fk||{};doc.dirty=true;
+  resolveAll();refreshFrames();syncSpeed();undoBtns();faceList();mvFill();$('edEdit').textContent=(from===undoS?'undid: ':'redid: ')+st.label;select(sel,-1);}
 $('edUndo').onclick=()=>swapIn(undoS,redoS);$('edRedo').onclick=()=>swapIn(redoS,undoS);
 // sign continuity: q and -q are the same rotation; keep the one nearest the old value so
 // in-betweens don't take the long way round
@@ -2215,7 +2244,7 @@ function ensureChannels(i){
       if(BONES[j].boneType===4)raw[nm]=c==='pos'?[w.T[j][0],w.T[j][1],w.T[j][2],0]:S.mat_to_localquat(w.R[j]);
       else raw[nm]=c==='pos'?[w.L[j].p[0],w.L[j].p[1],w.L[j].p[2],0]:w.L[j].q.slice();}});
   return add.map(x=>BONES[x[0]].name+' '+x[1]);}
-function resolveAll(){DATA.anims[docIdx].frames=solveDoc(doc);DATA.anims[docIdx].raw=doc.frames;applyFrame();info();}
+function resolveAll(){DATA.anims[docIdx].frames=solveDoc(doc);DATA.anims[docIdx].raw=doc.frames;faceRefresh();applyFrame();info();}
 function resolveFrame(f){
   const frH=S.drivenHelpers(BONES,CTX,chanSet(doc));
   DATA.anims[docIdx].frames[f]=S.solveFrame(BONES,doc.frames[f],CTX,frH,doc.mv||null);applyFrame();}
@@ -2223,10 +2252,10 @@ function resolveFrame(f){
 // ---- applying an edit ------------------------------------------------------------------
 // Each drag step re-applies the whole change since the press to the snapshot taken then, so
 // a drag never accumulates error. Frames: the one shown, or every key ("every key").
-function beginEdit(i,kind,label,m){
+function beginEdit(i,kind,label,m,more){
   pushUndo(label);
   const f=curFrame,newKey=scope==='frame'&&!doc.keys.has(f);if(newKey)doc.keys.add(f);
-  let need=kind==='reach'?reachChain(i):[i];
+  let need=(kind==='reach'?reachChain(i):[i]).concat(more||[]);
   if(i===BIP&&kind!=='reach'&&feet==='plant')need=need.concat(FEET);    // planted: the legs bend to keep the feet
   let added=[];for(const j of need)added=added.concat(ensureChannels(j));
   if(added.length)resolveAll();
@@ -2245,6 +2274,7 @@ function endEdit(){
   if(st.raf)cancelAnimationFrame(st.raf);
   if(st.pending!==null)st.apply(st.pending);
   if(!st.changed&&!st.added.length){undoS.pop();undoBtns();if(st.newKey)doc.keys.delete(st.f);}
+  if(st.feetWas)feet=st.feetWas;
   drag=null;select(sel,-1);drawStrip();}
 // a model-space offset for bone i (a position channel: Bip01, a tag, a foot)
 function applyMove(dv){
@@ -2313,9 +2343,11 @@ function startAxes(m){
     st.move=mm=>{const l2=sv[0]*sv[0]+sv[1]*sv[1];if(l2<1e-6)return null;
       return((mm[0]-m[0])*sv[0]+(mm[1]-m[1])*sv[1])/l2;};}
   return true;}
-function startDrag(m){
+function startDrag(m,how){
   const h=pickAt(m[0],m[1]);if(h<0)return false;
   const t=pickTarget(h);if(t<0)return false;
+  if(how==='body'&&BIP>=0)return startBody(m,h,'follow');
+  if(how==='part'){const r=startPart(m,h);if(r)return true;}
   const kind=dragKind(t);
   if(kind==='turn'){select(t,t!==h?h:-1);$('edEdit').textContent=BONES[t].name+' has nothing above it to bend: turn it with Rotate';return true;}
   const i=kind==='body'?BIP:t;select(i,t!==h?h:-1);
@@ -2350,7 +2382,10 @@ function startRotate(m,shift){
 window.addEventListener('mousedown',e=>{
   if(e.button!==0||!EON()||!doc||!showSkel||e.target!==cv)return;
   const m=mouseIn(e);let took=false;
-  if(tool==='axes')took=sel>=0&&startAxes(m);
+  // Shift / Ctrl on a joint: the whole body, or one part, in any tool but Rotate (where
+  // Shift tumbles the bone)
+  if(tool!=='rotate'&&(e.shiftKey||e.ctrlKey||e.metaKey)&&pickAt(m[0],m[1])>=0)took=startDrag(m,e.shiftKey?'body':'part');
+  else if(tool==='axes')took=sel>=0&&startAxes(m);
   else if(tool==='drag')took=startDrag(m);
   else took=startRotate(m,e.shiftKey);
   if(took){grab(e);draw();}},true);
@@ -2361,6 +2396,7 @@ window.addEventListener('mousemove',e=>{
     if(tool==='axes'){const h=sel>=0&&m[2]?hitHandle(m[0],m[1]):null;
       if(h!==hover){hover=h;cv.style.cursor=h===null?'':'pointer';requestDraw();}return;}
     const j=m[2]?pickAt(m[0],m[1]):-1,t=j>=0?pickTarget(j):-1;
+    const md=e.shiftKey?'s':(e.ctrlKey||e.metaKey)?'c':'';if(md!==modNow||j!==hoverRaw){modNow=md;hoverRaw=j;requestDraw();}
     let cur='';
     if(t>=0)cur=tool==='drag'?'grab':'pointer';
     else if(tool==='rotate'&&sel>=0&&m[2]){const sp=projM(modelWorld(curFrame).T[sel]);if(sp[2]>0&&Math.hypot(m[0]-sp[0],m[1]-sp[1])<=ROT_R)cur='alias';}
@@ -2471,9 +2507,10 @@ function isRotChan(n){return n.endsWith(' rot')||n.endsWith(' rotFK');}
 function interpFrame(f){
   const k0=prevKey(f),k1=nextKey(f);if(k0<0&&k1<0)return;
   const out=doc.frames[f];
-  if(k0<0||k1<0){const src=doc.frames[k0<0?k1:k0];for(const n in src)out[n]=src[n].slice();return;}
+  if(k0<0||k1<0){const src=doc.frames[k0<0?k1:k0];for(const n in src)if(!isMorphChan(n)||!(n in out))out[n]=src[n].slice();return;}
   const A=doc.frames[k0],B=doc.frames[k1],t=(f-k0)/(k1-k0);
-  for(const n in A){const a=A[n],b=B[n];if(!b){out[n]=a.slice();continue;}
+  for(const n in A){if(isMorphChan(n)&&(n in out))continue;     // a face shape keeps its own curve (faceInterp)
+    const a=A[n],b=B[n];if(!b){out[n]=a.slice();continue;}
     out[n]=isRotChan(n)?S.quat_slerp(a,b,t):[0,1,2,3].map(c=>a[c]+(b[c]-a[c])*t);}}
 // the in-betweens whose keys include frame f (between the keys either side of it)
 function spanOf(f){const a=prevKey(f),b=nextKey(f),out=[];
@@ -2482,7 +2519,7 @@ function reinterpAll(){for(let f=0;f<doc.frames.length;f++)if(!doc.keys.has(f))i
 function resolveFrames(list){
   const frH=S.drivenHelpers(BONES,CTX,chanSet(doc)),rec=DATA.anims[docIdx];
   for(const f of list)rec.frames[f]=S.solveFrame(BONES,doc.frames[f],CTX,frH,doc.mv||null);
-  rec.raw=doc.frames;applyFrame();}
+  rec.raw=doc.frames;faceRefresh();applyFrame();}
 // the page's frame count changed (frames added / removed): scrubber, label, current frame
 function refreshFrames(){
   const n=doc.frames.length;scrub.max=n-1;if(curFrame>n-1)curFrame=n-1;scrub.value=curFrame;
@@ -2513,7 +2550,7 @@ function drawStrip(){
  window.addEventListener('mousemove',e=>{if(down&&doc)goFrame(at(e));});
  window.addEventListener('mouseup',()=>{down=false;});}
 // every frame change (play, scrub, step, edit) goes through applyFrame: keep the strip with it
-{const _apply=applyFrame;applyFrame=function(){_apply();try{drawStrip();if(sel>=0&&doc&&!drag)numFill();}catch(e){edErr('timeline',e);}};}
+{const _apply=applyFrame;applyFrame=function(){_apply();try{drawStrip();if(sel>=0&&doc&&!drag)numFill();if(doc)faceFill();}catch(e){edErr('timeline',e);}};}
 
 function tlEdit(label,fn){pushUndo(label);fn();$('edEdit').textContent=label;drawStrip();}
 $('edKeyPrev').onclick=()=>{const k=prevKey(curFrame);if(k>=0)goFrame(k);};
@@ -2540,10 +2577,302 @@ $('edSetFrames').onclick=()=>{
   tlEdit((n!==old?'frames '+old+' → '+n:'')+(n!==old&&Math.abs(1/fps-oft)>=1e-9?', ':'')+(Math.abs(1/fps-oft)>=1e-9?fps+' fps':''),()=>{
     if(n>old){const last=doc.frames[old-1];for(let f=old;f<n;f++){doc.frames.push(clone(last));doc.fdelta.push([0,0,0]);doc.fang.push(0);}}   // new frames hold the last key, and don't move the actor
     else if(n<old){doc.frames.length=n;doc.fdelta.length=n;doc.fang.length=n;for(const k of [...doc.keys])if(k>=n)doc.keys.delete(k);
-      if(!doc.keys.size)doc.keys.add(n-1);}                  // keep at least one key: the new last frame as it is
+      if(!doc.keys.size)doc.keys.add(n-1);                   // keep at least one key: the new last frame as it is
+      for(const c in doc.fk)for(const k of [...doc.fk[c]])if(k>=n)doc.fk[c].delete(k);}
+    for(const c in doc.fk)faceInterp(c);
     doc.frameTime=1/fps;DATA.anims[docIdx].frameTime=doc.frameTime;
     reinterpAll();resolveAll();refreshFrames();syncSpeed();});};
 for(const id of ['edFrames','edFps'])$(id).addEventListener('keydown',ev=>{ev.stopPropagation();if(ev.key==='Enter')$('edSetFrames').onclick();});
+
+// ---- Shift / Ctrl drags: the whole body, or one part as one piece -----------------------
+// Shift+drag any joint moves Bip01 with the feet (the body as one piece), the joint grabbed
+// following the mouse. Ctrl+drag moves one part keeping its shape: a part grabbed at its
+// base (hand, head, shoulder) is carried by bending the bones above it while it keeps its
+// turn in the model; one grabbed further along (a finger, the elbow, the neck, the spine)
+// turns as one piece about its base; a thigh or knee swings the leg (its foot target) about
+// the hip; the pelvis moves the body with the feet planted.
+function scopeTxt(f){return scope==='all'?' (every key)':' (frame '+f+')';}
+function rotBetween(a,b){const c=vcross(a,b),sn=vlen(c);if(sn<1e-9||vlen(a)<1e-6||vlen(b)<1e-6)return I3;
+  return axisRot(c,Math.atan2(sn,vdot(a,b)));}
+function startBody(m,h,ft){
+  select(BIP,-1);const was=feet;feet=ft;
+  const st=beginEdit(BIP,'body',ft==='follow'?'move the whole body':'move the body (feet planted)',m);
+  st.feetWas=was;const P0=st.w0.T[h];
+  st.apply=dv=>applyMove(dv);st.move=mm=>screenDelta(P0,mm[0]-m[0],mm[1]-m[1]);
+  $('edEdit').textContent=ft==='follow'?'moving the whole body (the feet with it)':'moving the body (the feet stay planted)';return true;}
+const bIdx=n=>BONES.findIndex(b=>b.name.toLowerCase()===String(n).toLowerCase());
+function sideOf(n){const m=/^(.*? )(L|R) /.exec(n);return m?m[1]+m[2]+' ':'';}    // "Bip01 L "
+function tipOf(r){let i=r;for(let g=0;g<8;g++){const k=BONES.findIndex(b=>b.parentIdx===i);if(k<0)break;i=k;}return i;}
+// the part a Ctrl+drag on joint h moves: {kind:'keep'|'swing'|'leg'|'body', root, tip, label}
+function partOf(h){
+  if(h<0)return null;
+  const n=BONES[h].name,ln=n.toLowerCase(),sd=sideOf(n);
+  if(/finger\d/.test(ln)){const r=bIdx(n.replace(/(finger\d)\d+$/i,'$1'));if(r<0||!keyable(r))return null;
+    const t=h===r?tipOf(r):h;return t===r?null:{kind:'swing',root:r,tip:t,label:'the whole finger'};}
+  if(/ hand$/.test(ln))return{kind:'keep',root:h,label:'the hand'};
+  if(/ (upperarm|clavicle)$/.test(ln))return{kind:'keep',root:h,label:'the arm'};
+  if(/ forearm$/.test(ln)){const r=bIdx(sd+'UpperArm');return r>=0&&keyable(r)?{kind:'swing',root:r,tip:h,label:'the arm'}:null;}
+  if(/ head$/.test(ln))return{kind:'keep',root:h,label:'the head'};
+  if(/ neck$/.test(ln)){const hd=BONES.findIndex(b=>b.parentIdx===h&&/ head$/i.test(b.name));
+    return hd>=0&&keyable(h)?{kind:'swing',root:h,tip:hd,label:'the head and neck'}:null;}
+  if(/ spine\d*$/.test(ln)){const r=BONES.findIndex(b=>/ spine$/i.test(b.name)),nk=BONES.findIndex(b=>/ neck$/i.test(b.name));
+    if(r<0||!keyable(r))return null;const t=h===r?(nk>=0?nk:tipOf(r)):h;return t===r?null:{kind:'swing',root:r,tip:t,label:'the torso'};}
+  if(h===BIP||/ pelvis$/.test(ln))return BIP>=0?{kind:'body',label:'the body'}:null;
+  if(/ (thigh|calf)$/.test(ln)&&(h in IKFOOT)){const fo=IKFOOT[h],ch=CTX.leg_chains.find(c=>c[2]===fo);
+    return ch?{kind:'leg',root:ch[0],foot:fo,tip:h===ch[0]?fo:h,label:'the leg'}:null;}
+  return null;}
+function startPart(m,h){
+  const P=partOf(h);if(!P)return false;
+  if(P.kind==='body')return startBody(m,h,'plant');
+  if(P.kind==='keep'){const ch=reachChain(P.root);if(!ch.length)return false;
+    select(P.root,-1);const st=beginEdit(P.root,'reach','move '+P.label,m,[P.root]);
+    const P0=st.w0.T[P.root];st.chain=ch;st.L0=st.w0.L.map(x=>({p:x.p,q:x.q.slice()}));st.part=P;
+    st.apply=target=>{applyReach(target);keepWorldRot(P.root);
+      $('edEdit').textContent='moved '+P.label+' as one piece (bending '+ch.map(j=>BONES[j].name.replace(/^Bip01 /,'')).join(', ')+')'+scopeTxt(st.f);};
+    st.move=mm=>vadd(P0,screenDelta(P0,mm[0]-m[0],mm[1]-m[1]));return true;}
+  if(P.kind==='swing'){select(P.root,-1);const st=beginEdit(P.root,'turn','turn '+P.label,m);
+    const J=st.w0.T[P.root],E0=st.w0.T[P.tip];st.part=P;
+    st.apply=target=>{applyTurn(rotBetween(vsub(E0,J),vsub(target,J)));$('edEdit').textContent='turned '+P.label+' as one piece'+scopeTxt(st.f);};
+    st.move=mm=>vadd(E0,screenDelta(E0,mm[0]-m[0],mm[1]-m[1]));return true;}
+  if(P.kind==='leg'){select(P.foot,h);const st=beginEdit(P.foot,'foot','swing '+P.label,m);
+    const J=st.w0.T[P.root],E0=st.w0.T[P.tip];st.part=P;
+    st.apply=target=>applyLegSwing(rotBetween(vsub(E0,J),vsub(target,J)));
+    st.move=mm=>vadd(E0,screenDelta(E0,mm[0]-m[0],mm[1]-m[1]));return true;}
+  return false;}
+// after the bones above a part have bent: give the part's base back its turn in the model
+function keepWorldRot(i){
+  const st=drag,b=BONES[i],nmR=b.name+' rot',pi=b.parentIdx;if(pi<0)return;
+  for(const f of st.frames){const raw=doc.frames[f],src=st.snap[f];if(!src[nmR])continue;
+    const w=modelWorld(f),Rw=(st.wf[f]||st.w0).R[i];
+    const q=nearQ(S.mat_to_localquat(mM(mT(w.R[pi]),Rw)),src[nmR]);raw[nmR]=q;if((b.name+' rotFK') in src)raw[b.name+' rotFK']=q.slice();}
+  afterApply(st.f);}
+// a leg swung about its hip: the foot's target (place and facing) turned round the hip joint
+function applyLegSwing(G){
+  const st=drag,P=st.part,fo=P.foot,np=BONES[fo].name+' pos',nr=BONES[fo].name+' rot';
+  for(const f of st.frames){const raw=doc.frames[f],src=st.snap[f],w=st.wf[f]||st.w0,J=w.T[P.root];
+    if(src[np]){const d=mV(G,vsub(src[np].slice(0,3),J));raw[np]=[J[0]+d[0],J[1]+d[1],J[2]+d[2],src[np][3]||0];}
+    if(src[nr])raw[nr]=nearQ(S.mat_to_localquat(mM(G,S.quat_to_mat(src[nr]))),src[nr]);}
+  st.changed=true;afterApply(st.f);
+  $('edEdit').textContent='swung '+P.label+' at the hip'+scopeTxt(st.f);}
+
+// ---- snap to the origin ----------------------------------------------------------------
+// The whole body (Bip01 with the feet) moves so the hips stand on the origin's vertical line;
+// with ground, also up / down so the lowest foot is at its height in the opening pose. With
+// "every key", every key moves by the amount the frame shown needs.
+function snapOrigin(ground){
+  if(!doc||drag)return;
+  if(BIP<0){$('edEdit').textContent='this skeleton has no Bip01 to move';return;}
+  const w=modelWorld(curFrame),P=w.T[BIP],dv=[-P[0],-P[1],0];
+  if(ground&&FEET.length){const B=openingPose()[1];let z=Infinity,zb=Infinity;
+    for(const fo of FEET){z=Math.min(z,w.T[fo][2]);zb=Math.min(zb,B[fo][2]);}
+    if(isFinite(z)&&isFinite(zb))dv[2]=zb-z;}
+  if(vlen(dv)<0.01){$('edEdit').textContent='the body is already '+(ground?'on the origin and the ground':'on the origin’s vertical line');return;}
+  const was=feet;feet='follow';
+  const st=beginEdit(BIP,'body',ground?'snap onto the origin and the ground':'snap onto the origin',null);
+  st.feetWas=was;st.apply=x=>applyMove(x);applyMove(dv);endEdit();
+  $('edEdit').textContent=(ground?'snapped the body onto the origin and the ground':'snapped the body onto the origin’s vertical line')+
+    ': moved '+vlen(dv).toFixed(1)+' units'+scopeTxt(curFrame);}
+$('edSnap').onclick=()=>snapOrigin(false);$('edSnapG').onclick=()=>snapOrigin(true);
+// Ctrl+Z / Ctrl+Y (Ctrl+Shift+Z) undo / redo, O / Shift+O snap. On the window's bubble
+// phase, after the pop-up lists (document, capture) have taken their keys; not in a field.
+window.addEventListener('keydown',e=>{
+  if(!EON()||!doc||drag)return;
+  const tg=e.target&&e.target.tagName;if(tg==='INPUT'||tg==='TEXTAREA'||tg==='SELECT')return;
+  const k=(e.key||'').toLowerCase(),c=e.ctrlKey||e.metaKey;
+  if(c&&!e.altKey&&k==='z'&&!e.shiftKey){if(undoS.length)swapIn(undoS,redoS);else $('edEdit').textContent='nothing to undo';}
+  else if(c&&!e.altKey&&(k==='y'||(k==='z'&&e.shiftKey))){if(redoS.length)swapIn(redoS,undoS);else $('edEdit').textContent='nothing to redo';}
+  else if(!c&&!e.altKey&&k==='o')snapOrigin(e.shiftKey);
+  else return;
+  e.preventDefault();e.stopPropagation();});
+
+// ---- face: shapes keyed on their own timeline --------------------------------------------
+// A face shape (morph target) is a plain channel named after it, value 0..100 in its first
+// float (morph_track). Its keys are its own (doc.fk[channel]): the frames between go in a
+// straight line, before the first / after the last hold it, and the body's keys never touch
+// it. A shape with no keys of its own keeps its value in each frame (a clip's own curve, or a
+// .lip file read in).
+const FACE_STD=['BROW_frown','BROW_lift','BROW_R_lift','BROW_worry','EYE_blink','EYES_down','EYES_Excited','EYES_L_squint',
+  'EYES_left','EYES_narrow','EYES_right','EYES_smile','EYES_up','JAW_open-closed','JAW_open-open','LIPS_compressed','MOUTH_grimace',
+  'MOUTH_L_smile_closed','MOUTH_L_smile_open','MOUTH_L_snarl_closed','MOUTH_L_snarl_open','MOUTH_smile_closed','MOUTH_smile_open',
+  'MOUTH_Snarl_closed','MOUTH_Snarl_open','VISEME_Bump','VISEME_Cage_','VISEME_Church','VISEME_Earth','VISEME_Eat','VISEME_Fave',
+  'VISEME_If','VISEME_New','VISEME_Oat','VISEME_Ox','VISEME_Roar','VISEME_Size','VISEME_Though','VISEME_Told','VISEME_Wet'];   // models/human/heads/*.skd
+function isMorphChan(n){return !/ (pos|rot|rotFK)$/.test(n);}
+const normM=n=>String(n).toLowerCase().replace(/[\s$_]+$/,'');   // "EYES_up_$" (.lip) = "EYES_up_" (.skc) = "EYES_up" (head)
+function faceNames(){const seen=new Map(),add=n=>{const k=normM(n);if(k&&!seen.has(k))seen.set(k,n);};
+  if(doc&&doc.frames.length)for(const n in doc.frames[0])if(isMorphChan(n))add(n);
+  const mn=DATA.morphNames||[];for(const n of mn)add(n);if(!mn.length)for(const n of FACE_STD)add(n);
+  return [...seen.values()].sort((a,b)=>a.toLowerCase()<b.toLowerCase()?-1:1);}
+// the animation's channel for a shape; make: add it (0 in every frame) when it has none, spelt
+// as the model's morph target (else the heads', else as given less a trailing $)
+function faceChan(name,make){
+  const k=normM(name);for(const n in doc.frames[0])if(isMorphChan(n)&&normM(n)===k)return n;
+  if(!make)return null;
+  const nm=(DATA.morphNames||[]).find(x=>normM(x)===k)||FACE_STD.find(x=>normM(x)===k)||String(name).replace(/\$+$/,'');
+  for(const raw of doc.frames)raw[nm]=[0,0,0,0];return nm;}
+function faceV(f,ch){const v=doc.frames[f]&&doc.frames[f][ch];return v?v[0]:0;}
+function faceInterp(ch){
+  const K=[...(doc.fk[ch]||[])].filter(k=>k<doc.frames.length).sort((a,b)=>a-b);if(!K.length)return;
+  const kv=K.map(k=>faceV(k,ch));
+  for(let f=0,j=0;f<doc.frames.length;f++){while(j<K.length&&K[j]<f)j++;if(j<K.length&&K[j]===f)continue;
+    let x;if(j===0)x=kv[0];else if(j>=K.length)x=kv[K.length-1];else{const a=K[j-1],b=K[j];x=kv[j-1]+(kv[j]-kv[j-1])*(f-a)/(b-a);}
+    const c=doc.frames[f][ch]||[0,0,0,0];doc.frames[f][ch]=[x,c[1]||0,c[2]||0,c[3]||0];}}
+// key one shape at frame f. Its first key: a shape whose value changes keeps every frame as a
+// key (as a clip's body does); a flat one gets keys at both ends, so one key is a rise and fall
+function faceKeyRaw(name,f,v){
+  const ch=faceChan(name,true),n=doc.frames.length;
+  if(!doc.fk[ch]){const vals=doc.frames.map((_,g)=>faceV(g,ch)),varies=vals.some(x=>Math.abs(x-vals[0])>1e-6);
+    doc.fk[ch]=varies?new Set(vals.map((_,g)=>g)):new Set([0,n-1]);}
+  doc.fk[ch].add(f);const c=doc.frames[f][ch];doc.frames[f][ch]=[v,c[1]||0,c[2]||0,c[3]||0];faceInterp(ch);return ch;}
+// the face weights the preview plays (as the viewer builds them: names matched case-blind)
+function faceMw(d){
+  const mn=DATA.morphNames||[];if(!mn.length||!d.frames.length)return null;
+  const key={};mn.forEach((n,i)=>{key[n.toLowerCase()]=i;});
+  const hit=[];for(const n in d.frames[0])if(isMorphChan(n)&&(n.toLowerCase() in key))hit.push([n,key[n.toLowerCase()]]);
+  if(!hit.length)return null;
+  return d.frames.map(raw=>{const w=new Array(mn.length).fill(0);for(const [n,i] of hit)if(raw[n])w[i]=raw[n][0];return w;});}
+function faceRefresh(){if(!doc||docIdx<0)return;const rec=DATA.anims[docIdx];if(!rec||!rec.edit)return;
+  const mw=faceMw(doc);if(mw)rec.mw=mw;else delete rec.mw;}
+function faceSel(){return $('edFaceSel').value;}
+function faceList(){
+  if(!doc)return;const el=$('edFaceSel'),was=el.value,names=faceNames();
+  el.innerHTML=names.map(n=>{const ch=faceChan(n,false);return '<option value="'+n.replace(/["]/g,'&quot;')+'">'+n.replace(/[&]/g,'&amp;').replace(/[<]/g,'&lt;')+(ch?'':' (new)')+'<'+'/option>';}).join('');
+  if(names.indexOf(was)>=0)el.value=was;
+  $('edFaceNote').textContent=(DATA.morphNames||[]).length?'':
+    'This model has no face shapes of its own (its head is a separate model), so the face is not shown here. The face channels are saved in the .skc and play on the head in the game.';
+  faceFill();}
+function faceFill(){
+  if(!doc)return;const nm=faceSel(),ch=nm?faceChan(nm,false):null;
+  if(document.activeElement!==$('edFaceVal'))$('edFaceVal').value=ch?String(Math.round(faceV(curFrame,ch)*10)/10):'0';
+  const fk=ch&&doc.fk[ch];$('edFaceDel').disabled=!(fk&&fk.has(curFrame)&&fk.size>1);$('edFaceClr').disabled=!ch;
+  const bl=faceChan('EYE_blink',false);$('edBlinkClr').disabled=!bl;
+  drawEyePad();}
+function faceDone(label){
+  faceList();faceRefresh();
+  try{if(typeof view!=='undefined'&&!view.face&&(DATA.morphNames||[]).length){view.face=true;const b=document.getElementById('bFace');if(b)b.classList.add('on');}}catch(e){}
+  applyFrame();info();if(label)$('edEdit').textContent=label;}
+function faceKey(name,v,label){
+  if(!doc)return;v=Math.max(0,Math.min(100,+v||0));
+  pushUndo(label||('key '+name+' '+v));faceKeyRaw(name,curFrame,v);faceDone((label||('keyed '+name+' at '+v))+' (frame '+curFrame+')');}
+$('edFaceSel').onchange=()=>faceFill();
+$('edFaceSet').onclick=()=>{const nm=faceSel();if(!nm)return;const v=parseFloat($('edFaceVal').value);
+  if(!isFinite(v)){$('edEdit').textContent='type a value from 0 to 100';return;}faceKey(nm,v);};
+$('edFaceVal').addEventListener('keydown',ev=>{ev.stopPropagation();if(ev.key==='Enter')$('edFaceSet').onclick();});
+$('edFaceDel').onclick=()=>{const ch=faceChan(faceSel(),false);if(!ch||!doc.fk[ch]||!doc.fk[ch].has(curFrame))return;
+  pushUndo('delete the '+ch+' key at '+curFrame);doc.fk[ch].delete(curFrame);faceInterp(ch);faceDone('deleted the '+ch+' key (frame '+curFrame+')');};
+$('edFaceClr').onclick=()=>{const ch=faceChan(faceSel(),false);if(!ch)return;
+  pushUndo('clear '+ch);for(const r of doc.frames)r[ch]=[0,0,0,0];doc.fk[ch]=new Set();faceDone('cleared '+ch+' (off in every frame)');};
+
+// eye look: EYES_left / right / up / down from one point in a square (x his left - / right +,
+// y up +)
+function eyeNames(){return['eyes_left','eyes_right','eyes_up','eyes_down'].map(k=>faceNames().find(n=>normM(n)===k)||FACE_STD.find(n=>normM(n)===k));}
+function eyeNow(){const E=eyeNames().map(n=>{const ch=faceChan(n,false);return ch?faceV(curFrame,ch):0;});
+  return[(E[1]-E[0])/100,(E[2]-E[3])/100];}
+function eyeSetRaw(x,y,f){const[L,R,U,D]=eyeNames(),r=v=>Math.round(Math.max(0,Math.min(1,v))*100);
+  faceKeyRaw(L,f,r(-x));faceKeyRaw(R,f,r(x));faceKeyRaw(U,f,r(y));faceKeyRaw(D,f,r(-y));}
+function eyeSet(x,y){if(!doc)return;pushUndo('eye look');eyeSetRaw(x,y,curFrame);
+  faceDone('eyes look '+(Math.abs(x)<0.01&&Math.abs(y)<0.01?'straight ahead':(x?(x<0?'left ':'right ')+Math.round(Math.abs(x)*100):'')+(y?(x?', ':'')+(y>0?'up ':'down ')+Math.round(Math.abs(y)*100):''))+' (frame '+curFrame+')');}
+function drawEyePad(){
+  const c=$('edEyePad');if(!c||c.offsetParent===null||!doc)return;
+  const w=c.clientWidth,h=c.clientHeight,dpr=window.devicePixelRatio||1;
+  if(c.width!==Math.round(w*dpr)){c.width=Math.round(w*dpr);c.height=Math.round(h*dpr);}
+  const g=c.getContext('2d');g.setTransform(dpr,0,0,dpr,0,0);g.clearRect(0,0,w,h);
+  g.strokeStyle=cssVar('--line')||'#2b333d';g.lineWidth=1;g.beginPath();g.moveTo(w/2,4);g.lineTo(w/2,h-4);g.moveTo(4,h/2);g.lineTo(w-4,h/2);g.stroke();
+  g.beginPath();g.arc(w/2,h/2,Math.min(w,h)/2-6,0,7);g.stroke();
+  const e=eyeNow(),x=w/2+e[0]*(w/2-8),y=h/2-e[1]*(h/2-8);
+  g.fillStyle=TH.sel;g.beginPath();g.arc(x,y,5,0,7);g.fill();
+  g.fillStyle=cssVar('--dim')||'#8b97a6';g.font='9px ui-sans-serif,system-ui,sans-serif';g.fillText('L',4,h/2-3);g.fillText('R',w-10,h/2-3);
+  $('edEyeTxt').textContent='eye look: '+(Math.abs(e[0])<0.005&&Math.abs(e[1])<0.005?'ahead':
+    [e[0]?(e[0]<0?'left ':'right ')+Math.round(Math.abs(e[0])*100):'',e[1]?(e[1]>0?'up ':'down ')+Math.round(Math.abs(e[1])*100):''].filter(Boolean).join(', '));}
+{let down=false;const at=ev=>{const c=$('edEyePad'),r=c.getBoundingClientRect();
+   return[Math.max(-1,Math.min(1,((ev.clientX-r.left)/r.width*2-1)*1.12)),Math.max(-1,Math.min(1,-((ev.clientY-r.top)/r.height*2-1)*1.12))];};
+ $('edEyePad').addEventListener('mousedown',ev=>{if(!doc)return;down=true;pushUndo('eye look');const p=at(ev);eyeSetRaw(p[0],p[1],curFrame);faceRefresh();applyFrame();ev.preventDefault();ev.stopPropagation();});
+ window.addEventListener('mousemove',ev=>{if(!down||!doc)return;const p=at(ev);eyeSetRaw(p[0],p[1],curFrame);faceRefresh();applyFrame();});
+ window.addEventListener('mouseup',()=>{if(!down)return;down=false;const e=eyeNow();
+   faceDone('eye look keyed (frame '+curFrame+'): '+$('edEyeTxt').textContent.replace(/^eye look: /,''));});}
+$('edEyeCtr').onclick=()=>eyeSet(0,0);
+
+// blinks: EYE_blink shut (100) for a moment every few seconds, each gap a little different
+function addBlinks(sec){
+  if(!doc)return 0;sec=Math.max(0.5,+sec||4);
+  const n=doc.frames.length,ft=doc.frameTime,dur=(n-1)*ft;
+  let seed=(n*7919+Math.round(sec*100))%2147483647||1;const rnd=()=>(seed=seed*16807%2147483647)/2147483647;
+  pushUndo('blinks every ~'+sec+' s');const ch=faceChan('EYE_blink',true);
+  for(const r of doc.frames)r[ch]=[0,0,0,0];const K=doc.fk[ch]=new Set([0,n-1]);
+  const put=(g,v)=>{if(g<0||g>=n)return;doc.frames[g][ch]=[v,0,0,0];K.add(g);};
+  let t=sec*(0.35+0.5*rnd()),cnt=0;
+  while(t<dur-0.05){const b=Math.round(t/ft);let a=Math.round((t-0.07)/ft),c=Math.round((t+0.12)/ft);
+    if(a>=b)a=b-1;if(c<=b)c=b+1;put(a,0);put(b,100);put(c,0);cnt++;t+=sec*(0.7+0.6*rnd());}
+  faceInterp(ch);
+  faceDone(cnt?'added '+cnt+' blink'+(cnt===1?'':'s')+' (about every '+sec+' s)':'the animation is too short for a blink every '+sec+' s');return cnt;}
+$('edBlink').onclick=()=>addBlinks(parseFloat($('edBlinkSec').value));
+$('edBlinkSec').addEventListener('keydown',ev=>{ev.stopPropagation();if(ev.key==='Enter')$('edBlink').onclick();});
+$('edBlinkClr').onclick=()=>{const ch=faceChan('EYE_blink',false);if(!ch)return;
+  pushUndo('no blinks');for(const r of doc.frames)r[ch]=[0,0,0,0];doc.fk[ch]=new Set();faceDone('took the blinks out');};
+
+// .lip (the dialogue tools' lip sync): "<Num channels> N", "<Num samples> M", then per shape
+// "<Channel> NAME" and M values 0..100, one a line (CRLF). Read into the face channels, the
+// samples spread over the frames (a .lip has one per frame of its .skc)
+function parseLip(txt){
+  let ns=0,cur=null;const ch=[];
+  for(const l0 of String(txt).split(/\r?\n/)){const l=l0.trim();if(!l)continue;let m;
+    if((m=/^<Num samples>\s*(\d+)/i.exec(l)))ns=+m[1];
+    else if(/^<Num channels>/i.test(l))continue;
+    else if((m=/^<Channel>\s*(.*)$/i.exec(l))){cur={name:m[1].trim(),v:[]};ch.push(cur);}
+    else if(cur&&/^-?\d+(\.\d+)?([eE][-+]?\d+)?$/.test(l))cur.v.push(+l);}
+  if(!ch.length)throw new Error('no <Channel> lines: not a .lip file');
+  return{samples:ns||Math.max(...ch.map(c=>c.v.length)),channels:ch};}
+function importLip(txt,file){
+  if(!doc)return 0;const P=parseLip(txt),n=doc.frames.length;
+  pushUndo('lip sync from '+(file||'a .lip file'));let used=0;
+  for(const c of P.channels){const v=c.v;if(!v.length||!c.name)continue;const ch=faceChan(c.name,true);delete doc.fk[ch];
+    for(let f=0;f<n;f++){const s=n<2?0:f*(v.length-1)/(n-1),i=Math.floor(s),t=s-i,x=v[i]+(v[Math.min(v.length-1,i+1)]-v[i])*t;
+      const o=doc.frames[f][ch];doc.frames[f][ch]=[x,o[1]||0,o[2]||0,o[3]||0];}used++;}
+  faceDone('read '+used+' face shape'+(used===1?'':'s')+' from '+(file||'the .lip file')+' ('+P.samples+' samples'+
+    (P.samples!==n?' spread over '+n+' frames: set the frames to '+P.samples+' first to keep its timing':' on '+n+' frames')+')');
+  return used;}
+$('edLip').onclick=()=>{if(!doc)return;$('edLipFile').value='';$('edLipFile').click();};
+$('edLipFile').onchange=()=>{const fl=$('edLipFile').files&&$('edLipFile').files[0];if(!fl||!doc)return;
+  const rd=new FileReader();rd.onload=()=>{try{importLip(rd.result,fl.name);}catch(e){$('edEdit').textContent='could not read '+fl.name+': '+((e&&e.message)||e);}};
+  rd.onerror=()=>{$('edEdit').textContent='could not read '+fl.name;};rd.readAsText(fl);};
+
+// ---- head turn / nod ----------------------------------------------------------------------
+// Bip01 Head turned on top of its own pose, about the model's up line (left +) and its side
+// line (down +), eased from frame A to frame B: there and back (a glance) or turn and hold
+// (it stays turned to the end). Each frame it touches becomes a key.
+function headTurn(yaw,nod,A,B,shape){
+  if(!doc)return false;const hd=BONES.findIndex(b=>/ head$/i.test(b.name)&&keyable(BONES.indexOf(b)));
+  if(hd<0){$('edEdit').textContent='this skeleton has no head bone to turn';return false;}
+  const n=doc.frames.length;A=Math.max(0,Math.min(n-1,Math.round(+A||0)));B=Math.max(0,Math.min(n-1,Math.round(+B||0)));if(B<A){const t=A;A=B;B=t;}
+  yaw=+yaw||0;nod=+nod||0;
+  if(!yaw&&!nod){$('edEdit').textContent='give a turn or a nod in degrees';return false;}
+  if(shape==='back'&&B-A<2){$('edEdit').textContent='a there-and-back turn needs at least 3 frames between "frames" and "to"';return false;}
+  const label='head '+(yaw?'turn '+yaw+'°':'')+(yaw&&nod?', ':'')+(nod?'nod '+nod+'°':'')+' (frames '+A+'–'+B+(shape==='hold'?', held':'')+')';
+  pushUndo(label);if(ensureChannels(hd).length)resolveAll();
+  const nm=BONES[hd].name,pi=BONES[hd].parentIdx,last=shape==='hold'?n-1:B,W={};
+  for(let g=A;g<=last;g++)W[g]=modelWorld(g);
+  for(let g=A;g<=last;g++){const t=B>A?Math.min(1,(g-A)/(B-A)):1,s=shape==='back'?Math.sin(Math.PI*t):t*t*(3-2*t);
+    const G=mM(axisRot([0,0,1],yaw*s*Math.PI/180),axisRot([0,1,0],nod*s*Math.PI/180));
+    const w=W[g],PR=pi>=0?w.R[pi]:I3,L0=mM(mT(PR),w.R[hd]),L1=mM(mT(PR),mM(G,w.R[hd])),D=mM(mT(L0),L1),raw=doc.frames[g];
+    const q=nearQ(S.mat_to_localquat(mM(S.quat_to_mat(raw[nm+' rot']),D)),raw[nm+' rot']);
+    raw[nm+' rot']=q;if((nm+' rotFK') in raw)raw[nm+' rotFK']=q.slice();doc.keys.add(g);}
+  reinterpAll();resolveAll();drawStrip();$('edEdit').textContent=label;return true;}
+$('edHt').onclick=()=>headTurn(parseFloat($('edHtYaw').value),parseFloat($('edHtNod').value),$('edHtA').value,$('edHtB').value,$('edHtShape').value);
+for(const id of ['edHtYaw','edHtNod','edHtA','edHtB'])$(id).addEventListener('keydown',ev=>{ev.stopPropagation();if(ev.key==='Enter')$('edHt').onclick();});
+
+// ---- movement and turn (the .skc's per-frame delta / angleDelta) -------------------------
+function mvTotals(){const t=[0,0,0];let a=0;
+  for(const d of doc.fdelta)for(let k=0;k<3;k++)t[k]+=d&&+d[k]||0;for(const x of doc.fang)a+=+x||0;return{t:t,a:a};}
+const MVIDS=['edMvX','edMvY','edMvZ','edMvT'];
+function mvFill(){if(!doc||MVIDS.indexOf(document.activeElement&&document.activeElement.id)>=0)return;
+  const m=mvTotals(),r=x=>String(Math.round(x*100)/100);MVIDS.forEach((id,k)=>{$(id).value=r(k<3?m.t[k]:m.a);});}
+function setMove(x,y,z,turn){
+  if(!doc)return;const n=doc.frames.length,v=[x,y,z,turn].map(c=>+c||0);
+  pushUndo('movement '+v.slice(0,3).join(' ')+', turn '+v[3]+'°');
+  doc.fdelta=doc.frames.map(()=>[v[0]/n,v[1]/n,v[2]/n]);doc.fang=doc.frames.map(()=>v[3]/n);
+  mvFill();info();$('edEdit').textContent='the game moves the actor '+Math.round(Math.hypot(v[0],v[1],v[2])*100)/100+' units and turns him '+v[3]+'° over the animation (spread evenly over its '+n+' frames)';}
+$('edMvSet').onclick=()=>{const v=MVIDS.map(id=>parseFloat($(id).value));
+  if(v.some(x=>!isFinite(x))){$('edEdit').textContent='type a number in each of X, Y, Z and turn';return;}setMove(v[0],v[1],v[2],v[3]);};
+for(const id of MVIDS)$(id).addEventListener('keydown',ev=>{ev.stopPropagation();if(ev.key==='Enter')$('edMvSet').onclick();});
 
 // ---- save: the page builds the .skc's content, the launcher writes it ---------------
 // Per frame: every channel's four floats, the bounds of the skeleton's bone positions (what
@@ -2623,10 +2952,12 @@ function info(){
 function show(){
   const rec={name:'✎ '+doc.name,frameTime:doc.frameTime,frames:solveDoc(doc),raw:doc.frames,edit:true};
   if(doc.mv)rec.mv=doc.mv;
+  {const mw=faceMw(doc);if(mw)rec.mw=mw;}
   if(docIdx>=0&&DATA.anims[docIdx]&&DATA.anims[docIdx].edit)DATA.anims[docIdx]=rec;
   else{DATA.anims.push(rec);docIdx=DATA.anims.length-1;}
   selectAnim(docIdx);info();$('edSelBox').style.display='';undoS.length=0;redoS.length=0;undoBtns();
   $('edFrames').value=doc.frames.length;syncSpeed();
+  faceList();faceRefresh();mvFill();$('edHtA').value=0;$('edHtB').value=doc.frames.length-1;
   $('edEdit').textContent='';select(sel,-1);drawStrip();toolHelp();return rec;}
 // In-page check: the editor's own pose solver against the frames the viewer built for the
 // same animation (rounded to 3 / 5 decimals, so differences up to ~5e-4 are expected). It
@@ -2652,11 +2983,19 @@ function start(kind){
     if(!a.raw||!a.raw.length){$('edCheck').textContent=a.name+' has no body channels to edit (facial only)';$('edCheck').style.color='';return;}
     doc={name:a.name,frameTime:a.frameTime,frames:a.raw.map(clone),mv:a.mv?clone(a.mv):null,keys:new Set(a.raw.map((_,f)=>f)),
          fdelta:a.raw.map((_,f)=>a.fdelta&&a.fdelta[f]?a.fdelta[f].slice():[0,0,0]),
-         fang:a.raw.map((_,f)=>a.fang&&a.fang[f]!=null?a.fang[f]:0),flags:a.flags||0,orig:a.raw.map(clone),dirty:false};
-    check(show(),a);return;}
+         fang:a.raw.map((_,f)=>a.fang&&a.fang[f]!=null?a.fang[f]:0),flags:a.flags||0,orig:a.raw.map(clone),dirty:false,fk:{}};
+    // The Baked in panel re-poses the head and body and scales the movement in a.raw /
+    // a.fdelta / a.fang; its face amounts only scale the preview's weights, so they are put
+    // into the face channels here, or the edit (and its save) would have the clip's own face
+    let baked=false;
+    try{if(typeof BAKE!=='undefined'&&typeof bakeGroup==='function'){const am=BAKE.amt[curAnim]||{};
+      for(const raw of doc.frames)for(const n in raw){if(!isMorphChan(n))continue;const g=bakeGroup(n),s=am[g];
+        if(s!=null&&s!==1){raw[n]=[raw[n][0]*s,raw[n][1],raw[n][2],raw[n][3]];baked=true;}}}}
+    catch(e){console.error('Animation Editor (baked in amounts):',e);}
+    check(show(),a);if(baked){doc.dirty=true;info();}return;}
   const src=kind==='apose'?ED.apose:ED.base;
   doc={name:kind==='apose'?'new_from_apose':'new_from_opening_pose',frameTime:0.05,frames:[clone(src||{})],mv:null,keys:new Set([0]),
-       fdelta:[[0,0,0]],fang:[0],flags:0,orig:null,dirty:true};
+       fdelta:[[0,0,0]],fang:[0],flags:0,orig:null,dirty:true,fk:{}};
   show();$('edCheck').textContent='';}
 $('edFromClip').onclick=()=>start('clip');
 $('edFromApose').onclick=()=>start('apose');
@@ -2668,7 +3007,10 @@ window.__ANIMED__={get doc(){return doc;},get sel(){return sel;},start:start,sol
                    setTool:setTool,setFeet:setFeet,dragKind:dragKind,reachChain:reachChain,screenDelta:screenDelta,
                    mirrorOf:mirrorOf,mirrorEdit:mirrorEdit,numSet:numSet,BIP:BIP,get tool(){return tool;},
                    ringPts:ringPts,arrowEnd:arrowEnd,projM:projM,goFrame:goFrame,keyList:keyList,savePayload:savePayload,
-                   get mode(){return mode;},get scope(){return scope;}};   // read by the tests
+                   get mode(){return mode;},get scope(){return scope;},swapIn:()=>swapIn(undoS,redoS),redo:()=>swapIn(redoS,undoS),
+                   get undoN(){return undoS.length;},startDrag:startDrag,endEdit:endEdit,get drag(){return drag;},partOf:partOf,
+                   snapOrigin:snapOrigin,faceKey:faceKey,faceNames:faceNames,faceChan:faceChan,addBlinks:addBlinks,
+                   importLip:importLip,parseLip:parseLip,headTurn:headTurn,setMove:setMove,eyeSet:eyeSet};   // read by the tests
 })();
 """
 
@@ -3059,6 +3401,11 @@ VIEWER_KEYS={
    _kx("Home|End","jump to the first / last row",("Home","first","jump to the first row"),("End","last","jump to the last row")),
    _kx("click","open a row",("Click","open")),
    _kx("Esc","close the list",("Esc","close")),
+   _kx_sub("Animation Editor (Edit animations on)","play"),
+   _kx("Ctrl+Z|Ctrl+Y","undo / redo the last change (Ctrl+Shift+Z redoes too)",("Ctrl+Z","undo","undo the last edit"),("Ctrl+Y","redo","redo the edit undone")),
+   _kx("Shift+drag","a joint: move the whole body as one piece (the feet with it)",("Shift+Drag","body","move the whole body")),
+   _kx("Ctrl+drag","a part: move it as one piece (hand, head, arm, finger, torso, leg)",("Ctrl+Drag","part","move one part as one piece")),
+   _kx("O|Shift+O","snap the body onto the origin's vertical line / and onto the ground",("O","snap","snap the body onto the origin"),("Shift+O","ground","snap onto the origin and the ground")),
   ]},
  ]}
 
@@ -3520,7 +3867,7 @@ ANIM_PRELOAD_MAX=150
 # Page format revision, baked into each HTML as <!--mohaa-viewer-rev:N-->. Bump it when
 # the page gains features a cached HTML must pick up, and raise VIEWER_REV_REQUIRED in
 # mohaa_launcher.py to match so older pages are rebuilt. History: docs/CHANGELOG.md.
-VIEWER_REV=82
+VIEWER_REV=83
 
 _HTML_TEMPLATE = r"""<!DOCTYPE html>
 <!--mohaa-viewer-rev:__REV__-->

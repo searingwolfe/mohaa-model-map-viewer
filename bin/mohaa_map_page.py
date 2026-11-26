@@ -502,11 +502,12 @@ window.setEditorMode=function(on){window.__EDITON__=!!on;
        <button class="sm" id="bModEdit" title="Edit the entity as the .bsp's entity lump holds it: &quot;key&quot; &quot;value&quot; lines, applied as you type. A path node joins the AI's paths again when you're done&#10;&#10;Hotkey: Alt+E">Edit parameters</button>
        <button class="sm" id="bModMove" title="Move: the selected entity follows the mouse again; a click on the map puts it there (Esc or Move again cancels). Off while Trim origin is on&#10;&#10;Hotkey: Alt+M">Move</button>
        <button class="sm" id="bModTrim" title="Trim origin: the camera stops and W A S D / the arrow keys move the entity along the map's axes (the way you face), Space / C up and down, by the trim step. Esc or T stops&#10;&#10;Hotkey: Alt+T">Trim origin</button>
-       <button class="sm" id="bModYaw" title="Yaw: turn the selected entity to the next of 0, 90, 180 and 270 degrees (one that faces none of those starts at 0). An info_ class gets &quot;angle&quot;, anything else &quot;angles&quot; &quot;0 yaw 0&quot;. Every selected row turns to the same yaw; each press is one Undo step&#10;&#10;Hotkey: Alt+R">Yaw</button>
+       <button class="sm" id="bModYaw" title="Yaw: turn the selected entity to the next of 0, 90, 180 and 270 degrees (one that faces none of those starts at 0). An info_ class, a func_ladder or anything else that faces by &quot;angle&quot; keeps &quot;angle&quot;; anything else gets &quot;angles&quot; &quot;0 yaw 0&quot;. Every selected row turns to the same yaw; each press is one Undo step&#10;&#10;Hotkey: Alt+R">Yaw</button>
        <button class="sm" id="bModLink" title="Make path: click another entity to set this one's &quot;target&quot; to its targetname (only entities that have one can be picked), drawn as a target link. The clicked one is selected after, so pressing Make path again goes on along the path (info_waypoint, info_splinepath, script_origin...). Esc cancels">Make path</button>
        <button class="sm" id="bModEye" title="Eye view: put the camera where the entity sees from, as Eye view does for the map's entities: a path node, a player start or an AI 82 units above the floor under it, anything else at its origin, facing its angles, else its target, else yaw 0">Eye view</button>
        <button class="sm" id="bModFly" title="Fly the camera to the entity&#10;&#10;Hotkey: click its row in the list again once it is selected (green), or double-click the row">Fly to</button>
        <button class="sm" id="bModSf" title="Spawnflags: tick the selected entity's spawnflags from the list of its class (a path node: DONT_LINK, DUCK, COVER, CONCEALMENT, CORNER_LEFT, CORNER_RIGHT, SNIPER, CRATE, and LOW_WALL_ARC for Spearhead / Breakthrough only)&#10;&#10;Hotkey: Alt+S">Spawnflags</button>
+       <button class="sm" id="bModTurn" title="Turn: what is selected turned 90 degrees about its middle, so it lies the other way (a ladder long along Y becomes long along X): with Edit map on, the selected brushes and patches (their brush entity's origin too) and the point entities selected with them; else several selected entities, moved round their middle. A copy following the mouse (Copy, Alt+C) turns before it is put down. Arrows (angle / angles) don't change: Yaw turns those. One Undo each&#10;&#10;Hotkey: Alt+Q (Alt+Shift+Q the other way)">Turn</button>
        <button class="sm" id="bModDup" title="Copy: the selected entities again (Shift+click adds more to the selection, the map's own entities selected in the view too), without targetname or target. They follow the mouse together, spaced as they are, until a click puts them down; Esc takes them away. With Edit map on and brushes, patches, terrain blocks or brush entities selected, it copies those the same way (one Undo takes them away); it doesn't copy brushes and entities at once&#10;&#10;Hotkey: Alt+C">Copy</button>
        <button class="sm" id="bModHUndo" title="Undo the last change to Modify's entities, back to none added&#10;&#10;Hotkey: Alt+Z">Undo</button>
        <button class="sm" id="bModHRedo" title="Redo the last change undone&#10;&#10;Hotkey: Alt+Y or Alt+Shift+Z">Redo</button>
@@ -571,7 +572,8 @@ const TF_SKY=1, TF_NODRAW=2, TF_ALPHATEST=4, TF_BLEND=8, TF_ADD=16, TF_TWOSIDED=
 const C_WORLD=1<<0, C_DETAIL=1<<1, C_ENTBRUSH=1<<2, C_PATCH=1<<3, C_TERRAIN=1<<4, C_CAULK=1<<5,
       C_CLIP=1<<6, C_TRIGGER=1<<7, C_HINT=1<<8, C_SKY=1<<9, C_LIQUID=1<<10, C_TRANS=1<<11,
       C_ORIGIN=1<<12, C_PORTAL=1<<13, C_NODRAW=1<<14, C_POINT=1<<15, C_LIGHT=1<<16, C_AINODE=1<<17,
-      C_PATH=1<<18, C_MODEL=1<<19, C_STATIC=1<<20, C_VIS=1<<21, C_RAIN=1<<22, C_FOLIAGE=1<<23, C_SCRIPT=1<<24, C_SCRTRIG=1<<25;
+      C_PATH=1<<18, C_MODEL=1<<19, C_STATIC=1<<20, C_VIS=1<<21, C_RAIN=1<<22, C_FOLIAGE=1<<23, C_SCRIPT=1<<24, C_SCRTRIG=1<<25,
+      C_NEWBR=1<<26, C_NEWENT=1<<27, C_NEW=C_NEWBR|C_NEWENT;
 const C_ENTITIES=C_ENTBRUSH|C_POINT|C_LIGHT|C_AINODE|C_PATH|C_MODEL|C_STATIC|C_VIS;
 // C_STATIC has no Show button of its own: it marks the static props, which get no label
 // unless selected; Models and Entities hide them. C_RAIN (common/rain, the volumes of
@@ -6216,7 +6218,9 @@ function cspecInfo(ei){
 // is the way a climber looks at it (SetLadderFacing); CanUseLadder takes a climber within
 // 52 units of its origin, looking that way (within about 98°) from the side it faces away
 // from, and puts one 29 units in front of it at the bottom, 26 behind it at the top
-function ladderYaw(ei){const a=cspecValues(ei).get('angle');const y=parseFloat(a);return a!=null&&isFinite(y)?((y%360)+360)%360:null;}
+function ladderYaw(ei){const V=cspecValues(ei),a=V.get('angle');let y=parseFloat(a);
+  if(!(a!=null&&isFinite(y))){const v=parseVec(V.get('angles'),3);if(!v)return null;y=v[1];}   // "angles" "0 yaw 0" faces it too
+  return ((y%360)+360)%360;}
 function ladderInfo(ei){
   const e=MAP.ents[ei];if(!e||e.cls!=='func_ladder')return'';
   const y=ladderYaw(ei),dirs={0:'+x (east)',90:'+y (north)',180:'-x (west)',270:'-y (south)'};
@@ -6341,12 +6345,12 @@ function expSolids(){
     const e=MAP.ents[p.ent];if(!isFinite(p.mins[0])||e.cls.startsWith('trigger_'))continue;
     if(p.ent>0&&!WORLDLIKE[e.cls]&&(expRole(p.ent)==='chunk'||expRole(p.ent)==='trigger'))continue;
     const pr=e.prims[p.bn];if(!pr||!pr.d)continue;
-    if(p.kind===0){const faces=pr.d.faces;if(!faces.length||!solidC(faces[0].cont,texFor(faces[0].tex)))continue;
+    if(p.kind===0){const faces=pr.d.faces;if(!faces.length||!(brushCont(p.ent,p.bn,faces)&(1|0x2000)))continue;
       const pl=[];for(const f of faces){const q=planeOf(f);if(q)pl.push(q);}
       if(!pl.length)continue;bevel(pl,p.mins,p.maxs);
       L.push({ei:p.ent,mn:p.mins.slice(),mx:p.maxs.slice(),pl:pl});}
     else{
-      if(p.kind===1&&!solidC(pr.d.cont,texFor(pr.d.tex)))continue;
+      if(p.kind===1&&!(patchCont(pr.d)&(1|0x2000)))continue;
       for(let f=p.f0;f<p.f1;f++){
         if(p.kind===2&&(TEX[SC.faceTex[f]].p||[]).some(x=>CLEARS_SOLID.has(x)))continue;
         const i0=SC.faceI0[f],n=SC.faceIN[f]/3;
@@ -6972,9 +6976,7 @@ function traceBrushes(){
     const pr=MAP.ents[p.ent].prims[p.bn];if(!pr||!pr.d||!pr.d.faces.length)continue;
     // the brush's contents: its first side's, as the compiled .bsp has them on the face,
     // else its shader's (solid unless a surfaceparm clears it)
-    const faces=pr.d.faces,f0=faces[0],te=texFor(f0.tex);
-    let c=(f0.cont|0)&~0x8000000;
-    if(!c){c=(te.cf|0)|((te.p||[]).some(x=>CLEARS_SOLID.has(x))?0:1);}
+    const faces=pr.d.faces,c=brushCont(p.ent,p.bn,faces);
     if(!(c&MASK_PATHSOLID))continue;
     const pl=[];for(const f of faces){const q=planeOf(f);if(q)pl.push(q);}
     const mn=p.mins,mx=p.maxs;
@@ -7038,6 +7040,21 @@ function pgEntSolid(ei){
   const r=expRole(ei);if(r==='smashed'||r==='chunk')return -1;
   return ei;
 }
+// A brush's contents as the game's collision has them: its record's (dbrush shader) are all
+// its sides' contents together (EA's compiler, and ours: writebsp.c), so a brush with a
+// nodraw / nonsolid side first and a solid floor face on top is solid. From a .bsp: the
+// brush's own record where it differs from its first face's, else its faces' (each the
+// side's shader contents in the .bsp). In a .map the compiler takes each side's contents
+// from its shader (only "detail" from the face's flags), so they come from the shaders.
+function brushCont(ent,bn,faces){
+  const bc=pgBcont(ent,bn);if(bc!=null)return (bc|0)&~CONTENTS_DETAIL;
+  const fromBsp=D.kind==='bsp';let c=0;
+  for(const f of faces){const te=texFor(f.tex);
+    c|=(fromBsp&&(f.cont|0)&~CONTENTS_DETAIL)?((f.cont|0)&~CONTENTS_DETAIL):(((te.cf|0)|((te.p||[]).some(x=>CLEARS_SOLID.has(x))?0:1))&~CONTENTS_DETAIL);}
+  return c;}
+// a patch's, the same way (its shader's in a .map)
+function patchCont(d){const te=texFor(d.tex),c=(d.cont|0)&~CONTENTS_DETAIL;
+  return (D.kind==='bsp'&&c)?c:(((te.cf|0)|((te.p||[]).some(x=>CLEARS_SOLID.has(x))?0:1))&~CONTENTS_DETAIL);}
 let PG_BC=null;
 function pgBcont(ei,bn){
   if(!PG_BC){PG_BC=new Map();const B=D.bsp&&D.bsp.bcont;if(B)for(const k in B)for(const[b,c]of B[k])PG_BC.set(+k*65536+b,c);}
@@ -7080,13 +7097,13 @@ function pgBuild(MASK,entSolid){
     const pr=MAP.ents[p.ent].prims[p.bn];if(!pr||!pr.d)continue;
     if(p.kind===0){const faces=pr.d.faces;if(!faces.length)continue;
       // the brush's own contents (from the .bsp, where they differ from its first face's)
-      const bc=pgBcont(p.ent,p.bn),c=pgCont(bc!=null?bc:faces[0].cont,texFor(faces[0].tex));
+      const c=brushCont(p.ent,p.bn,faces);
       if(!(c&MASK))continue;
       const pl=[];for(const f of faces){const q=planeOf(f);if(q)pl.push(q);}
       if(!pl.length)continue;bevel(pl,p.mins,p.maxs);
       L.push({ent:ent,mn:p.mins.slice(),mx:p.maxs.slice(),pl:pl,patch:false,pi:SC.prims.indexOf(p)});}
     else if(p.kind===1){
-      if(!(pgCont(pr.d.cont,texFor(pr.d.tex))&MASK))continue;
+      if(!(patchCont(pr.d)&MASK))continue;
       for(let f=p.f0;f<p.f1;f++){const i0=SC.faceI0[f],n=SC.faceIN[f]/3;
         for(let t=0;t<n;t++){if((t%4)>=2)continue;const q=i0+t*3;facet(ent,pt(SC.tri[q]),pt(SC.tri[q+1]),pt(SC.tri[q+2]));}}}
   }
@@ -8542,6 +8559,41 @@ function selBounds(){
 // Every Hide and Show all goes on a stack that Ctrl+Z (or the Undo button) unwinds one step
 // at a time: a Hide shows those things again, a Show all hides again what it showed.
 const HIDE_UNDO=[];
+// Ctrl+Z undoes the latest step of either kind: a Hide / Show, or a change Modify's Undo
+// (Alt+Z) takes back (entities, brushes). Each step carries a number in the order made.
+let ACT_SEQ=0;
+// Redo: a Hide / Show undone can be done again (HIDE_REDO) until a new one is made. Ctrl+Y
+// (Ctrl+Shift+Z) redoes whichever kind was undone last (REDO_KINDS: 'h' a hide, 'm' a change
+// Modify's Redo, Alt+Y, does).
+const HIDE_REDO=[],REDO_KINDS=[];let _hideRedoing=false;
+HIDE_UNDO.push=function(...a){for(const st of a)if(st&&typeof st==='object')st.seq=++ACT_SEQ;
+  if(!_hideRedoing&&HIDE_REDO.length){HIDE_REDO.length=0;}
+  return Array.prototype.push.apply(this,a);};
+function modUndoSeq(){if(!MOD||!MOD.undo.length)return -1;try{return JSON.parse(MOD.undo[MOD.undo.length-1]).seq||0;}catch(_e){return 0;}}
+function ctrlUndo(){
+  const h=HIDE_UNDO.length?(HIDE_UNDO[HIDE_UNDO.length-1].seq||0):-1,m=modUndoSeq();
+  if(h<0&&m<0){flash('Nothing to undo (Ctrl+Z): no hide, show or change to take back');return;}
+  if(m>h){modUndoGo(-1);return;}
+  undoHide();}
+function ctrlRedo(){
+  for(let i=REDO_KINDS.length-1;i>=0;i--){const k=REDO_KINDS[i];
+    if(k==='h'&&HIDE_REDO.length){REDO_KINDS.splice(i,1);redoHide();return;}
+    if(k==='m'&&MOD.redo.length){REDO_KINDS.splice(i,1);modUndoGo(1);return;}}
+  if(HIDE_REDO.length){redoHide();return;}if(MOD.redo.length){modUndoGo(1);return;}
+  flash('Nothing to redo (Ctrl+Y)');}
+// a Hide / Show undone, made again
+function redoHide(){
+  const step=HIDE_REDO.pop();if(!step){flash('Nothing to redo');return;}
+  _hideRedoing=true;
+  try{
+    if(step.mod){const m=step.mod;if(!MOD.ents.includes(m)){redoHide();return;}
+      m.hid=!step.was;HIDE_UNDO.push(step);modChanged(false);flash('Redo: '+modName(m)+(m.hid?' hidden':' shown')+' again');return;}
+    if(step.all||step.show){for(const i of step.e)hidEnt.delete(i);for(const i of step.p)hidPrim.delete(i);}
+    else{for(const i of step.e)hidEnt.add(i);for(const i of step.p)hidPrim.add(i);}
+    HIDE_UNDO.push(step);rebuildWorld();updateSelPanel();
+    const n=step.e.length+step.p.length;
+    flash((step.all?'Redo Show all: '+n+' shown again':step.show?'Redo Show: '+n+' shown again':'Redo Hide: '+n+' hidden again')+(HIDE_REDO.length?' (Ctrl+Y again for the next)':''));}
+  finally{_hideRedoing=false;}}
 function hideSelection(){
   if(!SEL.size)return;
   const step={e:[],p:[]};
@@ -8551,11 +8603,16 @@ function hideSelection(){
   const n=SEL.size;SEL.clear();rebuildWorld();updateSelPanel();flash(n+' hidden - Ctrl+Z undoes, Shift+H shows everything');
 }
 function unhideAll(){
+  const mh=(MOD&&MOD.ents||[]).filter(m=>m.hid&&!m.del);
   if(hidEnt.size||hidPrim.size)HIDE_UNDO.push({all:true,e:[...hidEnt],p:[...hidPrim]});
+  for(const m of mh){HIDE_UNDO.push({mod:m,was:true,e:[],p:[]});m.hid=false;}
+  if(mh.length)modChanged(false);
   hidEnt.clear();hidPrim.clear();rebuildWorld();updateSelPanel();}
 function undoHide(){
   const step=HIDE_UNDO.pop();
-  if(!step){flash('Nothing to undo: Ctrl+Z undoes a Hide or Show all');return;}
+  if(!step){flash(MOD&&MOD.undo.length?'No Hide or Show to undo here; Undo (Alt+Z) still has '+MOD.undo.length+' change'+(MOD.undo.length===1?'':'s')+' to undo'
+    :'Nothing to undo: Ctrl+Z undoes a Hide or Show all, or a change (as Alt+Z)');return;}
+  HIDE_REDO.push(step);REDO_KINDS.push('h');
   if(step.mod){const m=step.mod;
     if(MOD.ents.includes(m)){m.hid=step.was;modChanged(false);flash('Undo: '+modName(m)+(m.hid?' hidden':' shown')+' again'+(HIDE_UNDO.length?' (Ctrl+Z again for the step before)':''));}
     else undoHide();                          // removed since: the step before
@@ -8864,7 +8921,8 @@ window.addEventListener('keydown',e=>{
   // cursor, as ( x y z ) for a script
   if(combo==='ctrl+c'&&hoverAt){let t='';try{t=String(window.getSelection()||'');}catch(_e){}
     if(!t){copyCursorPos();e.preventDefault();return;}}
-  if(combo==='ctrl+z'){undoHide();e.preventDefault();return;}     // before Radiant-look's Z
+  if(combo==='ctrl+z'){ctrlUndo();e.preventDefault();return;}     // before Radiant-look's Z
+  if(combo==='ctrl+y'||combo==='ctrl+shift+z'){ctrlRedo();e.preventDefault();return;}
   if(combo==='ctrl+a'){showAllGroups();flash('Every group is shown');e.preventDefault();return;}   // and A
   if(combo==='ctrl+shift+a'){hideAllGroups();flash('Only the map\'s surfaces are shown (Ctrl+A shows everything again)');e.preventDefault();return;}
   if((e.ctrlKey||e.metaKey)&&kl==='f'){$('findIn').focus();$('findIn').select();e.preventDefault();return;}
@@ -8885,9 +8943,11 @@ window.addEventListener('keydown',e=>{
   // Alt+C Copy, Alt+Z Undo, Alt+Y / Alt+Shift+Z Redo: Modify's buttons, as clicked
   if(e.altKey&&!e.ctrlKey&&!e.metaKey&&(kl==='c'||kl==='z'||kl==='y')){
     const id=kl==='c'?'bModDup':(kl==='y'||e.shiftKey)?'bModHRedo':'bModHUndo',b=$(id);
-    if(b&&!b.disabled)b.click();else if(kl!=='c')flash(id==='bModHUndo'?'Nothing to undo in Modify':'Nothing to redo in Modify');
+    if(b&&!b.disabled)b.click();else if(kl!=='c')flash(modNothingMsg(id==='bModHUndo'?-1:1));
     else flash('Select what to copy first (Shift+click adds more)');
     e.preventDefault();return;}
+  // Alt+Q Turn (Alt+Shift+Q the other way)
+  if(e.altKey&&!e.ctrlKey&&!e.metaKey&&kl==='q'){modTurn(e.shiftKey?-90:90);e.preventDefault();return;}
   // Alt+A Add: Modify's Add, as clicked (again cancels the placing)
   if(e.altKey&&!e.ctrlKey&&!e.metaKey&&kl==='a'){const b=$('bModAdd');if(b&&!b.disabled)b.click();e.preventDefault();return;}
   // Alt+M Move, Alt+T Trim origin, Alt+R Yaw, Alt+E Edit parameters, Alt+S Spawnflags:
@@ -8900,8 +8960,8 @@ window.addEventListener('keydown',e=>{
   if(e.ctrlKey||e.metaKey||e.altKey)return;
   if(e.code==='Backquote'){toggleCvarMenu();e.preventDefault();return;}   // as the game's console key
   switch(kl){
-    case 'h':case '?':if(e.shiftKey&&kl==='h'){const had=hidEnt.size+hidPrim.size;unhideAll();
-      flash(had?'Everything is shown again (Ctrl+Z hides it again)':'Nothing is hidden');}else toggleHelp();break;
+    case 'h':case '?':if(e.shiftKey&&kl==='h'){const had=hidEnt.size+hidPrim.size+(MOD&&MOD.ents||[]).filter(m=>m.hid&&!m.del).length;unhideAll();
+      flash((had?'Everything is shown again (Ctrl+Z hides it again)':'Nothing is hidden')+modDelNote());}else toggleHelp();break;
     case 'n':showInfo('sel');break;
     case 'g':if(e.shiftKey){editorLook();flash('Editor look');}else{gameLook();flash('In-game look');}break;
     case 'b':toggleFullBright();break;
@@ -9027,6 +9087,8 @@ const FILTERS=[
  {m:C_ORIGIN,l:'Origin',key:'',t:'common/origin brushes (the pivot of doors and movers)'},
  {m:C_POINT,l:'Point ents',key:'',t:'Other point entities: player starts, script origins, info_* ...'},
  {m:C_SCRIPT,l:'Script ents',key:'Ctrl+E',t:'Entities the map\'s level script spawns (spawn lines in its .scr), placed where its lines say: waypoints, script models and origins, actors... They are drawn as their kind (a waypoint with the Paths, a model with the Models) and this hides them all. The map\'s stats line opens the list'},
+ {m:C_NEWBR,l:'New brushes',key:'',t:'Brushes, patches and terrain blocks added or changed in the Map Editor and not saved yet (outlined in amber). Shown, they are drawn whatever the other buttons hide; hidden, they go (a changed one leaves a gap) until shown again. The In-game look and the Editor look each keep what you set here while they are on'},
+ {m:C_NEWENT,l:'New entities',key:'',t:'Modify\'s entities added or changed and not saved yet (see-through until saved). Hidden: they aren\'t drawn (a changed map entity is hidden, not shown as it was) unless one is being moved or edited. The In-game look and the Editor look each keep what you set here while they are on'},
  {m:C_SCRTRIG,l:'Script trigs',key:'Ctrl+B',t:'The volumes of the triggers the map\'s level script spawns, from their setsize (worked out from its lines, its own fields such as local.t.setsize1 included): see-through boxes in the trigger colour, as trigger brushes look. Script ents shows the triggers themselves as small markers; selecting one outlines its volume. Hidden by the In-game look'}];
 // The entity kinds the Entities button (Alt+2) covers, named for its tooltip when only
 // some of them are hidden (by their own buttons).
@@ -9084,7 +9146,7 @@ function buildPanel(){
     if(v.length>=3){turnTo(v[0],v[1],v[2]);$('angIn').blur();}else flash('Type three numbers: pitch yaw roll');});
   $('bCopyAng').onclick=()=>{const t=fvec(camAngles());copyText(t,'Camera\'s angles '+t+' copied to the clipboard');};
   $('bInfo').onclick=()=>showInfo('sel');$('bFocus').onclick=focusSelection;$('bHide').onclick=hideSelection;
-  $('bClear').onclick=()=>{SEL.clear();selectionChanged();};$('bUnhide').onclick=unhideAll;$('bUndoHide').onclick=undoHide;
+  $('bClear').onclick=()=>{SEL.clear();selectionChanged();};$('bUnhide').onclick=()=>{const had=hidEnt.size+hidPrim.size+(MOD&&MOD.ents||[]).filter(m=>m.hid&&!m.del).length;unhideAll();flash((had?'Everything is shown again (Ctrl+Z hides it again)':'Nothing is hidden')+modDelNote());};$('bUndoHide').onclick=undoHide;
   $('bSame').onclick=()=>{if(lastHit)selectSameKind(lastHit,false);};
   $('bSameSf').onclick=()=>selectSameSpawnflags(selFocusEnt());
   $('bSameErr').onclick=selectSameError;
@@ -9111,8 +9173,13 @@ const NONE_KEEP=C_WORLD|C_PATCH|C_TRANS|C_LIQUID|C_DETAIL|C_TERRAIN;
 function hideAllGroups(){let m=0;for(const f of FILTERS)m|=f.m;hiddenMask=m&~NONE_KEEP;filtersChanged();}
 const GAME_LOOK=C_CAULK|C_CLIP|C_TRIGGER|C_HINT|C_ORIGIN|C_PORTAL|C_NODRAW|C_POINT|C_LIGHT|C_AINODE|C_PATH|C_VIS|C_RAIN|C_FOLIAGE|C_SCRTRIG,
   EDIT_LOOK=C_HINT|C_PORTAL|C_RAIN;
-function gameLook(){hiddenMask=GAME_LOOK;simpleSky=false;fullBright=false;setSunFlare(true);filtersChanged();requestDraw();}
-function editorLook(){hiddenMask=EDIT_LOOK;simpleSky=true;fullBright=true;PV.on=false;setSunFlare(false);filtersChanged();requestDraw();}
+// New brushes / New entities: each look keeps its own choice (LOOK_NEW, set by clicking
+// those buttons while the look is on; saved with the options); both shown at first
+const LOOK_NEW={game:0,edit:0};
+function gameLook(){hiddenMask=GAME_LOOK|LOOK_NEW.game;simpleSky=false;fullBright=false;setSunFlare(true);filtersChanged();requestDraw();}
+function editorLook(){hiddenMask=EDIT_LOOK|LOOK_NEW.edit;simpleSky=true;fullBright=true;PV.on=false;setSunFlare(false);filtersChanged();requestDraw();}
+function lookOn(k){return k==='game'?((hiddenMask&~C_NEW)===GAME_LOOK&&!simpleSky&&!fullBright&&flareAs(true))
+  :((hiddenMask&~C_NEW)===EDIT_LOOK&&simpleSky&&fullBright&&!PV.on&&flareAs(false));}
 // a look's sun flare setting counts only on a map that has a flare
 function flareAs(on){return !sunHas()||sunFlare===on;}
 function syncButtons(){
@@ -9145,8 +9212,8 @@ function syncButtons(){
   $('bRoutes').classList.toggle('on',!!CVARS.ai_showroutes&&routesOk());
   $('bAiErr').classList.toggle('on',AIERR);
   // a look is on while everything it sets is still as it set it
-  $('bGameView').classList.toggle('on',hiddenMask===GAME_LOOK&&!simpleSky&&!fullBright&&flareAs(true));
-  $('bEditView').classList.toggle('on',hiddenMask===EDIT_LOOK&&simpleSky&&fullBright&&!PV.on&&flareAs(false));
+  $('bGameView').classList.toggle('on',lookOn('game')&&(hiddenMask&C_NEW)===LOOK_NEW.game);
+  $('bEditView').classList.toggle('on',lookOn('edit')&&(hiddenMask&C_NEW)===LOOK_NEW.edit);
   $('bFree').classList.toggle('on',camMode==='free');$('bRad').classList.toggle('on',camMode==='rad');
   $('camHelpFree').style.display=camMode==='free'?'':'none';$('camHelpRad').style.display=camMode==='rad'?'':'none';
 }
@@ -9158,7 +9225,12 @@ function toggleDisplay(k){if(k==='grid'){setGrid(!GRID.on);return;}if(k==='light
   if(k==='leak'){if(!leakHas())flash(leakWhy());else if(view.leak){leakCard();flash('Leak trail on: the red line runs from the void to the entity it reaches; the light blue circle is where it gets in');}
     else{if(infoMode==='leak')hideInfo();flash('Leak trail off');}}
   lineDirty=true;requestDraw();}
-function toggleFilter(m){if((hiddenMask&m)===m)hiddenMask&=~m;else hiddenMask|=m;filtersChanged();}
+function toggleFilter(m){if((hiddenMask&m)===m)hiddenMask&=~m;else hiddenMask|=m;
+  if(m&C_NEW){for(const k of['game','edit'])if(lookOn(k))LOOK_NEW[k]=hiddenMask&C_NEW;
+    try{modHideSync();modRender();}catch(_e){}lineDirty=true;
+    flash((m===C_NEWBR?'New brushes':'New entities')+((hiddenMask&m)?' hidden':' shown')+
+      (lookOn('game')?' (the In-game look keeps this)':lookOn('edit')?' (the Editor look keeps this)':''));}
+  filtersChanged();}
 function toggleSimpleSky(){
   simpleSky=!simpleSky;
   if(simpleSky&&sunFlare)setSunFlare(false);    // MOHRadiant's tiled sky has no sun to flare
@@ -9188,7 +9260,7 @@ function setCamMode(m){camMode=m;keys.clear();radFly=null;syncButtons();saveOpts
 function setClipDist(v){clipDist=Math.max(128,Math.min(32768,v));$('clipD').value=clipDist;$('clipV').textContent=clipDist;saveOpts();requestDraw();}
 function toggleClip(){clipOn=!clipOn;$('bClip').classList.toggle('on',clipOn);saveOpts();requestDraw();}
 function saveOpts(){slidersPost();const cv={};for(const k of cvarsSet())if(!CVAR_NOSAVE.has(k))cv[k]=CVARS[k];
-  LS.set('mohaaMapViewerOpts',JSON.stringify({ov:2,view:view,hidden:hiddenMask,mode:camMode,speed:moveSpeed,fov:fovX,clip:clipOn,clipD:clipDist,fb:fullBright,ss:simpleSky,sm:simpleModels,sf:sunFlare,cv:cv}));}
+  LS.set('mohaaMapViewerOpts',JSON.stringify({ov:2,view:view,hidden:hiddenMask,lookNew:LOOK_NEW,mode:camMode,speed:moveSpeed,fov:fovX,clip:clipOn,clipD:clipDist,fb:fullBright,ss:simpleSky,sm:simpleModels,sf:sunFlare,cv:cv}));}
 function loadOpts(){try{const o=JSON.parse(LS.get('mohaaMapViewerOpts')||'null');if(!o)return;
   for(const k in view)if(k in (o.view||{}))view[k]=!!o.view[k];
   fullBright=!!o.fb;simpleSky=!!o.ss;simpleModels=!!o.sm;
@@ -9196,6 +9268,7 @@ function loadOpts(){try{const o=JSON.parse(LS.get('mohaaMapViewerOpts')||'null')
   if(typeof o.hidden==='number')hiddenMask=o.hidden;if(o.mode==='rad'||o.mode==='free')camMode=o.mode;
   // options saved before Rain had a button of its own: it starts hidden, as on a first visit
   if(!(o.ov>=2))hiddenMask|=C_RAIN;
+  if(o.lookNew)for(const k of['game','edit'])if(typeof o.lookNew[k]==='number')LOOK_NEW[k]=o.lookNew[k]&C_NEW;
   // static models have no Show button of their own (Models and Entities hide them)
   if((hiddenMask&C_ENTITIES)!==C_ENTITIES)hiddenMask&=~C_STATIC;
   if(o.speed>0)moveSpeed=o.speed;if(o.fov>0)fovX=Math.max(60,Math.min(150,o.fov));clipOn=!!o.clip;if(o.clipD>0)clipDist=o.clipD;
@@ -9205,7 +9278,7 @@ function updateSelPanel(){
   simPanel();
   const n=SEL.size;$('selBtns').style.display=n?'':'none';
   const hid=hidEnt.size+hidPrim.size;$('hidLine').style.display=(hid||HIDE_UNDO.length)?'':'none';
-  $('hidCount').textContent=hid+' hidden';$('bUndoHide').disabled=!HIDE_UNDO.length;$('bUnhide').disabled=!hid;
+  $('hidCount').textContent=hid+' hidden';$('bUndoHide').disabled=!HIDE_UNDO.length;$('bUnhide').disabled=!hid&&!(MOD&&MOD.ents&&MOD.ents.some(m=>m.del||m.hid));
   const el=$('selSum');
   if(!n){el.textContent='Click anything in the map to select it.';el.className='co';return;}
   el.className='';
@@ -9537,6 +9610,8 @@ function deselectRow(r){
 // message names the button.
 function toggleHideEnts(list,label){
   list=list.filter(ei=>ei>0);if(!list.length)return;
+  {const dl=new Set((MOD&&MOD.ents||[]).filter(m=>m.del&&m.ei!=null).map(m=>m.ei));
+   if(dl.size&&list.every(ei=>dl.has(ei))){flash(label+' is deleted (DEL in Modify), not hidden: click its DEL tag in Modify to restore it, or Undo (Ctrl+Z / Alt+Z)');return;}}
   const vis=list.filter(ei=>entVisible(ei));
   if(vis.length){
     const step={e:[],p:[]};
@@ -10219,6 +10294,28 @@ function modSetKv(m,k,v){const i=m.kv.findIndex(x=>x[0].toLowerCase()===k);if(i>
 // "0 <yaw> 0"; the other of the two keys is taken out, so only the new one counts. Every
 // selected row turns to the same yaw, and each press is one Undo step.
 const MOD_YAWS=[0,90,180,270];
+// "angle" stays "angle": an info_ class, and any entity that faces by "angle" (a func_ladder,
+// whose arrow and climbing direction come from it) keep that key; the rest get "angles"
+function modUsesAngle(m){const c=modCls(m);return c.startsWith('info_')||c==='func_ladder'||(modKv(m,'angle')!=null&&modKv(m,'angles')==null);}
+// Turn (Alt+Q): the selection turned 90 degrees about its middle, positions only (Yaw turns the
+// arrows). Here: Modify's copies following the mouse (round the one under the mouse), or
+// several selected entities (round the middle of their origins). The Map Editor adds brushes
+// and Edit map's copies (mohaa_map_editor.js).
+function modTurn(dy){
+  dy=dy||90;const G=m3ang([0,dy,0]);
+  const P=MOD.placing;
+  if(P){if(!P.group||!P.group.length||!P.offs){flash('One entity has nothing to turn round: Yaw (Alt+R) turns its arrow');return;}
+    P.offs=P.offs.map(d=>m3v(G,d).map(v=>Math.round(v*1000)/1000));requestDraw();
+    flash((P.copy?'Copies':'Entities')+' turned '+dy+'° round the one under the mouse (Alt+Q again; Yaw, Alt+R, turns their arrows)');return;}
+  const L=modSelEnts(true).filter(m=>!m.del&&!(typeof brRow==='function'&&brRow(m)));
+  if(L.length<2){flash(L.length?'Turn moves things round their middle: one point entity has nothing to turn (Yaw, Alt+R, turns its arrow). With Edit map on, select brushes to turn them':'Select what to turn first: brushes (Edit map) or several entities');return;}
+  if(MOD.edit>=0)modEditClose(true);if(MOD.trim)modTrim(false);
+  const mn=[Infinity,Infinity,Infinity],mx=[-Infinity,-Infinity,-Infinity];
+  for(const m of L){const o=modOrigin(m);for(let k=0;k<3;k++){mn[k]=Math.min(mn[k],o[k]);mx[k]=Math.max(mx[k],o[k]);}}
+  const C=[0,1,2].map(k=>(mn[k]+mx[k])/2);
+  modHist();
+  for(const m of L){const w=m3v(G,vsub(modOrigin(m),C));modSetKv(m,'origin',[0,1,2].map(k=>+(C[k]+w[k]).toFixed(3)).join(' '));}
+  modChanged(L.some(modIsNode));flash(L.length+' entities turned '+dy+'° round their middle (their arrows as they were; one Undo)');}
 function modYaw(){
   const m=MOD.ents[MOD.sel];if(!m){flash('Select an entity in Modify first (Alt+R Yaw)');return;}
   const L=modSelEnts(false).filter(x=>!x.del);if(!L.length)return;
@@ -10230,7 +10327,7 @@ function modYaw(){
   if(MOD.edit>=0)modEditClose(true);
   modHist();let node=false;
   for(const x of L){
-    const info=modCls(x).startsWith('info_'),drop=info?'angles':'angle';
+    const info=modUsesAngle(x),drop=info?'angles':'angle';
     if(info)modSetKv(x,'angle',String(yaw));else modSetKv(x,'angles','0 '+yaw+' 0');
     const i=x.kv.findIndex(p=>p[0].toLowerCase()===drop);if(i>=0)x.kv.splice(i,1);
     if(modIsNode(x))node=true;}
@@ -10252,7 +10349,7 @@ function modAngWrite(m,a){
   const n=v=>{v=Math.round(v*100)/100;return Math.abs(v)<0.005?0:v;};
   let p=n(a[0]),y=n(((a[1]%360)+360)%360),r=n(a[2]);if(y>=360)y=0;
   if(modYawOnly(m)){p=0;r=0;}
-  const info=modCls(m).startsWith('info_'),one=info&&!p&&!r,drop=one?'angles':'angle';
+  const info=modUsesAngle(m),one=info&&!p&&!r,drop=one?'angles':'angle';
   if(one)modSetKv(m,'angle',String(y));else modSetKv(m,'angles',[p,y,r].map(String).join(' '));
   const i=m.kv.findIndex(x=>x[0].toLowerCase()===drop);if(i>=0)m.kv.splice(i,1);}
 function modAngAxes(){const L=modAngRows();return L.length&&L.every(modYawOnly)?[[0,0,1]]:GZ_XYZ;}
@@ -10328,12 +10425,15 @@ function modEdited(m){
   for(let i=0;i<a.length;i++){if(a[i][0]!==b[i][0]||a[i][1]!==b[i][1])return true;}
   return false;}
 // drawn by Modify (and the map's own marker hidden): new ones, changed ones, and any being edited
-function modDrawn(i){const m=MOD.ents[i];return !!m&&!m.hid&&!m.del&&(!modIsMap(m)||modEdited(m)||modBusy(i));}
+function modDrawn(i){const m=MOD.ents[i];return !!m&&!m.hid&&!m.del&&(!modIsMap(m)||modEdited(m)||modBusy(i))&&!(modNewHid(m)&&!modBusy(i));}
+// New entities off: Modify's added and changed entities aren't drawn (one being moved or
+// edited still is)
+function modNewHid(m){return !!(hiddenMask&C_NEWENT)&&!!m&&(!modIsMap(m)||modEdited(m));}
 // the map's entities Modify draws instead (entShown leaves their markers out)
 let MOD_HID=new Set();
 function modHideSync(){
   // (a hidden row hides the map's own marker too)
-  const s=new Set();MOD.ents.forEach((m,i)=>{if(modIsMap(m)&&(modDrawn(i)||m.hid||m.del))s.add(m.ei);});
+  const s=new Set();MOD.ents.forEach((m,i)=>{if(modIsMap(m)&&(modDrawn(i)||m.hid||m.del||modNewHid(m)))s.add(m.ei);});
   const same=s.size===MOD_HID.size&&[...s].every(x=>MOD_HID.has(x));
   if(same)return;MOD_HID=s;
   if(gl){rebuildMarkers();rebuildModels();lineDirty=true;}
@@ -10478,7 +10578,7 @@ function modToggleSel(i){const m=MOD.ents[i];if(!m)return;
 // (history is kept as compact JSON strings, one per step; nothing is dropped)
 function modSnap(){return{ents:MOD.ents.map(m=>({id:m.id,ei:m.ei,kv:m.kv.map(x=>x.slice()),orig:m.orig?m.orig.map(x=>x.slice()):null,hid:!!m.hid,del:!!m.del})),
   sel:MOD.ents[MOD.sel]?MOD.ents[MOD.sel].id:null,multi:[...MOD.multi].map(m=>m.id)};}
-function modHist(s){MOD.undo.push(JSON.stringify(s||modSnap()));MOD.redo.length=0;}
+function modHist(s){const o=s||modSnap();o.seq=++ACT_SEQ;MOD.undo.push(JSON.stringify(o));MOD.redo.length=0;}
 function modRestore(s){
   if(typeof s==='string')s=JSON.parse(s);
   MOD.ents=s.ents.map(e=>{const m={id:e.id,kv:e.kv.map(x=>x.slice())};
@@ -10486,6 +10586,10 @@ function modRestore(s){
   const by=new Map(MOD.ents.map(m=>[m.id,m])),cur=by.get(s.sel);
   MOD.sel=cur?MOD.ents.indexOf(cur):-1;MOD.multi=new Set(s.multi.map(id=>by.get(id)).filter(Boolean));MOD.edit=-1;
 }
+// Undo / Redo with nothing in Modify's own history: say so, and what Ctrl+Z / Ctrl+Y still has
+function modNothingMsg(d){
+  if(d<0)return 'Nothing to undo in Modify (Alt+Z)'+(HIDE_UNDO.length?'; Ctrl+Z still undoes '+HIDE_UNDO.length+' Hide / Show step'+(HIDE_UNDO.length===1?'':'s'):'');
+  return 'Nothing to redo in Modify (Alt+Y)'+(HIDE_REDO.length?'; Ctrl+Y still redoes '+HIDE_REDO.length+' Hide / Show step'+(HIDE_REDO.length===1?'':'s'):'');}
 function modUndoGo(d){
   if(MOD.edit>=0)modEditClose(true);
   // a Copy not put down yet: Undo takes just that away
@@ -10496,8 +10600,9 @@ function modUndoGo(d){
   try{const EA=window.MOHAA_EDITOR_API;if(EA&&EA.ED&&EA.ED.trim)EA.edTrim(false);}catch(_e){}
   if(MOD.linking)modLinkCancel();
   const from=d<0?MOD.undo:MOD.redo,to=d<0?MOD.redo:MOD.undo;
-  if(!from.length){flash(d<0?'Nothing to undo in Modify':'Nothing to redo in Modify');return;}
+  if(!from.length){flash(modNothingMsg(d));return;}
   to.push(JSON.stringify(modSnap()));modRestore(from.pop());
+  if(d<0)REDO_KINDS.push('m');
   modChanged(true);lineDirty=true;
   flash((d<0?'Undone':'Redone')+': '+MOD.undo.length+' more to undo, '+MOD.redo.length+' to redo');
 }
@@ -10971,9 +11076,14 @@ function modRemoveSel(){
   MOD.sel=-1;MOD.multi.clear();selectionChanged();modChanged(true);
   flash((nd?'Deleted '+nd:'')+(nd&&nr?', ':'')+(nr?'restored '+nr+' of the map\'s own':'')+' (Undo, Alt+Z, puts them back)');
 }
+// Modify's Copy button: its entities only, whatever the Map Editor adds to Alt+C
+function modCopyEnts(){
+  if(modSelEnts(true).some(m=>(typeof brRow==='function'&&brRow(m))||(m.ei!=null&&MAP.ents[m.ei]&&(MAP.ents[m.ei].prims||[]).some(Boolean)))){flash('A brush entity is copied with its brushes: the Editor\'s Copy (under Angles), or Alt+C');return;}
+  return modCopyOwn();}
 // Copy: the selected entities again (no targetname or target, so nothing is named twice),
 // following the mouse together as Move does until a click puts them down; Esc takes them away
-function modCopySel(){
+function modCopySel(){return modCopyOwn();}
+function modCopyOwn(){
   if(MOD.placing&&MOD.placing.copy){modPlaceCancel();return;}
   if(MOD.edit>=0)modEditClose(true);
   if(MOD.trim)modTrim(false);
@@ -11053,7 +11163,16 @@ function modDeselect(){const m=MOD.ents[MOD.sel];
   if(m&&modIsMap(m)&&SEL.has('e'+m.ei)){SEL.delete('e'+m.ei);selectionChanged();}
   if($('info').classList.contains('on')&&infoMode==='sel')showInfo('sel');
   modRender();requestDraw();}
+// deleted, not hidden: what puts them back (Show all and the squares don't)
+function modDelNote(){const L=(MOD&&MOD.ents||[]).filter(m=>m.del);if(!L.length)return'';
+  return '. Deleted (DEL in Modify), not hidden: '+(L.length===1?modName(L[0]):L.length+' entities')+' - click a DEL tag to restore, or Ctrl+Z / Alt+Z';}
+function modRestoreRow(i){const m=MOD.ents[i];if(!m||!m.del)return;
+  if(MOD.edit>=0)modEditClose(true);if(MOD.trim)modTrim(false);if(MOD.placing)modPlaceCancel();
+  modHist();m.del=false;m.kv=m.orig.map(x=>x.slice());m.hid=false;
+  if(modIsMap(m)){MOD.sel=i;MOD.multi.clear();SEL.clear();SEL.add('e'+m.ei);selectionChanged();}
+  modChanged(true);flash(modName(m)+' is back (restored as the map has it; Undo, Alt+Z, deletes it again)');}
 function modToggleHide(i){const m=MOD.ents[i];if(!m)return;
+  if(m.del){flash(modName(m)+' is deleted (DEL), not hidden: click its DEL tag to restore it, or Undo (Ctrl+Z / Alt+Z)');return;}
   if(!m.hid&&(MOD.edit===i||(MOD.trim&&MOD.sel===i)||(MOD.placing&&MOD.placing.move===i))){flash('Finish editing it first');return;}
   HIDE_UNDO.push({mod:m,was:!!m.hid,e:[],p:[]});if(HIDE_UNDO.length>500)HIDE_UNDO.shift();     // Ctrl+Z puts it back
   m.hid=!m.hid;modChanged(false);flash((m.hid?'Hidden: ':'Shown again: ')+modName(m)+(m.hid?' (Shift+click its square to show it)':''));}
@@ -11507,7 +11626,7 @@ function alignLines(H,L){
       A.push(o[0],o[1],o[2],c[0],c[1],c[2],al,o[0]+d[0]*R,o[1]+d[1]*R,o[2]+d[2]*R,c[0],c[1],c[2],al);});});}
 function modRowHtml(m,i){
   const o=modOrigin(m),c=modColour(m),rgb='rgb('+c.map(v=>Math.round(v*255)).join(',')+')',map=modIsMap(m),ch=map&&modEdited(m);
-  const tag=map&&m.del?'<span class="mtag ch" style="color:var(--err)" title="one of the map\'s own entities, deleted here: left out of the saved map (not saved yet). Restore puts it back">#'+m.ei+' DEL</span>':map?'<span class="mtag'+(ch?' ch':'')+'" title="'+(ch?'one of the map\'s own entities, changed here (not saved yet)':'one of the map\'s own entities, as the map has it')+'">#'+m.ei+(ch?' changed':' map')+'</span>':'<span class="mtag nw" title="added here, not saved yet">new</span>';
+  const tag=map&&m.del?'<span class="mtag ch mdel" style="color:var(--err);cursor:pointer" title="one of the map\'s own entities, deleted here: left out of the saved map (not saved yet). Click: restore it">#'+m.ei+' DEL</span>':map?'<span class="mtag'+(ch?' ch':'')+'" title="'+(ch?'one of the map\'s own entities, changed here (not saved yet)':'one of the map\'s own entities, as the map has it')+'">#'+m.ei+(ch?' changed':' map')+'</span>':'<span class="mtag nw" title="added here, not saved yet">new</span>';
   const al=alignOf(m),atag=al==='off'?'':'<span class="mtag al" title="'+esc(ALIGN_NAMES[al])+' Align lines from its origin (the Align button, by trim step, turns them off)">'+ALIGN_TAGS[al]+'</span>';
   return '<div class="li'+(modIsSel(i)?' sel':'')+(m.hid||m.del?' hid':'')+'" data-mi="'+i+'"><span class="sw" style="'+(map?'border:2px solid '+rgb+';background:transparent':'background:'+rgb)+'"></span><span class="nm">'+esc(modName(m))+'</span>'+tag+atag+'<span class="ct">( '+o.map(v=>+v.toFixed(1)).join(' ')+' )'+(modBusy(i)?' · editing':'')+'</span></div>';
 }
@@ -11756,9 +11875,10 @@ function modInit(){
     flyTo(v.pos,v.ang[1],v.ang[0],-v.ang[2]);requestDraw();flash(v.flash);};
   $('bModFly').onclick=modFly;
   $('bModSf').onclick=toggleSfMenu;
-  $('bModYaw').onclick=modYaw;
+  $('bModYaw').onclick=()=>modYaw();
   $('bModDel').onclick=()=>modRemoveSel();
-  $('bModDup').onclick=()=>modCopySel();
+  $('bModDup').onclick=()=>modCopyEnts();      // Modify's own entities (the Editor has its own Copy)
+  $('bModTurn').onclick=e=>modTurn(e&&e.shiftKey?-90:90);
   $('bModHUndo').onclick=()=>modUndoGo(-1);
   $('bModHRedo').onclick=()=>modUndoGo(1);
   $('bModSaveBsp').onclick=()=>modSave('bsp');
@@ -11770,6 +11890,7 @@ function modInit(){
   // as the Find lists: Shift+click a row's square hides / shows it, Shift+click the selected
   // (green) row deselects it
   $('modList').addEventListener('click',e=>{const r=e.target.closest('[data-mi]');if(!r)return;const i=+r.dataset.mi;
+    if(e.target.closest('.mdel')){modRestoreRow(i);return;}
     if(e.shiftKey&&e.target.closest('.sw')){modToggleHide(i);return;}
     if(e.shiftKey){modToggleSel(i);return;}
     // a click on the row already selected (green), so also the second click of a
@@ -13106,11 +13227,13 @@ function ladRay(L,s,e){
     for(const q of pl){const d1=s[0]*q[0]+s[1]*q[1]+s[2]*q[2]-q[3],d2=e[0]*q[0]+e[1]*q[1]+e[2]*q[2]-q[3];
       if(d1>0&&d2>0){miss=true;break;}
       if(d1<=0&&d2<=0)continue;
-      const f=d1/(d1-d2);if(d1>d2){if(f>en)en=f;}else if(f<lv)lv=f;}
+      if(d1>d2){const f=Math.max(0,(d1-0.125)/(d1-d2));if(f>en)en=f;}else{const f=(d1+0.125)/(d1-d2);if(f<lv)lv=f;}}
     if(miss||en<0||en>lv)continue;
     if(en<lf)lf=en;}
+  // the world first, then the entities: an entity is kept only when it is nearer
+  // (SV_ClipMoveToEntities), so a ladder face flush with the floor loses to the floor
   const w=ladTr(s,e,[0,0,0],[0,0,0]),wf=w.startsolid?0:w.f;
-  return{f:Math.min(lf,wf),ladder:lf<1&&lf<=wf};
+  return{f:Math.min(lf,wf),ladder:lf<1&&lf<wf};
 }
 const ladFwd=y=>[Math.cos(y*Math.PI/180),Math.sin(y*Math.PI/180),0];
 // FuncLadder::CanUseLadder: '' or why not
@@ -13126,11 +13249,26 @@ function ladCanUse(L,pos,yaw){
   const st=[L.O[0]-F[0]*29,L.O[1]-F[1]*29,L.mn[2]+16],t=ladTr(st,[st[0],st[1],st[2]-16]);
   return t.allsolid?'the spot where he gets on at the bottom (29 out from it) is blocked by a solid object':'';
 }
-// Player::CondLadder (AT_LADDER) with CanUseLadder: '' or why not
+// Where his eyes are (the client's CG_OffsetFirstPersonView, sent with each move as the eye
+// offset the game's m_vViewPos uses): over his feet at the view height (82), then turned
+// about a pivot lower down by 0.4 of his pitch: looking down, 0.4 x 82 = 32.8 over a pivot at
+// 0.6 x 82 (so at 70 down the eyes are 15 units ahead of his feet, 78 up); looking up, 0.2 x
+// 82 over 0.8 x 82. Kept 6 units off the walls (its height, then its lateral, check).
+function ladEye(pos,yaw,pitch){
+  const vh=LAD_EYE,dn=pitch>0,pz=dn?vh*0.6:vh*0.8,r=dn?vh*0.4:vh*0.2,a=pitch*0.4*Math.PI/180,f=ladFwd(yaw);
+  const want=[pos[0]+f[0]*r*Math.sin(a),pos[1]+f[1]*r*Math.sin(a),pos[2]+pz+r*Math.cos(a)];
+  const B0=[-6,-6,-6],B1=[6,6,6],t1=ladTr([pos[0],pos[1],pos[2]+vh],[pos[0],pos[1],want[2]],B0,B1);
+  const t2=ladTr(t1.end,[want[0],want[1],t1.end[2]],B0,B1);
+  return t2.end.slice();
+}
+// Player::CondLadder (AT_LADDER) with CanUseLadder: '' or why not. His view line, from 12
+// behind his eyes to 128 ahead (MASK_LADDER), has to meet the func_ladder itself before the
+// world: one of its brushes (common/trigger or common/ladder, both solid to that mask; its
+// origin brush is gone from the .bsp), not the floor or a wall in front of it
 function ladAt(L,pos,yaw,pitch){
-  const d=anglesAxis([pitch,yaw,0])[0],v=[pos[0],pos[1],pos[2]+LAD_EYE];
+  const d=anglesAxis([pitch,yaw,0])[0],v=ladEye(pos,yaw,pitch);
   const r=ladRay(L,[v[0]-d[0]*12,v[1]-d[1]*12,v[2]-d[2]*12],[v[0]+d[0]*128,v[1]+d[1]*128,v[2]+d[2]*128]);
-  if(!r.ladder)return'the ladder isn\'t within 128 units along his view';
+  if(!r.ladder)return'the ladder isn\'t within 128 units along his view (his view line meets '+(r.f<1?'the floor or a wall':'nothing')+' before the ladder\'s brushes)';
   return ladCanUse(L,pos,yaw);
 }
 // FuncLadder::PositionOnLadder
@@ -13216,9 +13354,13 @@ function ladSpawnSpot(L,where,recs,sc){
   const F=L.F,on=[L.O[0]-F[0]*16,L.O[1]-F[1]*16];
   if(where==='mid'){const z=(L.mn[2]+L.mx[2])/2;return{p:ladAdjust(L,[on[0],on[1],z]),yaw:L.yaw,onLadder:true};}
   const rec=recs[where==='up'?LAD_CLIP.getoff_top:LAD_CLIP.getoff_bottom],dv=rec?ladDelta(rec,0,ladDur(rec),L.yaw,sc):[0,0,0];
-  const x=on[0]+dv[0],y=on[1]+dv[1],top=where==='up'?L.mx[2]+24:L.mn[2]+24;
-  const t=ladTr([x,y,top],[x,y,top-4096]);
-  return{p:t.allsolid?[x,y,top]:t.end.slice(),yaw:where==='up'?(L.yaw+180)%360:L.yaw,onLadder:false};
+  // from a few units over the ladder's bottom (or top), higher while his box would start
+  // inside something there, then dropped to the floor (droptofloor): on it, not under it
+  const x=on[0]+dv[0],y=on[1]+dv[1],base=where==='up'?L.mx[2]:L.mn[2],yw=where==='up'?(L.yaw+180)%360:L.yaw;
+  for(const up of[4,16,32,56,80]){const z=base+up,t0=ladTr([x,y,z],[x,y,z]);if(t0.startsolid||t0.allsolid)continue;
+    const t=ladTr([x,y,z],[x,y,z-4096]);
+    return{p:t.allsolid?[x,y,z]:t.end.slice(),yaw:yw,onLadder:false};}
+  return{p:[x,y,base+4],yaw:yw,onLadder:false};
 }
 // the climb, frame by frame: {F: frames {p, y (yaw), c (clip name or null), t}, ok, msg, why}
 function ladSim(L,start,dir,recs,sc,P){
@@ -13390,6 +13532,29 @@ function ladRun(dir){
   c.lad={F:R.F,DT:LAD_DT,t0:performance.now(),done:false};
   actPose(performance.now());simPanel();requestDraw();
 }
+// Where and how a player can look to get on: every spot on his side of the ladder within its
+// 52-unit reach (2 units apart, on the floor), each pitch from 36 to 88 (down at the top, up
+// at the bottom: USE_LADDER's LOOKING_UP). [{d, lo, hi, ok: [pitches]}]
+function ladViewScan(L,dir){
+  const up=dir==='up',F=L.F,yaw=up?L.yaw:(L.yaw+180)%360,out=[];
+  for(let d=0;d<=52;d+=2){const x=L.O[0]+F[0]*d*(up?-1:1),y=L.O[1]+F[1]*d*(up?-1:1),z0=(up?L.mn[2]:L.mx[2])+48;
+    const t=ladTr([x,y,z0],[x,y,z0-160]);if(t.startsolid||t.f>=1)continue;const pos=t.end.slice();
+    if(up?pos[2]+94>L.mx[2]:pos[2]+94<=L.mx[2])continue;
+    const ok=[];for(let p=36;p<=88;p++)if(!ladAt(L,pos,yaw,up?-p:p))ok.push(p);
+    if(ok.length)out.push({d:d,lo:ok[0],hi:ok[ok.length-1],ok:ok});}
+  return out;}
+// the ladder with its top raised by r (the faces on top of its highest brushes)
+function ladRaised(L,r){return Object.assign({},L,{mx:[L.mx[0],L.mx[1],L.mx[2]+r],
+  B:L.B.map(pl=>pl.map(q=>q[2]>0.99&&q[3]>=L.mx[2]*q[2]-1?[q[0],q[1],q[2],q[3]+r*q[2]]:q))});}
+function ladViewAdvice(L,dir,P){
+  const S=ladViewScan(L,dir),w=dir==='up'?'up':'down';
+  if(S.length){const cnt=new Map();for(const s of S)for(const p of s.ok)cnt.set(p,(cnt.get(p)||0)+1);
+    let best=null;for(const[p,c]of cnt)if(best==null||c>cnt.get(best)||(c===cnt.get(best)&&Math.abs(p-50)<Math.abs(best-50)))best=p;
+    const lo=Math.min(...S.map(s=>s.lo)),hi=Math.max(...S.map(s=>s.hi)),d0=Math.min(...S.map(s=>s.d)),d1=Math.max(...S.map(s=>s.d));
+    return'Looking '+lo+' to '+hi+' degrees '+w+' he can get on (somewhere '+d0+' to '+d1+' units '+(dir==='up'?'out from':'past')+' the ladder\'s origin; the steeper, the nearer): set the pitch to '+best+' (now '+fnum(P)+') and simulate again';}
+  let r=0;if(dir!=='up')for(let k=2;k<=96;k+=2){if(ladViewScan(ladRaised(L,k),dir).length){r=k;break;}}
+  return'At no pitch does his view line meet the ladder before '+(dir==='up'?'something in front of it':'the floor or the wall')+': a player has to look at the func_ladder\'s own brushes (common/trigger or common/ladder, either works) within 128 units of his eyes, and nearer than the world'+
+    (dir==='up'?'':'. Raise the ladder\'s top'+(r?' by '+r+' units (to '+fnum(L.mx[2]+r)+')':'')+' above the floor, or give the func_ladder a flat trigger brush on the floor behind its top, reaching back toward where he stands (as mohdm2\'s and mohdm7\'s ladders have), or move the ladder out from the wall so it shows past the floor\'s edge');}
 function ladAdvice(R,L,dir){
   const tips=[];
   if(/52 it reaches|origin/.test(R.why))tips.push('Give the ladder an origin brush (common/origin) in its middle, so its origin is at the ladder, not at '+L.O.map(fnum).join(' ')+' ('+L.how+')');
@@ -13397,8 +13562,8 @@ function ladAdvice(R,L,dir){
   if(/blocked|in the way|too close|solid/.test(R.why))tips.push('Move the ladder further from the wall (he hangs 16 units out from its origin, and is 30 wide) or clear what is in his way');
   if(/higher|get off the top|98/.test(R.why))tips.push('Make the ladder reach the floor at the top (its top at the floor\'s height), with 98 units of room over the last rung');
   if(/floor isn't within|lower/.test(R.why))tips.push('Extend the ladder down to the floor (he gets off once the floor is within 40 units under him)');
-  if(/4 seconds|walked|stopped walking/.test(R.why))tips.push('Check that the ladder is in front of him where he gets on, and that he can walk up to it');
-  if(/128 units along his view/.test(R.why))tips.push('Try a higher pitch (now '+fnum(R.pitch)+'): a player has to look at the ladder itself, which may be higher or lower than the floor');
+  if(/4 seconds|walked|stopped walking/.test(R.why)&&!/128 units along his view/.test(R.why))tips.push('Check that the ladder is in front of him where he gets on, and that he can walk up to it');
+  if(/128 units along his view/.test(R.why))tips.push(ladViewAdvice(L,dir,R.pitch));
   if(/USE_LADDER needs/.test(R.why))tips.push('Set the pitch to 36 or more (50 is the default)');
   if(!tips.length)tips.push('Change the ladder\'s height, or place it further from the wall');
   return 'Recommendation: '+tips.join('. ')+'.';
@@ -13432,7 +13597,14 @@ function ladPanel(f){
     if(cc.pauseAt!=null)s='Paused: Resume carries on\n'+s;
   }
   if(L){s+=(s?'\n':'')+'Ladder: '+(L.hasYaw?'"angle" '+fnum(L.yaw):'no "angle" (the game leaves it without a facing)')+', '+fnum(L.mx[2]-L.mn[2])+' units tall ( '+fnum(L.mn[2])+' to '+fnum(L.mx[2])+' ), origin ( '+L.O.map(fnum).join(' ')+' ) from '+L.how+'.';
-    if(!L.B.length)s+='\nIt has no brushes the viewer can trace (the climb can\'t find it).';}
+    if(!L.B.length)s+='\nIt has no brushes the viewer can trace (the climb can\'t find it).';
+    else{const k=f.key+'|'+L.mn.join()+'|'+L.mx.join()+'|'+L.O.join()+'|'+L.yaw;
+      if(!LAD.view||LAD.view.k!==k){let t='';
+        try{const ln=(dir,w)=>{const S=ladViewScan(L,dir);if(!S.length)return w+': at no pitch (his view meets the world before the ladder\'s brushes)';
+            return w+': looking '+Math.min(...S.map(x=>x.lo))+' to '+Math.max(...S.map(x=>x.hi))+' degrees '+(dir==='up'?'up':'down')+', '+Math.min(...S.map(x=>x.d))+' to '+Math.max(...S.map(x=>x.d))+' units '+(dir==='up'?'out from':'past')+' its origin';};
+          t='He can get on '+ln('up','at the bottom')+'; '+ln('down','at the top')+'.';}catch(e){console.error(e);}
+        LAD.view={k:k,t:t};}
+      if(LAD.view.t)s+='\n'+LAD.view.t;}}
   if(cc)s+='\nHe is removed when the ladder is deselected.';
   $('ladSum').textContent=s;
   $('ladWarn').textContent=LAD.warn||'';

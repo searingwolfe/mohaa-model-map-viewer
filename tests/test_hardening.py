@@ -784,5 +784,93 @@ class ChildBuilds(TempDirCase):
         self.assertEqual(r_new.returncode, 0, r_new.stderr[-800:])
 
 
+class AnimEditorPosingAndFace(unittest.TestCase):
+    """Animation Editor: undo / redo keys, Shift / Ctrl drags, snap to origin, the
+    face track, eye look, blinks, .lip import, head turn and movement fields."""
+    @classmethod
+    def setUpClass(cls):
+        import mohaa_view as V
+        cls.V = V
+        cls.js = V.editor_js()
+
+    def test_page_code_parses(self):
+        """The inlined code (with '</' escaped as on the page) is valid JavaScript."""
+        if not shutil.which("node"):
+            self.skipTest("node not installed")
+        with tempfile.TemporaryDirectory() as d:
+            f = os.path.join(d, "ed.js")
+            with open(f, "w", encoding="utf-8") as h:
+                h.write(self.js)
+            r = subprocess.run(["node", "--check", f], capture_output=True, text=True)
+            self.assertEqual(r.returncode, 0, r.stderr[:600])
+
+    def test_hooks_present(self):
+        js = self.V.ANIM_EDITOR_JS
+        for frag in ("k==='z'&&!e.shiftKey", "k==='y'||(k==='z'&&e.shiftKey)", "snapOrigin(e.shiftKey)",
+                     "startDrag(m,e.shiftKey?'body':'part')", "function partOf(h)", "function keepWorldRot(i)",
+                     "function applyLegSwing(G)", "fk:cloneFk(doc.fk)", "if(isMorphChan(n)&&(n in out))continue;",
+                     "BAKE.amt[curAnim]", "function importLip(", "function headTurn(", "function setMove("):
+            self.assertIn(frag, js)
+
+    def test_shortcuts_listed(self):
+        keys = {b[0] for col in self.V.VIEWER_KEYS["cols"] for r in col["rows"] for b in r.get("b", [])}
+        for k in ("Ctrl+Z", "Ctrl+Y", "Shift+Drag", "Ctrl+Drag", "O", "Shift+O"):
+            self.assertIn(k, keys)
+        self.assertEqual(self.V.kx_check(self.V.VIEWER_KEYS), [])
+
+    def test_lip_parse_and_face_curve(self):
+        """parseLip reads the dialogue .lip layout (CRLF, '$' names); faceInterp draws a
+        shape's own keys in straight lines and holds them at the ends."""
+        if not shutil.which("node"):
+            self.skipTest("node not installed")
+        import re
+        js = self.V.ANIM_EDITOR_JS
+        def fn(name):
+            m = re.search(r"\nfunction " + name + r"\(.*?\n(?=function |const |\$\(|//|for\()", js, re.S)
+            self.assertIsNotNone(m, name)
+            return m.group(0)
+        prog = (fn("parseLip") + fn("faceV") + fn("faceInterp") +
+                "let doc={frames:[{},{},{},{},{}],fk:{}};\n"
+                "const P=parseLip('<Num channels> 2\\r\\n<Num samples> 3\\r\\n<Channel> EYES_up_$\\r\\n0\\r\\n50\\r\\n100\\r\\n"
+                "<Channel> EYE_blink\\r\\n0\\r\\n0\\r\\n100\\r\\n');\n"
+                "for(const r of doc.frames)r.S=[0,0,0,0];doc.frames[1].S=[40,0,0,0];doc.frames[3].S=[80,0,0,0];doc.fk.S=new Set([1,3]);\n"
+                "faceInterp('S');console.log(JSON.stringify([P.samples,P.channels.map(c=>[c.name,c.v]),doc.frames.map(r=>r.S[0])]));")
+        with tempfile.TemporaryDirectory() as d:
+            f = os.path.join(d, "t.js")
+            with open(f, "w", encoding="utf-8") as h:
+                h.write(prog)
+            r = subprocess.run(["node", f], capture_output=True, text=True)
+        self.assertEqual(r.returncode, 0, r.stderr[:600])
+        out = json.loads(r.stdout)
+        self.assertEqual(out[0], 3)
+        self.assertEqual(out[1], [["EYES_up_$", [0, 50, 100]], ["EYE_blink", [0, 0, 100]]])
+        self.assertEqual(out[2], [40, 40, 60, 80, 80])
+
+
+class MapEditorUndoAndCopyTurn(unittest.TestCase):
+    """Ctrl+Z for every step, DEL rows restored from their tag, Undo selecting again,
+    Alt+R turning a copy that follows the mouse."""
+    def test_fragments(self):
+        import mohaa_map_page as P
+        page = open(P.__file__, encoding="utf-8").read()
+        ed = open(os.path.join(BIN, "mohaa_map_editor.js"), encoding="utf-8").read()
+        for frag in ("function ctrlUndo()", "if(combo==='ctrl+z'){ctrlUndo();", "o.seq=++ACT_SEQ",
+                     "function modRestoreRow(i)", "function modTurn(dy)", "function modUsesAngle(m)", "function ladEye(pos,yaw,pitch)", "function ladViewScan(L,dir)", "function ladViewAdvice(L,dir,P)", "ladder:lf<1&&lf<wf", "function brushCont(ent,bn,faces)", "const c=brushCont(p.ent,p.bn,faces);", "function patchCont(d)", "for(const up of[4,16,32,56,80])", "function modCopyEnts()", "$('bModDup').onclick=()=>modCopyEnts();", "function ctrlRedo()", "function redoHide()", "function modNothingMsg(d)", "combo==='ctrl+y'", "const info=modUsesAngle(x)", "id=\"bModTurn\"", "kl==='q'){modTurn(", "e.target.closest('.mdel')", "function modDelNote()"):
+            self.assertIn(frag, page)
+        for frag in ("C_NEWBR=1<<26, C_NEWENT=1<<27", "const LOOK_NEW={game:0,edit:0};", "hiddenMask=GAME_LOOK|LOOK_NEW.game",
+                     "function modNewHid(m)", "lookNew:LOOK_NEW"):
+            self.assertIn(frag, page)
+        self.assertIn("!(hiddenMask&C_NEWBR)&&", ed)
+        for frag in ("s.esel=[...SEL]", "function edCarryTurn(dy)", "edCarryTurn(e.shiftKey?-90:90)", "function edCarryYaw(dy)", "function edEditRow()", "on('bEdDel',", "e.key!=='Delete'||!e.altKey", "modTurn=function(dy)", "C.yaw&&/^angle$/i"):
+            self.assertIn(frag, ed)
+
+    def test_shortcuts(self):
+        import mohaa_map_view as M, mohaa_view as V
+        tabs = [v for v in vars(M).values() if isinstance(v, dict) and "cols" in v]
+        self.assertTrue(tabs)
+        for t in tabs:
+            self.assertEqual(V.kx_check(t), [])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

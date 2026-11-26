@@ -426,8 +426,8 @@ click away: its targetname, origin, `setsize`, targets and ready-to-paste script
   saved asks first: Save as .bsp, Save as .map, Discard changes or Cancel (Cancel keeps
   this map open; the other one opens after a save or a discard). Selecting one of the map's own point entities (a broken
   path node, say) lists it in Modify too (every one selected, when several are), to edit, move or trim it the same way, or to
-  **Delete** it from the saved copy (marked DEL until you save; Restore or Undo puts it
-  back). A `.bsp`'s static props (static_* models) aren't in its entity lump, so Modify
+  **Delete** it from the saved copy (marked DEL until you save; click its DEL tag, Restore
+  or Undo puts it back: a deleted entity isn't hidden, so Show all and its square don't). A `.bsp`'s static props (static_* models) aren't in its entity lump, so Modify
   takes them only with Edit map on (below); without it, Copy, Move, Trim origin or Delete
   with one in the selection says so and does nothing. **Align** (by trim step; click for
   the next, Shift+click for off) draws white lines out of the selected entity's origin to
@@ -447,7 +447,9 @@ click away: its targetname, origin, `setsize`, targets and ready-to-paste script
 * **MOHRadiant-style filters** (`Alt+1` … `Alt+0`, `Ctrl+D / H / M / R / T / P / K`) for
   caulk, clips, triggers, hints, AI nodes, lights, details, terrain, sky and more, with
   **In-game look** and **Editor look** presets, plus setsize boxes, target arrows,
-  labels, X-ray, fog and cubic clipping.
+  labels, X-ray, fog and cubic clipping. **New brushes** and **New entities** show or
+  hide what the Map Editor and Modify added or changed and haven't saved yet; each look
+  keeps your choice for them (set it while the look is on).
 * **Legend** (`L` in the viewer, `F2` / Help → Legend in the launcher): what every
   colour, marker, path-node border and editor brush (clip, trigger, hint, vis,
   areaportal...) means.
@@ -532,12 +534,36 @@ and pointing at a joint shows it too):
 * **⊕ Axes**: exact turns about the bone's own X / Y / Z (rings) or moves along the
   model's X / Y / Z (arrows).
 
+Two modifiers work with Drag and Axes (pointing at a joint with one held says what it will
+do):
+
+* **Shift+drag** any joint: the **whole body** moves as one piece, feet and all.
+* **Ctrl+drag** a part: it moves **as one piece**, keeping its shape. Grab the **hand**,
+  the **head** or the **shoulder** and it is carried along (the bones above it bend) while
+  it keeps facing the same way; grab the **elbow** to swing the arm at the shoulder, any
+  **finger** joint to turn the whole finger, the **neck** to turn head and neck, a **spine**
+  joint to bend the torso at the waist, a **thigh or knee** to swing the leg at the hip, or
+  the **pelvis** to move the body with the feet planted.
+
+**Snap to origin** (`O`) moves the body so the hips stand over the origin (X = Y = 0, the
+height kept); **… and onto the ground** (`Shift+O`) also stands the feet at their normal
+height. With **every key**, all keys move by the same amount: an off-centre animation such
+as `ladder_slide` comes back over the origin, and a walk keeps walking.
+
 Every tool works on **this frame** or on **every key** at once (each key from its own
 pose: lower or turn a whole animation). Pick a bone from the list as well as in the view;
 grey ones are posed by the game from the others. For the selected bone you can type its
 turn (degrees about X, Y, Z from its parent; a foot's facing) and its place, **Reset bone**
 to the pose the model opened in, or **Copy from other side**. **Mirror pose** swaps left
-and right for the whole body. Undo / Redo go back 60 steps.
+and right for the whole body. Undo / Redo (`Ctrl+Z` / `Ctrl+Y`) go back 60 steps.
+* **Face.** Key any face shape (brows, eyes, mouth, visemes) from 0 to 100 on its own
+  timeline: the frames between its keys are filled in, and the body's keys don't touch it.
+  Set where the eyes look on the eye pad, **Add blinks** every few seconds, or **Import lip
+  sync (.lip)** from a dialogue `.lip` file. A model with face shapes shows them; a body
+  whose head is a separate model saves them for the game without showing them.
+* **Head turn / nod** between two frames, there and back or turned and held.
+* **Movement**: how far the game moves and turns the actor over the animation (the
+  `.skc`'s per-frame delta and angleDelta), spread evenly over the frames.
 * **Timeline.** Set keys on frames; the frames between keys are filled in from the keys
   either side. Copy and paste a pose or one bone's channels, and set the frame count and
   frames per second.
@@ -593,7 +619,9 @@ way here.
 * **Building in the view.** The Editor section's tools work with the mouse in the 3D view,
   much as MOHRadiant's do in its 2D views. Everything snaps to the grid (the Grid slider,
   8 at first), is shown as outlines while you drag, and is written on release as one
-  Undo step (Modify's Undo, Alt+Z):
+  Undo step (Modify's Undo, Alt+Z; Ctrl+Z undoes it too when it is the latest step, hides
+  included). Undo and Redo of a brush change select again what was selected when it was
+  made, so you can carry on fixing it:
   * **▭ Draw brush**: drag on a floor, wall or ceiling to draw the outline on it, let go,
     move the mouse to set the height, click to make it (Esc or right-click cancels).
     **Shape**: brushes (a box, a 3- to 16-sided prism, a pyramid or cone with 3 to 16
@@ -638,11 +666,18 @@ way here.
     under the mouse (a door apart from its `common/origin` brush) and Shift+click adds or
     takes away single brushes. Modify still shows the entity's row (its keys, its Move as a
     whole). Selecting every brush of an entity counts as the entity: Copy makes a new one.
+  * The Editor's own **Copy · Undo · Redo · Delete** row (under Angles) works on brushes,
+    patches, terrain blocks and brush entities; Modify's row works on its entities.
+    Undo / Redo are one history for both (every change in the order made). **Alt+Delete**
+    deletes only the selected brushes.
   * **Copy (Alt+C)**, with any tool: the selected brushes, patches, terrain blocks and
     brush entities (Shift+click selects more) follow the mouse, their middle under it and
     their bottom on the surface it is over, on the grid, until a click puts them down (hold
     **Shift** to lift them off that face along its normal, a yellow line back to the spot); a
-    drag still turns the camera, **Esc** or Alt+C again takes them away. Brushes go into
+    drag still turns the camera, **Turn** (Alt+Q) turns the copy 90 degrees about its
+    middle so it lies the other way (Alt+Shift+Q back; the entities' origins go round with
+    it, their arrows stay; not with a terrain block), **Yaw** (Alt+R) turns only the copied
+    entities' arrows (angle / angles), **Esc** or Alt+C again takes them away. Brushes go into
     the entity they came from; a brush entity becomes a new entity, without its
     `targetname` or `target`. One Undo (Alt+Z) takes the whole copy away. Brushes and
     entities (path nodes, spawns ...) aren't copied at once: with only entities selected,
