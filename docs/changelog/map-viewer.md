@@ -21,7 +21,7 @@ run at once.
 | `bin/mohaa_map_page.py` | The viewer page template (`HTML_TEMPLATE`): HTML, CSS and the WebGL2 viewer. |
 | `bin/mohaa_bsp.py` | `.bsp` reader and decompiler; also reads the BSP tree and vis data, tessellates curved patches as the renderer does, and reads the game's `.pth` AI path files (for the game cvars). It also runs on its own, `python mohaa_bsp.py <map.bsp> [out.map]`, but without the paks it can't read texture sizes and assumes 256 x 256, so textures of other sizes get the wrong scale; the launcher's decompile uses the real sizes. |
 | `bin/mohaa_entdefs.py` | Entity definitions: editor colour, box, spawnflag names and description per class, read from the `/*QUAKED*/` headers in the paks, with a built-in table generated from OpenMoHAA's game code as the fallback. |
-| `bin/mohaa_map_actor.py` | Simulate's actors, apart from Tk so they can be tested on their own: which `.tik` files are humans and weapons, which clips a node's spawnflags (or running and walking) play for a weapon group, the clip solver call (the Model Viewer's `solve_anim`) and the skin-weight recorder. |
+| `bin/mohaa_map_actor.py` | Simulate's actors, apart from Tk so they can be tested on their own: which `.tik` files are humans and weapons, which clips a node's spawnflags (or running and walking) play for a weapon group, the clip solver call (the Model Viewer's `solve_anim`), the skin-weight recorder, and the animation catalogue an `ai_` actor's SIMULATE menu shows (`catalog_compact`). |
 
 ## How a map gets built
 
@@ -1243,7 +1243,8 @@ For an `info_splinepath`, Simulate flies a model along its path the way a script
 For an `info_pathnode` or `info_waypoint` (since 1.0.003) it stands a human with a weapon
 there, plays the animation the game plays at a node with those spawnflags, and runs or
 walks him along the node's `target` chain or to a spot, routed over the AI's path nodes
-(**Simulate on path nodes**, below). Still to come: `script_origin` chains and the AI's
+(**Simulate on path nodes**, below). For an `ai_` actor it poses him in any of his
+animations where he stands (**Simulate on an ai_ actor**, below). Still to come: `script_origin` chains and the AI's
 other behaviour at nodes.
 
 - **Where.** Selecting an `info_splinepath` on its own (the map's, or one Modify added) shows the
@@ -1402,6 +1403,47 @@ model plumbing). The state is `ACT`, every function `act...`; the launcher side 
 - **Limits.** See Known limits below, and the 1.0.003 entries in
   [CHANGELOG.md](CHANGELOG.md).
 
+### Simulate on an ai_ actor
+
+Selecting one `ai_` entity (the map's, one a level script spawns, or one Modify added,
+copied or changed) whose model is a `models/human` .tik shows the Model Viewer's animation
+player in the SIMULATE section (`#simAi`; `simPanel` picks it by `aiFocus` before a ladder
+or a path node). The state is `AIA`, every function `ai...`; the actor himself is `ACT.cur`
+with an `ai` record, built and drawn as the path node's actor is.
+
+- **Which model.** `aiTik`: the entity's `model` key (as Modify's `modTik` reads it), else
+  its class's model from the entity definitions (`ai_german_wehrmact_soldier` is
+  models/human/german_wehrmact_soldier.tik), else the model the map draws it with. Only a
+  .tik straight under models/human can be built (`aiTikOk`, as `check_vpath` allows).
+- **Controls.** The list button opens the Model Viewer's drill-down menu (categories with
+  counts, a search box over at most 400 hits, Back, arrow keys, Enter and Escape), then
+  **Play** / **Pause**, **Loop** (remembered in the browser, `mohaaMapViewerAiLoop`),
+  **Reset**, the frame slider and the speed (2 to 60 frames a second). After a pick the
+  button reads like "jumpup_lowerbunk (17f)", with the .skc path under it.
+- **Build.** The first open of the list builds him unarmed (`mohaa-sim-actor` with no
+  weapon), then asks for his catalogue (`mohaa-sim-actor-cat` → `MOHAA_SIMACT_CAT`: the
+  Model Viewer's `build_anim_catalog` cut down by `catalog_compact` to names, .skc paths and
+  the category tree, indices kept so a pick names one entry where two groups share a name).
+  Each animation is asked for by that index the first time it is picked
+  (`mohaa-sim-actor-clip` → `MOHAA_SIMACT_CLIP`, `MapApp._sim_actor_clip_work` on a worker
+  thread under `_sim_lock`, solved by `solve_clip` and kept per actor in its build context).
+  A launcher that has let the actor go answers "no longer built", and he is built again on
+  the next try.
+- **Placement.** The entity's own origin as the editor has it, with no drop to the floor
+  (`aiPlace`): mappers put actors on the ground already, and the scripted bunk and chair
+  animations are made relative to that origin. He faces its yaw (`angle` / `angles`). The
+  clip's own movement (`dl`) and hand data are dropped, so he plays in place. Moved or
+  turned in Modify, he follows.
+- **Playing.** Whole frames at the speed slider's rate with no blending (`aiTick`), as the
+  Model Viewer's tick; at the end he holds the last frame, or starts over with Loop on. An
+  entity with an `anim` key is posed in that animation once its catalogue arrives.
+- **The entity's own model.** While he is posed it is not drawn (`aiHid` for map entities,
+  `aiHidM` for Modify's, keyed by `MOHAA_AI_HID`). The buffers that hides it are rebuilt by
+  `aiSyncHide` from the frame loop before the draw, with no vertex array bound: rebuilding
+  them mid-draw replaced the bound vertex array's index buffer and the map went blank.
+- **Limits.** He has no weapon in hand, so armed poses are not a full preview; clicking him
+  selects what is behind him; deselecting the entity takes him away.
+
 ## Cameras
 
 - **Free-look** is the Model Viewer's: drag to look, WASD, Space / C, Q / E tilt, Left /
@@ -1538,6 +1580,6 @@ model plumbing). The state is `ACT`, every function `act...`; the launcher side 
   (`MmoveSingle`), so nothing stops him in a wall or keeps him from walking off a ledge; a
   door closing on him (`DoorBlocked`) isn't simulated; clips play one after another without
   the game's blending, and the gear a `case weapon` branch of his `.tik` adds isn't
-  applied.
+  applied. An `ai_` actor posed in SIMULATE is unarmed and can't be clicked.
 - **Planned:** following more of what a level script does as it runs. More of the game's
   debugging cvars, once checked in game.

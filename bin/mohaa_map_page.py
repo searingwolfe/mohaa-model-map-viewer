@@ -246,6 +246,24 @@ HTML_TEMPLATE = r"""<!DOCTYPE html>
    border-top:1px solid var(--line);margin-top:3px;cursor:default}
  .amGrp:first-child{border-top:0;margin-top:0;padding-top:2px}
  .amNote{padding:4px 8px;color:var(--dim);font-size:11px;white-space:normal}
+ /* SIMULATE on an ai_ actor: the Model Viewer's animation drill-down */
+ #aiAnimBtn{display:flex;align-items:center;gap:6px;padding:3px 8px}
+ #aiAnimBtn .albl{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
+ #aiAnimBtn .acar{color:var(--dim);font-size:10px}
+ #aiPanel{width:300px}
+ #aiPanel .amItem:hover{background:none}
+ #aiPanel .amItem.hot{background:var(--btnhover)}
+ #aiPanel .amItem .lbl{flex:1}
+ #aiPanel .amItem .cnt{flex:none;text-align:right}
+ #aiPanel .amItem .arw{flex:none;width:auto;color:var(--dim)}
+ #aiPanel .amItem.grp .lbl{color:var(--accent)}
+ #aiPanel .amItem.sel{background:var(--onbg)}
+ #aiPanel .amItem.have .lbl::after{content:' \2022';color:var(--accent)}
+ #aiPanel .amItem.failed .lbl::after{content:' \2022';color:var(--err)}
+ #aiPanel .amItem.failed .cnt{color:var(--err)}
+ #aiPanel .amHead .amCnt{color:var(--dim)}
+ #aiPanel .amUp{padding:2px 7px;font-size:11px;white-space:nowrap}
+ #aiPanel .amUp:disabled{opacity:.35;cursor:default}
  #cvWhere{border-top:1px solid var(--line);margin-top:4px;padding-top:5px}
  #cvWhere div{margin:1px 0} #cvWhere .msg{color:var(--accent)} #cvWhere .warn{color:var(--warn)}
  /* the hotkey on the All / In-game look / Editor look buttons */
@@ -423,6 +441,18 @@ window.setEditorMode=function(on){window.__EDITON__=!!on;
        </div>
        <div id="ladSum" class="co" style="white-space:pre-line"></div>
        <div id="ladWarn" class="co" style="white-space:pre-line;color:var(--warn)"></div>
+     </div>
+     <div id="simAi" style="display:none">
+       <div class="row"><button id="aiAnimBtn" style="flex:1;min-width:0" title="Pose him in any animation of his .tik: every animation it can reach through its $include chain and includes{} groups, as the Model Viewer lists them.&#10;Up / Down: move&#10;Enter: open&#10;Left or Backspace: go back"><span class="albl">&mdash; choose an animation &mdash;</span><span class="acar">&#9664;</span></button><span class="co" id="aiAnimKind"></span></div>
+       <div class="row co" id="aiAnimPath" style="display:none;word-break:break-all"></div>
+       <div class="row">
+         <button id="bAiPlay" style="flex:1" title="Play / pause the animation">&#9654; Play</button>
+         <button id="bAiLoop" title="Loop the animation at its last frame. Off = play once and stop: press Play again to start it over. Your choice is remembered.">&#8734; Loop</button>
+         <button id="bAiReset" title="Back to the animation's first frame">&#8635; Reset</button>
+       </div>
+       <div class="row"><input type="range" id="aiScrub" min="0" max="0" value="0" style="flex:1;min-width:0" title="Scrub through the frames"><span class="co" id="aiFrLab">frame 0</span></div>
+       <div class="row co">speed <input type="range" id="aiSpeed" min="2" max="60" value="20" style="max-width:120px" title="Playback speed in frames per second"> <span id="aiFps">20</span> fps</div>
+       <div id="aiSum" class="co" style="white-space:pre-line"></div>
      </div>
    </div>
    <div class="sect">
@@ -1298,7 +1328,11 @@ function drawGrid(vp){
   const g=gridSize(),N=gridCells(),f=gridFocus(),c=[gridSnap(f[0]),gridSnap(f[1]),gridSnap(f[2])],nm=gridNormal();
   // one plane: the grid line nearest the point on the camera's side of it, so a plane
   // laid on a floor or a wall is just in front of it, not inside
-  if(nm>=0){const k=f[nm]/g;c[nm]=(cam.pos[nm]>=f[nm]?Math.ceil(k-0.01):Math.floor(k+0.01))*g;}
+  // (the focus stops 2 units short of the surface: a surface on a grid line keeps the grid on
+  // it, not a line nearer the camera, or what is drawn on it wouldn't meet the grid's lines)
+  if(nm>=0){const k=f[nm]/g,tol=Math.min(0.49,2.5/g);c[nm]=(cam.pos[nm]>=f[nm]?Math.ceil(k-tol):Math.floor(k+tol))*g;
+    // Draw brush's outline is on its own plane: the grid goes there while it is drawn
+    try{const dp=window.__edDrawPlane&&window.__edDrawPlane();if(dp&&dp.ax===nm)c[nm]=dp.c;}catch(_e){}}
   const key=GRID.i+'|'+GRID.mode+'|'+c.join(',')+'|'+(GRID.col||gridDefCol());
   if(!GRID.prog){GRID.prog=compile(VS_GVL,FS_LINE);GRID.buf=gl.createBuffer();GRID.vao=gvLineVAO(GRID.buf,true);gl.bindVertexArray(null);}
   if(key!==GRID.key){
@@ -2471,7 +2505,7 @@ function auto2Data(R){
 function rebuildModels(){
   for(const R of MODELS){
     const a=[],sp=[],M=R.M,b=M&&M.b;
-    for(const ei of R.inst)if(entShown(ei)){const d=instData(ei);a.push(...d);
+    for(const ei of R.inst)if(entShown(ei)&&!aiHid(ei)){const d=instData(ei);a.push(...d);
       // its bounding sphere, for culling (cullModels): the model's box turned and scaled
       if(b){const c=[(b[0][0]+b[1][0])/2,(b[0][1]+b[1][1])/2,(b[0][2]+b[1][2])/2],h=Math.hypot(b[1][0]-b[0][0],b[1][1]-b[0][1],b[1][2]-b[0][2])/2,
           sc=Math.max(Math.hypot(d[0],d[4],d[8]),Math.hypot(d[1],d[5],d[9]),Math.hypot(d[2],d[6],d[10]));
@@ -8355,7 +8389,7 @@ function rebuildSelection(){
   const mi=[];for(const ei of selE){const X=ENTS[ei];if(X.mvn&&entShown(ei))for(let k=0;k<X.mvn;k++)mi.push(X.mv0+k);}
   gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,B.mSel);gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint32Array(mi.length?mi:[0,0,0]),gl.DYNAMIC_DRAW);
   markSelCount=mi.length;
-  for(const R of MODELS){const a=[];for(const ei of R.inst)if(selE.has(ei)&&entShown(ei))a.push(...instData(ei));
+  for(const R of MODELS){const a=[];for(const ei of R.inst)if(selE.has(ei)&&entShown(ei)&&!aiHid(ei))a.push(...instData(ei));
     gl.bindBuffer(gl.ARRAY_BUFFER,R.selBuf);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(a.length?a:new Array(INST_FLOATS).fill(0)),gl.DYNAMIC_DRAW);R.nsel=a.length/INST_FLOATS;}
   lineDirty=true;
 }
@@ -8622,7 +8656,9 @@ function undoHide(){
   if(step.all||step.show){for(const i of step.e)hidEnt.add(i);for(const i of step.p)hidPrim.add(i);}
   else{for(const i of step.e)hidEnt.delete(i);for(const i of step.p)hidPrim.delete(i);}
   rebuildWorld();updateSelPanel();
-  flash((step.all?'Undo Show all: '+n+' hidden again':step.show?'Undo Show: '+n+' hidden again':'Undo Hide: '+n+' shown again')+(HIDE_UNDO.length?' (Ctrl+Z again for the step before)':''));
+  // shown again, but a Show button (or a look) hides its kind: say which, or it seems lost
+  let still='';if(!step.all&&!step.show){const L=step.e.filter(ei=>MAP.ents[ei]&&!entVisible(ei));if(L.length){const fb=filterNamesOf(L),pl=/buttons$/.test(fb);still=' - but '+fb+(pl?' hide ':' hides ')+(L.length===1?'its':'their')+' kind (click '+(pl?'them':'it')+' to show '+(L.length===1?'it':'them')+')';}}
+  (still?flashWarn:flash)((step.all?'Undo Show all: '+n+' hidden again':step.show?'Undo Show: '+n+' hidden again':'Undo Hide: '+n+' shown again')+still+(!still&&HIDE_UNDO.length?' (Ctrl+Z again for the step before)':''));
 }
 
 // ============================================================================
@@ -8696,7 +8732,8 @@ function loop(t){
   // Simulate's model in flight (a camera moved by hand stops following it)
   if(moved&&SIM.run&&$('simCam').checked){$('simCam').checked=false;flash('The camera no longer follows the model');}
   if(moved&&ACT.follow){ACT.follow=false;simPanel();flash('Follow off: the camera was moved by hand');}
-  const sims=(SIM.run?simTick(performance.now()):false)||actTick(performance.now());
+  const aiHidCh=aiSyncHide();      // before the draw: it rebuilds buffers, which must not happen mid-draw
+  const sims=(SIM.run?simTick(performance.now()):false)||actTick(performance.now())||aiHidCh;
   if(moved)camChanged();
   if(moved||doors||exps||wx||sway||sims||_drawReq){_drawReq=false;draw();}
 }
@@ -8942,9 +8979,11 @@ window.addEventListener('keydown',e=>{
     e.preventDefault();return;}
   // Alt+C Copy, Alt+Z Undo, Alt+Y / Alt+Shift+Z Redo: Modify's buttons, as clicked
   if(e.altKey&&!e.ctrlKey&&!e.metaKey&&(kl==='c'||kl==='z'||kl==='y')){
-    const id=kl==='c'?'bModDup':(kl==='y'||e.shiftKey)?'bModHRedo':'bModHUndo',b=$(id);
-    if(b&&!b.disabled)b.click();else if(kl!=='c')flash(modNothingMsg(id==='bModHUndo'?-1:1));
-    else flash('Select what to copy first (Shift+click adds more)');
+    // Alt+C copies whichever is selected: brushes (the Map Editor's copy) or Modify's
+    // entities (modCopySel; the two Copy buttons each take only their own)
+    if(kl==='c'){modCopySel();e.preventDefault();return;}
+    const id=(kl==='y'||e.shiftKey)?'bModHRedo':'bModHUndo',b=$(id);
+    if(b&&!b.disabled)b.click();else flash(modNothingMsg(id==='bModHUndo'?-1:1));
     e.preventDefault();return;}
   // Alt+Q Turn (Alt+Shift+Q the other way)
   if(e.altKey&&!e.ctrlKey&&!e.metaKey&&kl==='q'){modTurn(e.shiftKey?-90:90);e.preventDefault();return;}
@@ -10678,7 +10717,7 @@ function modInst(m){
 function modModelsInst(){
   if(!gl)return [];
   const G=new Map();
-  MOD.ents.forEach((m,i)=>{if(!modDrawn(i))return;const R=modModelR(modTik(m));if(!R)return;
+  MOD.ents.forEach((m,i)=>{if(!modDrawn(i)||aiHidM(m))return;const R=modModelR(modTik(m));if(!R)return;
     let l=G.get(R);if(!l){l=[];G.set(R,l);}l.push(m);});
   const out=[];
   for(const[R,list]of G){
@@ -12036,12 +12075,16 @@ function lerpAng(a,b,u){let d=b-a;d=((d%360)+540)%360-180;return a+d*u;}
 // ---- the panel -----------------------------------------------------------------------------
 function simPanel(){
   if(!$('simSect')||!MAP)return;
-  const key=simFocus(),nf=(!key&&!SIM.run)?actFocus():null,lf=(!key&&!SIM.run&&!nf)?ladFocus():null,show=!!key||SIM.run||!!nf||!!lf;
+  const key=simFocus(),nf=(!key&&!SIM.run)?actFocus():null,lf=(!key&&!SIM.run&&!nf)?ladFocus():null;
+  const af=(!key&&!SIM.run&&!nf&&!lf)?aiFocus():null,show=!!key||SIM.run||!!nf||!!lf||!!af;
   $('simSect').style.display=show?'':'none';
-  // a path node shows the actor's controls instead of the spline's; a func_ladder the climber's
-  $('simSpl').style.display=nf||lf?'none':'';$('simNd').style.display=nf?'':'none';$('simLd').style.display=lf?'':'none';
-  if(lf)ladPanel(lf);else actPanel(nf);
-  if(!show||nf||lf){SIM.chain=null;return;}
+  // a path node shows the actor's controls instead of the spline's; a func_ladder the climber's;
+  // an ai_ actor the animation player
+  $('simSpl').style.display=nf||lf||af?'none':'';$('simNd').style.display=nf?'':'none';$('simLd').style.display=lf?'':'none';
+  $('simAi').style.display=af?'':'none';
+  if(!af)aiMenuClose();
+  if(af)aiPanel(af);else if(lf)ladPanel(lf);else actPanel(nf);
+  if(!show||nf||lf||af){SIM.chain=null;return;}
   if(key&&(!SIM.chain||SIM.chain.key!==key||!SIM.run))SIM.chain=simChain(key);
   const ch=SIM.run?SIM.rc:SIM.chain;
   $('bSim').disabled=SIM.run||!SIM.chain;$('bSimReset').disabled=!SIM.run;
@@ -12541,7 +12584,8 @@ window.MOHAA_SIMACTOR=async function(k,meta,b64){
     b.state='ready';
     if(b.tag<0&&WM)flash('Simulate: this human has no '+(meta.tag||'tag_weapon_right')+': the weapon is left out');
   }catch(e){b.state='fail';b.why=String(e&&e.message||e);actFree(b);flash('Simulate: the actor can\'t be drawn ('+b.why+')');}
-  if(ACT.want===b.key){if(LAD.want)ladBuilt(b);else actSpawnNow();}
+  if(AIA.want===b.key){AIA.want=null;aiReady(b);}
+  else if(ACT.want===b.key){if(LAD.want)ladBuilt(b);else actSpawnNow();}
   simPanel();requestDraw();
 };
 window.MOHAA_SIMACT_ANIM=function(k,role,out){
@@ -12553,7 +12597,7 @@ window.MOHAA_SIMACT_ANIM=function(k,role,out){
 };
 window.MOHAA_SIMACT_FAIL=function(k,role,why){
   const b=ACT.byK.get(k);
-  if(!role){if(b){b.state='fail';b.why=String(why||'not built');if(ACT.want===b.key)ACT.want=null;}}
+  if(!role){if(b){b.state='fail';b.why=String(why||'not built');if(ACT.want===b.key)ACT.want=null;if(AIA.want===b.key){AIA.want=null;AIA.open=false;}}}
   else if(b){if(!b.anims.has(role)&&b.meta)b.meta.roles[role]=String(why||'not built');
     if(ACT.cur&&ACT.cur.b===b)ACT.cur.wantRole='';
     if(role==='ladder'){LAD.want='';LAD.wantSim='';LAD.warn='Can\'t climb: '+String(why||'not built');}}
@@ -12983,6 +13027,9 @@ function actPose(now){
     running=f<n-1;
     if(!running&&!L.done){L.done=true;c.o=pos.slice();c.yaw=yaw;c.vp=A.vp||0;if(!A.c)c.lad=null;
       c.t0=now-(A.c?0:(A.it||0)*1000);simPanel();}      // the idle carries on from where it is
+  }else if(c.ai){
+    // an ai_ actor posed in an animation: its frame as the Model Viewer shows it (no blending)
+    const F=c.ai.rec.frames;over=F[Math.max(0,Math.min(F.length-1,c.ai.f|0))];
   }else if(b.idleTL&&b.meta.idle){
     over=actFrameAt(b.meta.idle,((now-c.t0)/1000)%Math.max(0.05,(b.meta.idle.frames.length-1)*(b.meta.idle.frameTime||0.05)));
   }
@@ -13055,6 +13102,7 @@ function actFollowCam(c){
   flyAnim=null;cam.pos=v.pos;cam.yaw=((v.yaw%360)+360)%360;cam.pitch=v.pitch;cam.roll=0;camChanged();
 }
 function actTick2(now,c){
+  if(c.ai)return aiTick(now,c);
   if(c.pauseAt!=null)return false;
   if(c.go){actPose(now);return true;}
   if(c.play&&c.play.done!==true){actPose(now);return true;}
@@ -13156,6 +13204,399 @@ function actInit(){
   ACT.hum=LS.get(ACT_LS_H)||'';ACT.wpn=LS.get(ACT_LS_W)||'';
   actFill();
   ladInit();
+  aiInit();
+}
+// ---- SIMULATE on an ai_ actor: pose him in any of his animations ---------------------------
+// Select one ai_ entity (an ai_ class whose model is a models/human .tik: the map's own, a
+// script's spawn, or one Modify changed) and the section shows the Model Viewer's animation
+// player: the drill-down list of every animation his .tik reaches (its $include chain and
+// includes{} groups, from build_anim_catalog), Play / Loop / Reset, the frame slider and the
+// speed in frames per second. Picking an animation builds him unarmed from the paks (the
+// path node's actor, mohaa_map_actor.py) and poses him in it where the entity stands: its
+// origin as it is (no drop to the floor), facing its angle. While he is
+// posed the entity's own model is not drawn (aiHid), so he is seen alone: sitting in a chair,
+// lying in a bunk. The clip plays in place (its own movement is not used), frame by frame
+// like the Model Viewer's (no blending between frames). He goes when the entity is deselected.
+// Prefix ai: the actor itself is ACT.cur with an `ai` record, as the ladder's climber is.
+const AIA={want:null,open:false,pend:null,note:'',noteErr:false,auto:new Set(),
+  loop:false,el:null,back:null,body:null,search:null,headTxt:null,headCnt:null,upBtn:null,stack:[],filter:'',rows:[],hot:-1};
+const AI_LS_LOOP='mohaaMapViewerAiLoop', AI_MAXHITS=400, AI_GAP=6;
+// the ai_ entity selected (alone): {key, ei, cls, kvl, tik, o, yaw} or null
+function aiFocus(){
+  if(!MAP||selAll().n>1)return null;
+  const m=MOD.ents[MOD.sel];let ei=-1;
+  if(m&&!modIsMap(m)){
+    // one Modify added (a copy of an actor, or a new one): its own keys, origin and model
+    if(m.del)return null;
+    const cls=modCls(m);if(!/^ai_/.test(cls))return null;
+    const kvl=simKvl(m),o=modOrigin(m);if(!o)return null;
+    return{key:'Am'+m.id,hk:'m'+m.id,ei:-1,cls:cls,kvl:kvl,tik:modTik(m),o:o.slice(),yaw:entAngles(kvl)[1]};
+  }
+  if(m)ei=m.ei;else ei=selFocusEnt();
+  if(!(ei>0)||!MAP.ents[ei])return null;
+  const mm=MOD.ents.find(x=>x.ei===ei);if(mm&&mm.del)return null;
+  const ed=!!mm&&modEdited(mm),cls=ed?modCls(mm):String(MAP.ents[ei].cls||MAP.ents[ei].kvl.classname||'').toLowerCase();
+  if(!/^ai_/.test(cls))return null;
+  const kvl=ed?simKvl(mm):MAP.ents[ei].kvl;
+  const o=ed?modOrigin(mm):(parseVec(kvl.origin,3)||(ENTS[ei]&&ENTS[ei].origin));
+  if(!o)return null;
+  return{key:'A'+ei,hk:'e'+ei,ei:ei,cls:cls,kvl:kvl,tik:aiTik(ei,ed?mm:null,cls,kvl),o:o.slice(),yaw:entAngles(kvl)[1]};
+}
+// his .tik: the "model" key (as Modify's modTik reads it), else his class's (ai_german_wehrmact_soldier
+// is models/human/german_wehrmact_soldier.tik), else the model the map draws him with
+function aiTik(ei,mm,cls,kvl){
+  if(mm)return modTik(mm);
+  let p=String(kvl.model||'').toLowerCase().replace(/\\/g,'/').trim();
+  if(p.startsWith('*'))p='';
+  if(!p){const d=(D.defs||{})[cls];if(d&&d.t)p=String(d.t).toLowerCase();}
+  if(!p&&ENTS[ei]&&ENTS[ei].model>=0&&D.models[ENTS[ei].model])p=String(D.models[ENTS[ei].model].p||'').toLowerCase();
+  if(!p)return '';
+  while(p.includes('//'))p=p.replace('//','/');
+  if(!p.startsWith('models/'))p='models/'+p;
+  if(!/\.(tik|skd|skb)$/.test(p))p+='.tik';
+  return p;
+}
+// only a .tik straight under models/human can be built (mohaa_map_actor.check_vpath)
+function aiTikOk(p){return /^models\/human\/[^\/]+\.tik$/.test(p||'');}
+function aiBuild(f){return f&&aiTikOk(f.tik)?ACT.built.get(f.tik+'|')||null:null;}
+// the entity whose own model is not drawn while he is posed in its place
+// (MOHAA_AI_HID: 'e'+map entity, or 'm'+id of one Modify added)
+function aiHid(ei){return ei>0&&window.MOHAA_AI_HID==='e'+ei;}
+function aiHidM(m){return modIsMap(m)?aiHid(m.ei):window.MOHAA_AI_HID==='m'+m.id;}
+// Run from the frame loop, never inside a draw: rebuildSelection binds index buffers, and with a
+// vertex array still bound that would replace the bound one's own (the whole map went blank).
+// No vertex array is bound while they rebuild, and the one before is put back. True when it changed.
+function aiSyncHide(){
+  const c=ACT.cur,want=c&&c.ai?c.ai.hk:'',cur=window.MOHAA_AI_HID==null?'':window.MOHAA_AI_HID;
+  if(want===cur||!gl)return false;
+  window.MOHAA_AI_HID=want;
+  const prev=gl.getParameter(gl.VERTEX_ARRAY_BINDING);gl.bindVertexArray(null);
+  try{rebuildModels();rebuildSelection();}catch(err){console.error(err);}
+  finally{gl.bindVertexArray(prev);}
+  return true;
+}
+// where he stands: the entity's own origin, as the editor has it (mappers put actors on the
+// ground already; the scripted animations are made relative to that origin)
+function aiPlace(f){return f.o.slice();}
+function aiDrop(){
+  ACT.cur=null;ACT.want=null;ACT.pick=null;ACT.follow=false;AIA.want=null;AIA.pend=null;AIA.open=false;
+  for(const b of ACT.built.values()){if(b.H)b.H.n=0;if(b.Wp)b.Wp.n=0;}
+  requestDraw();
+}
+// ---- building: the actor, then his catalogue, then each animation picked --------------------
+function aiEnsure(f){
+  if(!simHost()){AIA.note='Posing an actor needs the Map Viewer: it builds him from the paks';AIA.noteErr=true;simPanel();return null;}
+  if(!aiTikOk(f.tik)){AIA.note='Only an actor whose model is a models/human .tik can be posed'+(f.tik?' ('+f.tik+')':'');AIA.noteErr=true;simPanel();return null;}
+  let b=ACT.built.get(f.tik+'|');
+  if(b&&b.state==='fail'){ACT.built.delete(b.key);ACT.byK.delete(b.k);if(!(ACT.cur&&ACT.cur.b===b))actFree(b);b=null;}     // try again
+  if(!b){b=actGet(f.tik,'');AIA.want=b.key;AIA.note='';}
+  else if(b.state==='ready'&&!b.cat&&!b.catAsk)aiReady(b);
+  return b;
+}
+function aiReady(b){
+  if(b.cat||b.catAsk)return;
+  b.catAsk=true;
+  if(!simPost('mohaa-sim-actor-cat\n'+JSON.stringify({k:b.k}))){b.catAsk=false;AIA.note='Actors need the Map Viewer';AIA.noteErr=true;}
+  simPanel();
+}
+window.MOHAA_SIMACT_CAT=function(k,cat){
+  const b=ACT.byK.get(k);if(!b)return;
+  b.catAsk=false;
+  const ok=cat&&Array.isArray(cat.a)&&Array.isArray(cat.n);
+  b.cat=ok?{a:cat.a,n:cat.n,r:(cat.r|0)<cat.n.length?cat.r|0:0}:{a:[],n:[['animations',[],[],0]],r:0};
+  b.clips=b.clips||new Map();b.cfail=b.cfail||new Map();b.paths=null;
+  const f=aiFocus();
+  if(f&&aiBuild(f)===b){
+    // the entity's own "anim" key (a script's spawn can carry one): posed in it straight away
+    const an=String(f.kvl.anim||'').toLowerCase();
+    const ai=an&&!AIA.auto.has(f.key)?b.cat.a.findIndex(e=>String(e[0]).toLowerCase()===an):-1;
+    if(ai>=0){AIA.auto.add(f.key);AIA.open=false;aiPick(ai);}
+    else if(AIA.open){AIA.open=false;aiMenuOpen();}
+  }
+  simPanel();
+};
+// the launcher keeps only its last few actors: one it has let go is built again on the next try
+function aiGone(b,why){if(b&&/no longer built/.test(String(why||''))&&!(ACT.cur&&ACT.cur.b===b)){b.state='fail';b.why=String(why);}}
+window.MOHAA_SIMACT_CATFAIL=function(k,why){
+  const b=ACT.byK.get(k);if(b){b.catAsk=false;aiGone(b,why);}
+  AIA.open=false;AIA.note='No animation list: '+String(why||'not built');AIA.noteErr=true;flash('Simulate: '+AIA.note);simPanel();
+};
+// one animation, by its index in his catalogue
+function aiPick(i){
+  const f=aiFocus(),b=aiBuild(f);if(!f||!b||!b.cat||!b.cat.a[i])return;
+  AIA.stackFor(i);
+  if(b.clips.has(i)){aiSetClip(f,b,i);return;}
+  AIA.pend={key:f.key,i:i};AIA.note='building '+b.cat.a[i][0]+' …';AIA.noteErr=false;
+  if(!simPost('mohaa-sim-actor-clip\n'+JSON.stringify({k:b.k,i:String(i)}))){AIA.pend=null;AIA.note='Actors need the Map Viewer';AIA.noteErr=true;}
+  simPanel();
+}
+window.MOHAA_SIMACT_CLIP=function(k,i,rec){
+  const b=ACT.byK.get(k);if(!b||!b.clips)return;
+  if(!rec||!Array.isArray(rec.frames)||!rec.frames.length){window.MOHAA_SIMACT_CLIPFAIL(k,i,'no frames');return;}
+  b.clips.set(i,rec);b.cfail.delete(i);
+  const f=aiFocus();
+  if(AIA.pend&&AIA.pend.i===i&&f&&f.key===AIA.pend.key&&aiBuild(f)===b){AIA.pend=null;AIA.note='';aiSetClip(f,b,i);}
+  else if(AIA.el)aiMenuRender();
+};
+window.MOHAA_SIMACT_CLIPFAIL=function(k,i,why){
+  const b=ACT.byK.get(k);if(b&&b.cfail&&!/no longer built/.test(String(why||'')))b.cfail.set(i,String(why||'not built'));
+  if(b&&/no longer built/.test(String(why||''))){b.cat=null;b.clips=new Map();b.cfail=new Map();b.state='fail';b.why=String(why);}
+  if(AIA.pend&&AIA.pend.i===i){AIA.pend=null;AIA.note=String(why||'not built');AIA.noteErr=true;flash('Simulate: '+AIA.note);}
+  if(AIA.el)aiMenuRender();
+  simPanel();
+};
+// pose him in clip i (he is spawned on the first): frame 0, playing as the Model Viewer's pick does
+function aiSetClip(f,b,i){
+  const rec=b.clips.get(i);if(!rec)return;
+  let c=ACT.cur;
+  if(!c||c.key!==f.key||!c.ai||c.b!==b){
+    ACT.cur=c={b:b,key:f.key,o:aiPlace(f),yaw:f.yaw,camYaw:0,t0:performance.now(),play:null,wantRole:'',lastIdle:0,go:null,plan:null,moved:false,wantGo:false,
+      ai:{ei:f.ei,hk:f.hk,i:-1,rec:null,f:0,playing:false,acc:0,last:0}};
+  }
+  const a=c.ai;a.i=i;a.rec=rec;a.f=0;a.acc=0;a.last=performance.now();a.playing=rec.frames.length>1;
+  const sc=$('aiScrub');sc.max=String(rec.frames.length-1);sc.value='0';
+  actPose(performance.now());simPanel();requestDraw();
+}
+// ---- playing: whole frames at the speed slider's rate, as the Model Viewer's tick ------------
+function aiFps(){return Math.max(1,+$('aiSpeed').value||20);}
+function aiTick(now,c){
+  const a=c.ai;
+  if(!a.playing){a.last=now;return false;}
+  const dt=Math.min(0.05,Math.max(0,(now-a.last)/1000));a.last=now;
+  a.acc+=dt;const step=1/aiFps(),NF=a.rec.frames.length;let ch=false;
+  while(a.acc>=step){a.acc-=step;
+    if(a.f+1>=NF){
+      if(AIA.loop){a.f=0;ch=true;}
+      else{a.playing=false;a.acc=0;aiPlayUi();break;}
+    }else{a.f++;ch=true;}}
+  if(ch){actPose(now);aiFrameUi();}
+  return ch;
+}
+function aiPlay(){
+  const c=ACT.cur,f=aiFocus();
+  if(!c||!c.ai||!f||c.key!==f.key){aiMenuToggle();return;}
+  const a=c.ai,NF=a.rec.frames.length;
+  if(a.playing){a.playing=false;aiPlayUi();return;}
+  if(NF<2)return;
+  if(!AIA.loop&&a.f>=NF-1){a.f=0;actPose(performance.now());aiFrameUi();}    // a finished one starts over
+  a.playing=true;a.acc=0;a.last=performance.now();aiPlayUi();requestDraw();
+}
+function aiReset(){
+  const c=ACT.cur;if(!c||!c.ai)return;
+  c.ai.f=0;c.ai.acc=0;c.ai.last=performance.now();actPose(performance.now());aiFrameUi();requestDraw();
+}
+function aiSetLoop(v){AIA.loop=!!v;$('bAiLoop').classList.toggle('on',AIA.loop);LS.set(AI_LS_LOOP,AIA.loop?'on':'off');}
+function aiPlayUi(){
+  const c=ACT.cur,run=!!(c&&c.ai&&c.ai.playing);
+  $('bAiPlay').innerHTML=run?'&#9208; Pause':'&#9654; Play';$('bAiPlay').classList.toggle('on',run);
+}
+function aiFrameUi(){
+  const c=ACT.cur,a=c&&c.ai;
+  $('aiScrub').value=String(a?a.f:0);$('aiFrLab').textContent='frame '+(a?a.f:0);
+}
+// ---- the panel ------------------------------------------------------------------------------
+function aiPanel(f){
+  const c=ACT.cur;
+  if(c&&c.key!==f.key){aiDrop();AIA.note='';}           // another actor's, a node's or a ladder's: he goes
+  const cc=ACT.cur&&ACT.cur.key===f.key?ACT.cur:null;
+  if(cc){const o=aiPlace(f);if(o.some((v,k)=>v!==cc.o[k])||cc.yaw!==f.yaw){cc.o=o;cc.yaw=f.yaw;actPose(performance.now());requestDraw();}}   // moved in Modify
+  const b=aiBuild(f),a=cc&&cc.ai,lbl=$('aiAnimBtn').querySelector('.albl'),path=$('aiAnimPath');
+  if(a){const e=b&&b.cat&&b.cat.a[a.i];lbl.textContent=(e?e[0]:'animation')+'  ('+a.rec.frames.length+'f)';
+    if(e&&e[1]){path.textContent=e[1];path.style.display='';path.style.color='';}else path.style.display='none';}
+  else{lbl.textContent='— choose an animation —';path.style.display='none';}
+  if(AIA.note){path.textContent=AIA.note;path.style.display='';path.style.color=AIA.noteErr?'var(--err)':'';}
+  $('aiAnimKind').textContent=b&&b.cat?'('+b.cat.a.length+' anims)':'';
+  const busy=!!b&&(b.state==='building'||b.catAsk);
+  $('aiAnimBtn').disabled=busy;
+  $('bAiPlay').disabled=busy||(!!a&&a.rec.frames.length<2);
+  $('bAiReset').disabled=!a;$('aiScrub').disabled=!a;
+  if(a){$('aiScrub').max=String(a.rec.frames.length-1);}else{$('aiScrub').max='0';}
+  aiPlayUi();aiFrameUi();
+  let s='';
+  if(!simHost())s='Posing an actor needs the Map Viewer: it builds him from the paks';
+  else if(!aiTikOk(f.tik))s='His model '+(f.tik?'('+f.tik+') ':'')+'is not a models/human .tik: only those can be posed';
+  else if(b&&b.state==='building')s='Building '+actLabel(f.tik)+'…';
+  else if(b&&b.catAsk)s='Reading his animations…';
+  else if(b&&b.state==='fail')s='Can\'t build him: '+b.why;
+  else if(!a)s='Choose an animation to pose '+actLabel(f.tik)+' in it where the entity stands.';
+  else s=actLabel(f.tik)+', unarmed, posed at the entity\'s origin, facing its angle ('+Math.round(f.yaw)+'). The entity\'s own model is hidden meanwhile.';
+  if(f.kvl.anim)s+='\nIts "anim" key: '+f.kvl.anim;
+  if(a)s+='\nHe is removed when the entity is deselected.';
+  $('aiSum').textContent=s;
+}
+function aiInit(){
+  if(!$('aiAnimBtn'))return;
+  $('aiAnimBtn').onclick=ev=>{ev.stopPropagation();aiMenuToggle();};
+  $('bAiPlay').onclick=aiPlay;$('bAiReset').onclick=aiReset;
+  $('bAiLoop').onclick=()=>aiSetLoop(!AIA.loop);
+  aiSetLoop(LS.get(AI_LS_LOOP)==='on');
+  $('aiScrub').oninput=()=>{const c=ACT.cur;if(!c||!c.ai)return;c.ai.f=+$('aiScrub').value|0;c.ai.acc=0;actPose(performance.now());aiFrameUi();requestDraw();};
+  $('aiScrub').onchange=()=>$('aiScrub').blur();
+  $('aiSpeed').oninput=()=>{$('aiFps').textContent=$('aiSpeed').value;};
+  $('aiSpeed').onchange=()=>$('aiSpeed').blur();
+  window.addEventListener('resize',aiMenuClose);
+}
+// ---- the animation list: the Model Viewer's drill-down (amOpen ... amKey) --------------------
+// b.cat: a = [[name, .skc]], n = [[category, [anims], [child categories], count]], r = root
+function aiMenuToggle(){
+  if(AIA.el){aiMenuClose();return;}
+  const f=aiFocus();if(!f)return;
+  const b=aiEnsure(f);if(!b)return;
+  if(b.cat){aiMenuOpen();return;}
+  AIA.open=true;               // opens when his animations arrive
+  simPanel();
+}
+AIA.stackFor=function(i){
+  const b=aiBuild(aiFocus());if(!b||!b.cat)return;
+  const n=b.cat.n[AIA.stack[AIA.stack.length-1]];
+  if(!n||n[1].indexOf(i)<0){const p=aiPaths(b)[i];if(p&&p.length)AIA.stack=p.slice();}
+};
+function aiPathOK(b,st){
+  if(!st||!st.length||st[0]!==b.cat.r)return false;
+  for(let i=0;i<st.length;i++){const n=b.cat.n[st[i]];if(!n)return false;
+    if(i&&b.cat.n[st[i-1]][2].indexOf(st[i])<0)return false;}
+  return true;
+}
+function aiMenuOpen(){
+  aiMenuClose();
+  const b=aiBuild(aiFocus());if(!b||!b.cat)return;
+  if(b.stack&&aiPathOK(b,b.stack))AIA.stack=b.stack.slice();
+  if(!aiPathOK(b,AIA.stack))AIA.stack=[b.cat.r];
+  AIA.filter='';AIA.hot=-1;
+  AIA.back=document.createElement('div');
+  AIA.back.style.cssText='position:fixed;left:0;top:0;width:100%;height:100%;z-index:70';
+  AIA.back.onclick=ev=>{if(!AIA.el||!AIA.el.contains(ev.target))aiMenuClose();};
+  AIA.back.addEventListener('wheel',ev=>{if(AIA.el&&!AIA.el.contains(ev.target))aiMenuClose();},{passive:true});
+  document.body.appendChild(AIA.back);
+  const el=AIA.el=document.createElement('div');el.className='amPanel';el.id='aiPanel';
+  const h=document.createElement('div');h.className='amHead';
+  AIA.upBtn=document.createElement('button');AIA.upBtn.className='amUp';AIA.upBtn.textContent='← Back';
+  AIA.upBtn.title='Go back to the previous category (Left arrow or Backspace)';
+  AIA.upBtn.onclick=ev=>{ev.stopPropagation();aiMenuUp();};
+  AIA.headTxt=document.createElement('span');AIA.headTxt.className='amPathTxt';
+  AIA.headCnt=document.createElement('span');AIA.headCnt.className='amCnt';
+  h.appendChild(AIA.upBtn);h.appendChild(AIA.headTxt);h.appendChild(AIA.headCnt);el.appendChild(h);
+  const se=AIA.search=document.createElement('input');se.className='amSearch';se.type='text';
+  se.spellcheck=false;se.autocomplete='off';se.placeholder='search all animations…';
+  se.oninput=()=>{AIA.filter=se.value.trim();AIA.hot=-1;aiMenuRender();};
+  el.appendChild(se);
+  AIA.body=document.createElement('div');AIA.body.className='amBody';el.appendChild(AIA.body);
+  // a row's mousedown must not take the focus from the search box (keys would reach the
+  // page's hotkeys); the box itself and the list's scrollbar keep theirs
+  el.addEventListener('mousedown',ev=>{if(ev.target===se||ev.target===AIA.body)return;ev.preventDefault();});
+  AIA.back.appendChild(el);
+  $('aiAnimBtn').classList.add('on');
+  document.addEventListener('keydown',aiMenuKeyGuard,true);
+  aiMenuRender();se.focus();
+}
+function aiMenuClose(){
+  if(AIA.el){const b=aiBuild(aiFocus());if(b)b.stack=AIA.stack.slice();AIA.el.remove();AIA.el=null;}
+  if(AIA.back){AIA.back.remove();AIA.back=null;}
+  AIA.body=AIA.search=AIA.headTxt=AIA.headCnt=AIA.upBtn=null;AIA.filter='';AIA.rows=[];AIA.hot=-1;
+  document.removeEventListener('keydown',aiMenuKeyGuard,true);
+  const bt=$('aiAnimBtn');if(bt)bt.classList.remove('on');
+}
+// beside the button, tops aligned, kept on the screen (amPlace / mnFit)
+function aiMenuPlace(){
+  const el=AIA.el;if(!el)return;
+  const r=$('aiAnimBtn').getBoundingClientRect(),vw=window.innerWidth,vh=window.innerHeight,W=el.getBoundingClientRect().width||300;
+  let left=r.left-AI_GAP-W;
+  if(left<4)left=Math.min(r.right+AI_GAP,Math.max(4,vw-4-W));
+  if(left+W>vw-4)left=Math.max(4,vw-4-W);
+  el.style.left=left+'px';
+  const avail=vh-8;el.style.maxHeight=avail+'px';el.style.top='4px';
+  const hh=Math.min(el.getBoundingClientRect().height,avail);
+  el.style.top=Math.max(4,Math.min(r.top,vh-4-hh))+'px';
+}
+// each animation's first category trail (the catalogue shares a file between groups)
+function aiPaths(b){
+  if(b.paths)return b.paths;
+  const P=b.paths={},seen=new Set(),N=b.cat.n;
+  (function walk(ni,trail){
+    if(seen.has(ni))return;seen.add(ni);
+    const n=N[ni];if(!n)return;const t=trail.concat(ni);
+    for(const ai of n[1])if(P[ai]===undefined)P[ai]=t;
+    for(const ci of n[2])walk(ci,t);
+  })(b.cat.r,[]);
+  return P;
+}
+function aiPathStr(b,i){
+  const p=aiPaths(b)[i];if(!p||!p.length)return '';
+  const names=p.slice(1).map(k=>b.cat.n[k][0]);
+  return names.length?names.join(' › '):(b.cat.n[b.cat.r][0]||'');
+}
+function aiMenuRender(){
+  const el=AIA.el;if(!el)return;
+  const b=aiBuild(aiFocus());if(!b||!b.cat){aiMenuClose();return;}
+  const C=b.cat,node=C.n[AIA.stack[AIA.stack.length-1]]||C.n[C.r],root=AIA.stack.length<2;
+  AIA.upBtn.disabled=root&&!AIA.filter;
+  const trail=AIA.stack.slice(1).map(k=>C.n[k][0]);
+  if(AIA.filter){AIA.headTxt.textContent='search results';AIA.headCnt.textContent='';}
+  else{AIA.headTxt.textContent=root?(C.a.length+' animations'):(trail.length>2?'… › ':'')+trail.slice(-2).join(' › ');
+    AIA.headCnt.textContent=root?'':String(node[3]);}
+  AIA.headTxt.title=root?'':trail.join(' › ');
+  const bd=AIA.body;bd.innerHTML='';AIA.rows=[];
+  const note=t=>{const m=document.createElement('div');m.className='amNote';m.textContent=t;bd.appendChild(m);};
+  if(AIA.filter){
+    const q=AIA.filter.toLowerCase();let hits=0;
+    for(let i=0;i<C.a.length;i++){const e=C.a[i];
+      if(String(e[0]).toLowerCase().indexOf(q)<0&&String(e[1]).toLowerCase().indexOf(q)<0)continue;
+      if(hits>=AI_MAXHITS){note('… more matches; refine the search');break;}
+      aiMenuLeaf(b,i);hits++;}
+    if(!hits)note('no animation matches "'+AIA.filter+'"');
+  }else{
+    for(const ci of node[2])aiMenuGroup(b,ci);
+    for(const ai of node[1])aiMenuLeaf(b,ai);
+    if(!node[2].length&&!node[1].length)note(C.a.length?'(this category is empty)':'his .tik has no animations');
+  }
+  aiMenuHi(AIA.hot<0?-1:Math.min(AIA.hot,AIA.rows.length-1));
+  aiMenuPlace();
+}
+function aiMenuRow(cls,label,count,arrow){
+  const d=document.createElement('div');d.className='amItem'+(cls?' '+cls:'');
+  const l=document.createElement('span');l.className='lbl';l.textContent=label;d.appendChild(l);
+  if(count!=null&&count!==''){const c=document.createElement('span');c.className='cnt';c.textContent=count;d.appendChild(c);}
+  if(arrow){const a=document.createElement('span');a.className='arw';a.textContent=arrow;d.appendChild(a);}
+  const idx=AIA.rows.length;
+  d.onmousemove=()=>{if(AIA.hot!==idx)aiMenuHi(idx);};
+  AIA.body.appendChild(d);return d;
+}
+function aiMenuGroup(b,ci){
+  const cn=b.cat.n[ci],d=aiMenuRow('grp',cn[0],String(cn[3]),'▸');
+  d.title=cn[0]+'  —  '+cn[3]+' animation'+(cn[3]===1?'':'s');
+  const go=()=>{AIA.stack.push(ci);AIA.filter='';AIA.search.value='';AIA.hot=-1;aiMenuRender();};
+  d.onclick=ev=>{ev.stopPropagation();go();};AIA.rows.push({go:go});
+}
+function aiMenuLeaf(b,i){
+  const e=b.cat.a[i],rec=b.clips.get(i),bad=!rec?b.cfail.get(i):null,c=ACT.cur;
+  const d=aiMenuRow(rec?'have':(bad?'failed':''),e[0],rec?rec.frames.length+'f':(bad?'failed':'.skc'),null);
+  const cp=aiPathStr(b,i);
+  d.title=(cp?cp+'\n':'')+(e[1]||'')+(bad?'\n✗ '+bad:'');
+  if(c&&c.ai&&c.b===b&&c.ai.i===i)d.classList.add('sel');
+  const go=()=>{aiMenuClose();aiPick(i);};
+  d.onclick=ev=>{ev.stopPropagation();go();};AIA.rows.push({go:go});
+}
+function aiMenuUp(){
+  if(AIA.filter){AIA.filter='';AIA.search.value='';AIA.hot=-1;aiMenuRender();return;}
+  if(AIA.stack.length>1){AIA.stack.pop();AIA.hot=-1;aiMenuRender();}
+}
+function aiMenuHi(i){
+  [...AIA.body.children].forEach(x=>x.classList.remove('hot'));
+  AIA.hot=i;if(i<0||i>=AIA.rows.length)return;
+  const el=AIA.body.children[i];
+  if(el){el.classList.add('hot');if(el.scrollIntoView)el.scrollIntoView({block:'nearest'});}
+}
+// the list is modal: its keys never reach the page's hotkeys (Backspace hides, 1-7 filter...)
+function aiMenuKeyGuard(ev){aiMenuKey(ev);ev.stopPropagation();}
+function aiMenuKey(ev){
+  const k=ev.key,R=AIA.rows;
+  if(k==='ArrowDown'||k==='ArrowUp'){ev.preventDefault();if(!R.length)return;
+    let i=AIA.hot+(k==='ArrowDown'?1:-1);if(i<0)i=R.length-1;if(i>=R.length)i=0;aiMenuHi(i);return;}
+  if(k==='Enter'){ev.preventDefault();if(AIA.hot>=0&&R[AIA.hot])R[AIA.hot].go();else if(R.length===1)R[0].go();return;}
+  if(k==='ArrowRight'){if(AIA.hot>=0&&R[AIA.hot]&&AIA.body.children[AIA.hot].classList.contains('grp')){ev.preventDefault();R[AIA.hot].go();}return;}
+  if(k==='ArrowLeft'||k==='Backspace'){if(AIA.search&&AIA.search.value)return;ev.preventDefault();aiMenuUp();return;}
+  if(k==='Escape'){ev.preventDefault();aiMenuClose();return;}
+  if(k==='Home'||k==='End'){if(AIA.search&&AIA.search.value)return;ev.preventDefault();aiMenuHi(k==='Home'?0:R.length-1);}
 }
 // ---- SIMULATE on a func_ladder: an unarmed man climbs it as a player does ---------------------
 // The player's ladder states (global/mike_torso.st) and the code they call (OpenMoHAA

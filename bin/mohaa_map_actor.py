@@ -254,6 +254,24 @@ def catalog_names(cat):
     return out
 
 
+def catalog_compact(cat):
+    """MTX.build_anim_catalog's result cut down to what SIMULATE on an ai_ actor shows in its
+    animation menu (the Model Viewer's drill-down): {"a": [[name, .skc path], ...], "n":
+    [[category name, [anim indices], [child node indices], count], ...], "r": root}. The
+    indices are the catalogue's own, so a pick names one entry even where two groups share
+    a name."""
+    cat = cat or {}
+    anims = [[str(e.get("n") or ""), str(e.get("s") or "")] for e in cat.get("anims", [])]
+    nodes = [[str(n.get("n") or ""), [int(i) for i in n.get("a", [])], [int(i) for i in n.get("k", [])],
+              int(n.get("c") or 0)] for n in cat.get("nodes", [])]
+    root = cat.get("root", 0)
+    if not isinstance(root, int) or not (0 <= root < len(nodes)):
+        root = 0
+    if not nodes:
+        nodes = [["animations", list(range(len(anims))), [], len(anims)]]
+    return {"a": anims, "n": nodes, "r": root}
+
+
 def resolve_clip(names, wg, base):
     """The catalogue entry for "<wg>_<base>": the exact name, then `<name>01`, then the
     lowest `<name><digits>` (mp40 and bar have crate_shoot01, pistol wall_shoot_left01).

@@ -66,7 +66,7 @@ import mohaa_map_actor as MA              # SIMULATE's actors: skin weights, cli
 # Page format revision, baked into each page as <!--mohaa-map-viewer-rev:N-->. Raise it
 # (and MAP_VIEWER_REV_REQUIRED in mohaa_map_launcher.py) when the page changes in a way
 # that a cached page must pick up.
-MAP_VIEWER_REV = 118
+MAP_VIEWER_REV = 121
 
 # Bumped when the cached shader / entity index format changes, so old caches are ignored.
 INDEX_VERSION = 11

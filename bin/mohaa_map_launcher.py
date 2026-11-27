@@ -1779,7 +1779,8 @@ class MapApp(ML.App):
                 else:
                     wi, wg = -1, "unarmed"
                 tik = vfs.read(mp).decode("latin-1", "replace")
-                names = MA.catalog_names(MTX.build_anim_catalog(tik, vfs, mp))
+                cat = MTX.build_anim_catalog(tik, vfs, mp)
+                names = MA.catalog_names(cat)
                 bones = mb.skins[mp]["skd"]["bones"]
                 ctx = MV.anim_solver_ctx(bones)
                 meta = {"wg": wg, "tag": MA.ACTOR_TAG, "tagL": MA.ACTOR_TAG_OFF, "mi": mi, "wi": wi,
@@ -1802,7 +1803,8 @@ class MapApp(ML.App):
                 if meta["idleWhy"]:
                     self._log_q.put(("warn", f"  (Simulate: no idle clip: {meta['idleWhy']})"))
                 b64, _raw, gz = MMV.pack_payload({"tex": texs.entries, "models": mb.models}, blobs)
-                self._sim_actor_ctx[k] = {"vfs": vfs, "bones": bones, "ctx": ctx, "names": names, "wg": wg, "done": {}}
+                self._sim_actor_ctx[k] = {"vfs": vfs, "bones": bones, "ctx": ctx, "names": names, "wg": wg, "done": {},
+                                          "cat": cat, "clips": {}}
                 self._sim_actor_ctx.move_to_end(k)
                 while len(self._sim_actor_ctx) > self.SIM_ACTOR_KEEP:
                     self._sim_actor_ctx.popitem(last=False)
@@ -1854,6 +1856,65 @@ class MapApp(ML.App):
                 MC.swallowed()
                 self._log_q.put(("warn", f"  (Simulate: {role} can't be built: {str(e)[:200]})"))
                 self._sim_actor_js("MOHAA_SIMACT_FAIL", k, role, str(e)[:200])
+
+    # ---- SIMULATE on an ai_ actor: any animation of his, as the Model Viewer plays it -----
+    # The page builds the actor unarmed (mohaa-sim-actor with no weapon), then asks for his
+    # animation catalogue (mohaa-sim-actor-cat: the Model Viewer's drill-down menu) and for
+    # each animation picked from it (mohaa-sim-actor-clip: one catalogue entry by its index,
+    # solved against his skeleton as the Model Viewer's solve_anim does).
+    def _sim_actor_cat(self, body):
+        """The animation catalogue of an actor built earlier (MOHAA_SIMACT_CAT)."""
+        req = self._sim_actor_parse(body, ("k",))
+        if req is None:
+            return
+        k = req["k"]
+        ctx = getattr(self, "_sim_actor_ctx", {}).get(k)
+        if ctx is None:
+            self._sim_actor_js("MOHAA_SIMACT_CATFAIL", k, "this actor is no longer built here: select him again"); return
+        try:
+            import mohaa_map_actor as MA
+            self._sim_actor_js("MOHAA_SIMACT_CAT", k, MA.catalog_compact(ctx.get("cat")))
+        except Exception as e:
+            MC.swallowed()
+            self._sim_actor_js("MOHAA_SIMACT_CATFAIL", k, str(e)[:200])
+
+    def _sim_actor_clip(self, body):
+        """One animation of an actor built earlier, by catalogue index (MOHAA_SIMACT_CLIP)."""
+        req = self._sim_actor_parse(body, ("k", "i"))
+        if req is None:
+            return
+        k = req["k"]
+        try:
+            i = int(req["i"])
+        except (TypeError, ValueError):
+            self._log_q.put(("warn", "  (Simulate: a malformed animation request was ignored)")); return
+        ctx = getattr(self, "_sim_actor_ctx", {}).get(k)
+        if ctx is None:
+            self._sim_actor_js("MOHAA_SIMACT_CLIPFAIL", k, i, "this actor is no longer built here: select him again"); return
+        anims = (ctx.get("cat") or {}).get("anims", [])
+        if not (0 <= i < len(anims)):
+            self._sim_actor_js("MOHAA_SIMACT_CLIPFAIL", k, i, "no such animation"); return
+        if not hasattr(self, "_sim_lock"): self._sim_lock = threading.Lock()
+        threading.Thread(target=self._sim_actor_clip_work, args=(k, i, ctx, anims[i]), daemon=True).start()
+
+    def _sim_actor_clip_work(self, k, i, ctx, entry):
+        """Worker thread: the clip solved against the actor's skeleton (cached per actor)."""
+        with self._sim_lock:
+            name = str(entry.get("n") or "animation")
+            try:
+                import mohaa_map_actor as MA
+                rec = ctx["clips"].get(i)
+                if rec is None:
+                    rec = MA.solve_clip(ctx["vfs"], ctx["bones"], name, entry, None, ctx["ctx"])
+                    rec.pop("dl", None)          # posed where he stands: the clip's own movement is not used
+                    rec.pop("hand", None)
+                    ctx["clips"][i] = rec
+                    self._log_q.put(("dim", f"  (Simulate: {name}, {len(rec['frames'])} frames)"))
+                self._sim_actor_js("MOHAA_SIMACT_CLIP", k, i, rec)
+            except Exception as e:
+                MC.swallowed()
+                self._log_q.put(("warn", f"  (Simulate: {name} can't be built: {str(e)[:200]})"))
+                self._sim_actor_js("MOHAA_SIMACT_CLIPFAIL", k, i, str(e)[:200])
 
     def _open_scr(self, vpath, where):
         """The level-script card's Open .scr / Open: the script in the Text Editor. `where`
@@ -1958,6 +2019,14 @@ class MapApp(ML.App):
                         # the clips a node's flags play: '{"k": key, "role": "left" ...}'
                         body = m.split("\n", 1)[1][:2000]
                         self._page_requests.append(lambda b=body: self._sim_actor_anim(b))
+                    elif m.startswith("mohaa-sim-actor-cat\n"):
+                        # an ai_ actor's animation catalogue: '{"k": key}'
+                        body = m.split("\n", 1)[1][:2000]
+                        self._page_requests.append(lambda b=body: self._sim_actor_cat(b))
+                    elif m.startswith("mohaa-sim-actor-clip\n"):
+                        # one of his animations by catalogue index: '{"k": key, "i": "17"}'
+                        body = m.split("\n", 1)[1][:2000]
+                        self._page_requests.append(lambda b=body: self._sim_actor_clip(b))
                     elif m.startswith("mohaa-sim-build\n"):
                         # SIMULATE's model: "mohaa-sim-build\n<path of a .tik in the paks>"
                         vp = m.split("\n", 1)[1][:300]

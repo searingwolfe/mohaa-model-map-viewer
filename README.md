@@ -375,6 +375,16 @@ click away: its targetname, origin, `setsize`, targets and ready-to-paste script
   to** and **Follow** (the game's third-person camera) help watch him, and **Respawn** puts
   him back on the node. The human and weapon are built from the paks only when chosen, each
   animation the first time it's needed. Needs the Map Viewer (not a bare browser).
+  Select an `ai_` entity (an actor whose model is a `models/human` .tik: the map's own, one
+  a level script spawns, or one added, copied or changed in Modify) and the section is the
+  Model Viewer's animation player: the drill-down list of every animation his .tik reaches (its `$include`
+  chain and `includes` groups, with a search box), **Play**, **Loop**, **Reset**, the frame
+  slider and the speed in frames per second. Picking an animation builds him unarmed and
+  poses him in it at the entity's own origin (no drop to the floor), facing its angle,
+  with the entity's own model hidden meanwhile, so you can see him sitting in a chair or lying in a bunk (`sleep_lowerbunk`) without running the game. An entity with
+  an `anim` key starts in that animation. The clip plays in place, frame by frame, and he
+  goes when the entity is deselected. He has no weapon in hand, and only a .tik straight
+  under models/human can be posed.
   Select a `func_ladder` and the section climbs it with an unarmed **Human** as the
   player's ladder states do (global/mike_torso.st, with OpenMoHAA's FuncLadder code):
   **Spawn Bottom** stands him where `ladder_down_getoff` leaves a climber at its foot,

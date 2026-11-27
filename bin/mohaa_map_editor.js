@@ -480,7 +480,15 @@ function edNewCalc(){
 // after a save (or Undo past one) the set changes without a rebuild: draw again
 function edNewSync(){const old=EDNEW;edNewCalc();
   if(old.size===EDNEW.size&&[...old].every(x=>EDNEW.has(x)))return;
-  if(gl){rebuildWorld();lineDirty=true;requestDraw();}}
+  if(gl){rebuildWorld();lineDirty=true;requestDraw();}
+  // brushes no longer new (saved, compiled) are drawn as their kind now: one a Show button or
+  // the look hides (a ladder's common/trigger in the In-game look) goes from view, so say so
+  try{let bits=0,n=0;for(const pi of old){if(EDNEW.has(pi))continue;const p=SC.prims[pi];if(!p||hidPrim.has(pi)||hidEnt.has(p.ent))continue;
+      let any=false,b=0;for(let f=p.f0;f<p.f1;f++){if(faceShown(f)){any=true;break;}b|=SC.faceCat[f]&hiddenMask;}
+      if(!any&&b){bits|=b;n++;}}
+    if(n){const fb=filterNamesFor(bits),pl=/buttons$/.test(fb);
+      setTimeout(()=>flashWarn(n+' saved brush'+(n===1?' is':'es are')+' drawn as '+(n===1?'its':'their')+' kind now, no longer as new: '+fb+(pl?' hide ':' hides ')+(n===1?'it':'them')+' (click '+(pl?'them':'it')+' to show '+(n===1?'it':'them')+')'),1700);}}
+  catch(err){console.error(err);}}
 function edNewLines(L){
   if(!EDNEW.size||(hiddenMask&C_NEWBR))return;
   const c=[1,0.72,0.2,0.95],P=SC.pos;
@@ -2342,6 +2350,8 @@ window.addEventListener('keydown',e=>{
     if(e.key==='Tab'){e.stopPropagation();e.preventDefault();ED.clip.flip=!ED.clip.flip;edClipPrev();return;}}},true);
 
 // ---- Draw: an outline on a surface, then a height --------------------------------------------
+// the plane the outline is drawn on, for the page's grid (drawGrid) to lie on while drawing
+window.__edDrawPlane=()=>EDDRAG&&EDDRAG.kind==='draw'&&!EDDRAG.slope?{ax:EDDRAG.ax,c:EDDRAG.c}:null;
 function edDrawDown(x,y){
   if(EDDRAG&&EDDRAG.phase==='height'){edDrawMake();return true;}
   const h=edHit(x,y),fixed={xy:2,xz:1,yz:0}[ED.dplane||'any'];let ax=2,n=[0,0,1],c,P=null,pl=null;

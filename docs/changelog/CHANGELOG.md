@@ -4098,3 +4098,51 @@ look of the walk and the doors should be confirmed by eye in the launcher.
   (as mohdm2's and mohdm7's ladders have), or to move it out from the wall. Checked on
   mohdm2 (three ladders, top flush with the floor), mohdm7 (one 3 units over its floor,
   one with a flat brush at its top) and m3l1b. `MAP_VIEWER_REV` 118.
+
+## Grid: on the floor, and on Draw brush's outline (November 2026)
+
+- The grid's plane was the grid line nearest its focus point on the camera's side, and the
+  focus stops 2 units short of the surface looked at, so on a floor that lies on a grid line
+  (m3l1b's -304 with grid 8) the grid was drawn one line higher (-296). Draw brush's outline
+  lies on the floor itself, so seen in perspective it drifted off the grid's lines, more the
+  bigger it got (the brush, made on the floor, was on the grid). The plane now stays on a
+  surface that is on a grid line (within 2.5 units), and while Draw brush's outline is drawn
+  the grid lies on the outline's own plane (`window.__edDrawPlane`). `MAP_VIEWER_REV` 119.
+
+## Alt+C copies brushes again; a saved brush a Show button hides says so (November 2026)
+
+- Alt+C clicked Modify's Copy button, which (since the Editor got its own) copies only
+  Modify's entities, so with brushes selected it said to select something. It now copies
+  whichever is selected, brushes or entities (`modCopySel`), as before.
+- A brush added or changed in the Map Editor is drawn whatever the Show buttons hide while it
+  is new; once saved or compiled it is drawn as its kind, so a func_ladder's `common/trigger`
+  brush in the In-game look (Triggers off) went from view, and Ctrl+Z on its Hide seemed to do
+  nothing. Now Undo Hide says when what it showed is still hidden by a Show button (and
+  which), and a save or compile that leaves saved brushes hidden that way says so too.
+  `MAP_VIEWER_REV` 120.
+
+## Simulate: an ai_ actor in any of his animations (November 2026)
+
+- Selecting one `ai_` entity whose model is a `models/human` .tik (the map's own, one a
+  level script spawns, or one added, copied or changed in Modify) shows the Model Viewer's
+  animation player in SIMULATE: the drill-down list of every animation his .tik reaches
+  (categories, search, Back and the keyboard keys), **Play** / **Pause**, **Loop**
+  (remembered), **Reset**, the frame slider and the speed (2 to 60 frames a second, 20 by
+  default). The list button reads like "jumpup_lowerbunk (17f)", with the .skc path under it.
+- Picking an animation builds him unarmed (`mohaa-sim-actor`), asks for his catalogue
+  (`mohaa-sim-actor-cat`, `MA.catalog_compact`) and for each animation the first time it is
+  picked (`mohaa-sim-actor-clip`, solved as the path node's actor is and kept per actor).
+  He is posed at the entity's own origin, with no drop to the floor (mappers put actors on
+  the ground already, and the scripted bunk and chair animations are made relative to that
+  origin), facing its angle. The clip plays in place (its own movement is dropped), whole
+  frames with no blending, as the Model Viewer plays them. An entity with an `anim` key
+  starts in that animation. While he is posed, the entity's own model is not drawn; he goes
+  when the entity is deselected.
+- Fixed while testing: hiding the entity's own model rebuilt the model and selection buffers
+  in the middle of the draw, with the map's vertex array still bound, and the whole map went
+  blank. It now runs from the frame loop before the draw (`aiSyncHide`), with no vertex array
+  bound. An earlier drop to the floor put $bunker_lower_private 12 units over his bunk
+  (m3l1b); it was taken out. Actors added in Modify were not offered the section at first.
+- Limits: he has no weapon in hand; clicking him selects what is behind him; a .tik in a
+  subfolder under models/human can't be posed (as for the path node's actor).
+  `MAP_VIEWER_REV` 121.

@@ -855,13 +855,13 @@ class MapEditorUndoAndCopyTurn(unittest.TestCase):
         page = open(P.__file__, encoding="utf-8").read()
         ed = open(os.path.join(BIN, "mohaa_map_editor.js"), encoding="utf-8").read()
         for frag in ("function ctrlUndo()", "if(combo==='ctrl+z'){ctrlUndo();", "o.seq=++ACT_SEQ",
-                     "function modRestoreRow(i)", "function modTurn(dy)", "function modUsesAngle(m)", "function ladEye(pos,yaw,pitch)", "function ladViewScan(L,dir)", "function ladViewAdvice(L,dir,P)", "ladder:lf<1&&lf<wf", "function brushCont(ent,bn,faces)", "const c=brushCont(p.ent,p.bn,faces);", "function patchCont(d)", "for(const up of[4,16,32,56,80])", "function modCopyEnts()", "$('bModDup').onclick=()=>modCopyEnts();", "function ctrlRedo()", "function redoHide()", "function modNothingMsg(d)", "combo==='ctrl+y'", "const info=modUsesAngle(x)", "id=\"bModTurn\"", "kl==='q'){modTurn(", "e.target.closest('.mdel')", "function modDelNote()"):
+                     "function modRestoreRow(i)", "function modTurn(dy)", "function modUsesAngle(m)", "if(kl==='c'){modCopySel();", "window.__edDrawPlane&&window.__edDrawPlane()", "function ladEye(pos,yaw,pitch)", "function ladViewScan(L,dir)", "function ladViewAdvice(L,dir,P)", "ladder:lf<1&&lf<wf", "function brushCont(ent,bn,faces)", "const c=brushCont(p.ent,p.bn,faces);", "function patchCont(d)", "for(const up of[4,16,32,56,80])", "function modCopyEnts()", "$('bModDup').onclick=()=>modCopyEnts();", "function ctrlRedo()", "function redoHide()", "function modNothingMsg(d)", "combo==='ctrl+y'", "const info=modUsesAngle(x)", "id=\"bModTurn\"", "kl==='q'){modTurn(", "e.target.closest('.mdel')", "function modDelNote()"):
             self.assertIn(frag, page)
         for frag in ("C_NEWBR=1<<26, C_NEWENT=1<<27", "const LOOK_NEW={game:0,edit:0};", "hiddenMask=GAME_LOOK|LOOK_NEW.game",
                      "function modNewHid(m)", "lookNew:LOOK_NEW"):
             self.assertIn(frag, page)
         self.assertIn("!(hiddenMask&C_NEWBR)&&", ed)
-        for frag in ("s.esel=[...SEL]", "function edCarryTurn(dy)", "edCarryTurn(e.shiftKey?-90:90)", "function edCarryYaw(dy)", "function edEditRow()", "on('bEdDel',", "e.key!=='Delete'||!e.altKey", "modTurn=function(dy)", "C.yaw&&/^angle$/i"):
+        for frag in ("s.esel=[...SEL]", "function edCarryTurn(dy)", "edCarryTurn(e.shiftKey?-90:90)", "function edCarryYaw(dy)", "function edEditRow()", "window.__edDrawPlane=()=>", "on('bEdDel',", "e.key!=='Delete'||!e.altKey", "modTurn=function(dy)", "C.yaw&&/^angle$/i"):
             self.assertIn(frag, ed)
 
     def test_shortcuts(self):
@@ -870,6 +870,46 @@ class MapEditorUndoAndCopyTurn(unittest.TestCase):
         self.assertTrue(tabs)
         for t in tabs:
             self.assertEqual(V.kx_check(t), [])
+
+
+class MapSimulateAiActor(unittest.TestCase):
+    """SIMULATE on an ai_ actor: the Model Viewer's animation player, posed in place, the
+    entity's own model hidden between frames, and actors Modify added."""
+    def test_fragments(self):
+        import mohaa_map_page as P
+        page = open(P.__file__, encoding="utf-8").read()
+        for frag in ('id="simAi"', 'id="aiAnimBtn"', 'id="bAiPlay"', 'id="bAiLoop"', 'id="bAiReset"', 'id="aiScrub"',
+                     'id="aiSpeed" min="2" max="60" value="20"', "function aiFocus()", "return{key:'Am'+m.id,hk:'m'+m.id",
+                     "function aiTikOk(p)", "function aiSyncHide()", "gl.bindVertexArray(null);",
+                     "const aiHidCh=aiSyncHide();", "function aiPlace(f){return f.o.slice();}",
+                     "entShown(ei)&&!aiHid(ei)", "if(!modDrawn(i)||aiHidM(m))return;", "if(c.ai)return aiTick(now,c);",
+                     "window.MOHAA_SIMACT_CAT=function(k,cat)", "window.MOHAA_SIMACT_CLIP=function(k,i,rec)",
+                     "'mohaa-sim-actor-cat\\n'", "'mohaa-sim-actor-clip\\n'", "if(af)aiPanel(af);"):
+            self.assertIn(frag, page)
+        # posed where he stands: no drop to the floor
+        i = page.index("function aiPlace(f)")
+        self.assertNotIn("pgDrop", page[i:i + 200])
+
+    def test_launcher(self):
+        src = open(os.path.join(BIN, "mohaa_map_launcher.py"), encoding="utf-8").read()
+        for frag in ('elif m.startswith("mohaa-sim-actor-cat\\n"):', 'elif m.startswith("mohaa-sim-actor-clip\\n"):',
+                     "def _sim_actor_cat(self, body):", "def _sim_actor_clip(self, body):",
+                     "if not (0 <= i < len(anims)):", 'rec.pop("dl", None)', '"cat": cat, "clips": {}'):
+            self.assertIn(frag, src)
+
+    def test_catalog_compact(self):
+        import mohaa_map_actor as MA
+        cat = {"anims": [{"n": "idle", "s": "models/human/a/idle.skc"}, {"n": "sleep_lowerbunk", "s": "x.skc"}],
+               "nodes": [{"n": "all", "a": [0, 1], "k": [1], "c": 2}, {"n": "bunk", "a": [1], "k": [], "c": 1}],
+               "root": 0}
+        out = MA.catalog_compact(cat)
+        self.assertEqual(out["a"], [["idle", "models/human/a/idle.skc"], ["sleep_lowerbunk", "x.skc"]])
+        self.assertEqual(out["n"][1], ["bunk", [1], [], 1])
+        self.assertEqual(out["r"], 0)
+        self.assertEqual(MA.catalog_compact({"anims": [], "nodes": [], "root": 9})["r"], 0)
+        flat = MA.catalog_compact({"anims": [{"n": "a"}, {"n": "b"}]})
+        self.assertEqual(flat["n"], [["animations", [0, 1], [], 2]])
+        self.assertEqual(MA.catalog_compact(None), {"a": [], "n": [["animations", [], [], 0]], "r": 0})
 
 
 if __name__ == "__main__":
